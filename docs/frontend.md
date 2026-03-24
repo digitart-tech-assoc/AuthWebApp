@@ -23,3 +23,25 @@ Next.js 15 (App Router) を採用する。フロントは UI と「宣言（Desi
 ## 開発・運用
 - ローカルは docker-compose で起動（frontend:3000）。
 - UI コンポーネントは再利用可能に設計、README に使用方法を記載する。
+
+## 実装メモ（2026-03-24）
+- Frontend は Auth.js（`next-auth`）+ Keycloak Provider を利用してサインインを処理する。
+- 保護対象ページ（現状: `/roles`）は未ログイン時に `/api/auth/signin` へリダイレクトする。
+- Backend への API 呼び出しは、Keycloak の access token を `Authorization: Bearer <token>` として転送する。
+- 段階移行のため `AUTH_REQUIRED=false` の場合は shared secret フォールバックを許可する。
+
+## 必要な環境変数（Frontend）
+- `AUTH_SECRET`
+- `AUTH_REQUIRED` (`true` / `false`)
+- `AUTH_KEYCLOAK_ISSUER`
+- `AUTH_KEYCLOAK_CLIENT_ID`
+- `AUTH_KEYCLOAK_CLIENT_SECRET`
+- `BACKEND_URL`
+
+## トラブルシュート
+- 症状: `/api/auth/signin?callbackUrl=%2Froles` が 500 を返す。
+- 主因: Keycloak Provider の設定値不足（`AUTH_KEYCLOAK_ISSUER` / `AUTH_KEYCLOAK_CLIENT_ID` / `AUTH_KEYCLOAK_CLIENT_SECRET` が空）。
+- 対処:
+	1. 上記 3 変数を設定する。
+	2. Keycloak Client の redirect URI に `http://localhost:5173/api/auth/callback/keycloak` を追加する。
+	3. `AUTH_REQUIRED=true` を使う場合は、Keycloak 設定値がすべて入っていることを確認する。

@@ -17,6 +17,10 @@ services:
       context: ./backend
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-authwebapp-frontend}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-1304058364560543815}
@@ -45,6 +49,11 @@ services:
     environment:
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
+      AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      AUTH_KEYCLOAK_ISSUER: ${AUTH_KEYCLOAK_ISSUER:-}
+      AUTH_KEYCLOAK_CLIENT_ID: ${AUTH_KEYCLOAK_CLIENT_ID:-}
+      AUTH_KEYCLOAK_CLIENT_SECRET: ${AUTH_KEYCLOAK_CLIENT_SECRET:-}
     ports:
       - "5173:5173"
     depends_on:
