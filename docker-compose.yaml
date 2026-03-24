@@ -12,14 +12,35 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  keycloak:
+    build:
+      context: ./keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-authwebapp}
+      KC_DB_USERNAME: ${POSTGRES_USER:-app}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    depends_on:
+      - postgres
+
   backend:
     build:
       context: ./backend
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
-      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-}
+      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/authwebapp
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-authwebapp-frontend}
-      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-}
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/authwebapp/protocol/openid-connect/certs
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
@@ -29,6 +50,9 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
+      - keycloak
+    extra_hosts:
+      - "localhost:host-gateway"
 
   discord-bot:
     build:
@@ -50,14 +74,19 @@ services:
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me}
-      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
-      AUTH_KEYCLOAK_ISSUER: ${AUTH_KEYCLOAK_ISSUER:-}
-      AUTH_KEYCLOAK_CLIENT_ID: ${AUTH_KEYCLOAK_CLIENT_ID:-}
-      AUTH_KEYCLOAK_CLIENT_SECRET: ${AUTH_KEYCLOAK_CLIENT_SECRET:-}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      AUTH_KEYCLOAK_ISSUER: ${AUTH_KEYCLOAK_ISSUER:-http://localhost:8080/realms/authwebapp}
+      AUTH_KEYCLOAK_CLIENT_ID: ${AUTH_KEYCLOAK_CLIENT_ID:-authwebapp-frontend}
+      AUTH_KEYCLOAK_CLIENT_SECRET: ${AUTH_KEYCLOAK_CLIENT_SECRET:-keycloak-frontend-secret-change-me}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:5173}
+      AUTH_TRUST_HOST: "true"
     ports:
       - "5173:5173"
     depends_on:
       - backend
+      - keycloak
+    extra_hosts:
+      - "localhost:host-gateway"
 
 volumes:
   pgdata:

@@ -42,10 +42,18 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	const authRequired = process.env.AUTH_REQUIRED !== "false" && keycloakConfigured;
 	const session = await auth();
 	if (authRequired && !session?.user) {
-		redirect("/api/auth/signin?callbackUrl=%2Froles");
+		redirect("/login?callbackUrl=%2Froles");
 	}
 
-	const manifest = await fetchManifest();
+	let manifest;
+	try {
+		manifest = await fetchManifest();
+	} catch (error) {
+		if (authRequired && error instanceof Error && error.message === "unauthorized") {
+			redirect("/login?callbackUrl=%2Froles");
+		}
+		throw error;
+	}
 	const params = await Promise.resolve(searchParams);
 	const synced = params?.synced === "1";
 	const hasError = params?.error === "1";

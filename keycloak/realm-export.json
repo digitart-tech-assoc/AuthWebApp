@@ -1,0 +1,67 @@
+{
+  "realm": "authwebapp",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "authwebapp-frontend",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "keycloak-frontend-secret-change-me",
+      "redirectUris": [
+        "http://localhost:5173/api/auth/callback/keycloak",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email"
+      ]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "discord",
+      "displayName": "Discord",
+      "providerId": "discord",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "1327331099227062324",
+        "clientSecret": "WMENuWsfswJvy_SQscxGdhb8qwYAImHW",
+        "defaultScope": "identify email",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "identityProviderMappers": [
+    {
+      "name": "discord-username",
+      "identityProviderAlias": "discord",
+      "identityProviderMapper": "hardcoded-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute": "discord_linked",
+        "attribute.value": "true"
+      }
+    }
+  ]
+}

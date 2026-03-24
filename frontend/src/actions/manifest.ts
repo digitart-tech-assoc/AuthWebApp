@@ -38,9 +38,14 @@ export async function fetchManifest(): Promise<Manifest> {
 		headers: { Authorization: authorization },
 		cache: "no-store",
 	});
+
 	if (!res.ok) {
-		throw new Error("manifest fetch failed");
+		if (res.status === 401) {
+			throw new Error("unauthorized");
+		}
+		throw new Error(`manifest fetch failed: ${res.status}`);
 	}
+
 	return (await res.json()) as Manifest;
 }
 

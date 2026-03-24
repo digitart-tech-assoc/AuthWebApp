@@ -47,15 +47,28 @@ def _decode_keycloak_token(token: str) -> dict[str, Any]:
 		decode_options: dict[str, Any] = {
 			"algorithms": ["RS256"],
 			"issuer": KEYCLOAK_ISSUER_URL,
+			"options": {"verify_aud": False},
 		}
-		if KEYCLOAK_AUDIENCE:
-			decode_options["audience"] = KEYCLOAK_AUDIENCE
-		else:
-			decode_options["options"] = {"verify_aud": False}
 		claims = jwt.decode(token, signing_key.key, **decode_options)
+
+		if KEYCLOAK_AUDIENCE:
+			audience_claim = claims.get("aud")
+			azp_claim = claims.get("azp")
+			aud_match = False
+
+			if isinstance(audience_claim, str):
+				aud_match = audience_claim == KEYCLOAK_AUDIENCE
+			elif isinstance(audience_claim, list):
+				aud_match = KEYCLOAK_AUDIENCE in audience_claim
+
+			if not aud_match and azp_claim != KEYCLOAK_AUDIENCE:
+				raise HTTPException(status_code=401, detail="Invalid token audience")
+
 		return claims
 	except jwt.PyJWTError as exc:
 		raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
+	except Exception as exc:  # noqa: BLE001
+		raise HTTPException(status_code=401, detail=f"Token validation failed: {exc}") from exc
 
 
 def get_current_principal(authorization: str | None = Header(default=None)) -> dict[str, Any]:

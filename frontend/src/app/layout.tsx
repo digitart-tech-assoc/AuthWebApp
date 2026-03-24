@@ -51,14 +51,14 @@ export default async function RootLayout({
                 </a>
               ) : authRequired ? (
                 <a
-                  href="/api/auth/signin?callbackUrl=%2Froles"
+                  href="/login?callbackUrl=%2Froles"
                   className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
                 >
                   Login
                 </a>
               ) : (
                 <a
-                  href="/api/auth/signin?callbackUrl=%2Froles"
+                  href="/login?callbackUrl=%2Froles"
                   className="rounded-md border border-black/15 px-3 py-1.5 text-sm hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
                 >
                   Login
