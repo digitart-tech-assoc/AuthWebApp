@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+from app.db.repository import fetch_manifest, save_manifest
 
 
 router = APIRouter(prefix="/api/v1", tags=["manifest"])
@@ -32,28 +36,17 @@ class Manifest(BaseModel):
 	roles: list[Role] = Field(default_factory=list)
 
 
-# MVPのため in-memory で保持（将来は PostgreSQL に置換）
-_manifest_store = Manifest(
-	categories=[Category(id="cat-grade", name="学年", display_order=0, is_collapsed=False)],
-	roles=[
-		Role(
-			role_id="sample-role-1",
-			name="2024年",
-			color="#22c55e",
-			position=10,
-			category_id="cat-grade",
-		)
-	],
-)
-
-
 @router.get("/manifest", response_model=Manifest)
 async def get_manifest() -> Manifest:
-	return _manifest_store
+	data = await asyncio.to_thread(fetch_manifest)
+	return Manifest(**data)
 
 
 @router.put("/manifest", response_model=Manifest)
 async def put_manifest(payload: Manifest) -> Manifest:
-	global _manifest_store
-	_manifest_store = payload
-	return _manifest_store
+	await asyncio.to_thread(
+		save_manifest,
+		[c.model_dump() for c in payload.categories],
+		[r.model_dump() for r in payload.roles],
+	)
+	return payload

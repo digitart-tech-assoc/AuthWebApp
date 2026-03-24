@@ -22,6 +22,20 @@ type Props = {
 };
 
 export default function RoleAccordion({ categories, roles }: Props) {
+	if (categories.length === 0) {
+		return (
+			<div>
+				<h2>ロール一覧</h2>
+				<RoleList roles={roles} />
+			</div>
+		);
+	}
+
+	const categoryIds = new Set(categories.map((category) => category.id));
+	const uncategorizedRoles = roles.filter(
+		(role) => !role.category_id || !categoryIds.has(role.category_id),
+	);
+
 	return (
 		<div>
 			{categories.map((category) => {
@@ -33,6 +47,12 @@ export default function RoleAccordion({ categories, roles }: Props) {
 					</details>
 				);
 			})}
+			{uncategorizedRoles.length > 0 ? (
+				<details open>
+					<summary>カテゴリ未設定</summary>
+					<RoleList roles={uncategorizedRoles} />
+				</details>
+			) : null}
 		</div>
 	);
 }

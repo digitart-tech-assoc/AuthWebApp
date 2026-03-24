@@ -18,6 +18,9 @@ services:
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-1304058364560543815}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/authwebapp}
     ports:
       - "8000:8000"
     depends_on:

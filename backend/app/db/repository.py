@@ -1,0 +1,154 @@
+"""役割: PostgreSQLへの永続化処理"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import psycopg2
+
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://app:app@postgres:5432/authwebapp")
+
+
+def _connect():
+	return psycopg2.connect(DATABASE_URL)
+
+
+def init_db() -> None:
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				CREATE TABLE IF NOT EXISTS role_categories (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					display_order INTEGER DEFAULT 0,
+					is_collapsed BOOLEAN DEFAULT FALSE
+				);
+				"""
+			)
+			cur.execute(
+				"""
+				CREATE TABLE IF NOT EXISTS role_manifests (
+					role_id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					color TEXT DEFAULT '#000000',
+					hoist BOOLEAN DEFAULT FALSE,
+					mentionable BOOLEAN DEFAULT FALSE,
+					permissions BIGINT DEFAULT 0,
+					position INTEGER NOT NULL,
+					category_id TEXT REFERENCES role_categories(id) ON DELETE SET NULL,
+					is_managed_by_app BOOLEAN DEFAULT TRUE,
+					updated_at TIMESTAMPTZ DEFAULT now()
+				);
+				"""
+			)
+
+
+def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT id, name, display_order, is_collapsed
+				FROM role_categories
+				ORDER BY display_order ASC, name ASC
+				"""
+			)
+			categories = [
+				{
+					"id": row[0],
+					"name": row[1],
+					"display_order": row[2],
+					"is_collapsed": row[3],
+				}
+				for row in cur.fetchall()
+			]
+
+			cur.execute(
+				"""
+				SELECT role_id, name, color, hoist, mentionable, permissions, position, category_id
+				FROM role_manifests
+				ORDER BY position DESC, name ASC
+				"""
+			)
+			roles = [
+				{
+					"role_id": row[0],
+					"name": row[1],
+					"color": row[2],
+					"hoist": row[3],
+					"mentionable": row[4],
+					"permissions": int(row[5]),
+					"position": row[6],
+					"category_id": row[7],
+				}
+				for row in cur.fetchall()
+			]
+	return {"categories": categories, "roles": roles}
+
+
+def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]]) -> None:
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("DELETE FROM role_manifests")
+			cur.execute("DELETE FROM role_categories")
+
+			for c in categories:
+				cur.execute(
+					"""
+					INSERT INTO role_categories (id, name, display_order, is_collapsed)
+					VALUES (%s, %s, %s, %s)
+					""",
+					(
+						c["id"],
+						c["name"],
+						c.get("display_order", 0),
+						c.get("is_collapsed", False),
+					),
+				)
+
+			for r in roles:
+				cur.execute(
+					"""
+					INSERT INTO role_manifests
+					(role_id, name, color, hoist, mentionable, permissions, position, category_id)
+					VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+					""",
+					(
+						r["role_id"],
+						r["name"],
+						r.get("color", "#000000"),
+						r.get("hoist", False),
+						r.get("mentionable", False),
+						int(r.get("permissions", 0)),
+						r["position"],
+						r.get("category_id"),
+					),
+				)
+
+
+def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("DELETE FROM role_manifests")
+			for role in roles:
+				cur.execute(
+					"""
+					INSERT INTO role_manifests
+					(role_id, name, color, hoist, mentionable, permissions, position, category_id)
+					VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+					""",
+					(
+						role["role_id"],
+						role["name"],
+						role["color"],
+						role["hoist"],
+						role["mentionable"],
+						role["permissions"],
+						role["position"],
+						None,
+					),
+				)
+	return len(roles)
