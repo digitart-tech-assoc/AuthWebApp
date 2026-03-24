@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { fetchBackend } from "@/lib/backendFetch";
 
 export async function PUT(request: Request) {
 	try {
+		const authorization = await getBackendAuthorizationHeader();
+		if (!authorization) {
+			return NextResponse.json({ ok: false, detail: "Unauthorized" }, { status: 401 });
+		}
+
 		const payload = await request.json();
-		const res = await fetch(`${BACKEND_URL}/api/v1/manifest`, {
+		const res = await fetchBackend("/api/v1/manifest", {
 			method: "PUT",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: authorization,
+			},
 			body: JSON.stringify(payload),
 			cache: "no-store",
 		});
