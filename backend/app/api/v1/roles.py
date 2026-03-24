@@ -23,7 +23,7 @@ from app.services.discord_client import (
 
 router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
-DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "1304058364560543815")
+DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
 
 
 def _get_token() -> str:
