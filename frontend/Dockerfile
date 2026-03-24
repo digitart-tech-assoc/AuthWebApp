@@ -10,6 +10,9 @@ USER node
 COPY --chown=node:node package*.json ./
 RUN npm ci
 
+# アプリ本体をコピー
+COPY --chown=node:node . .
+
 # 開発サーバーの起動コマンド（ホットリロード有効）
 EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "5173"]
