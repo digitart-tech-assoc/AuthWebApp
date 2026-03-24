@@ -4,9 +4,9 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: authwebapp
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-authwebapp}
     ports:
       - "5432:5432"
     volumes:
@@ -16,7 +16,7 @@ services:
     build:
       context: ./backend
     environment:
-      SHARED_SECRET: dev-secret
+      SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
     ports:
       - "8000:8000"
@@ -27,10 +27,10 @@ services:
     build:
       context: ./discord-bot
     environment:
-      SHARED_SECRET: dev-secret
-      BACKEND_URL: http://backend:8000
-      BOT_PORT: 8000
-      DISCORD_TOKEN: ""
+      SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      BOT_PORT: ${BOT_PORT:-8000}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:-}
     ports:
       - "8001:8000"
     depends_on:
@@ -40,8 +40,8 @@ services:
     build:
       context: ./frontend
     environment:
-      BACKEND_URL: http://backend:8000
-      SHARED_SECRET: dev-secret
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
     ports:
       - "5173:5173"
     depends_on:
