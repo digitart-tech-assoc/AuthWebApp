@@ -8,6 +8,7 @@ export type ManifestCategory = {
 	name: string;
 	display_order: number;
 	is_collapsed: boolean;
+	permissions: number;
 };
 
 export type ManifestRole = {

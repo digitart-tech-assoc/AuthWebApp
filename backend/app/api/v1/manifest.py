@@ -18,6 +18,7 @@ class Category(BaseModel):
 	name: str
 	display_order: int = 0
 	is_collapsed: bool = False
+	permissions: int = 0
 
 
 class Role(BaseModel):

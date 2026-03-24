@@ -28,6 +28,13 @@ def init_db() -> None:
 				);
 				"""
 			)
+			# カテゴリ権限カラムを追加（既存DBへの後方互換対応）
+			cur.execute(
+				"""
+				ALTER TABLE role_categories
+				ADD COLUMN IF NOT EXISTS permissions BIGINT DEFAULT 0;
+				"""
+			)
 			cur.execute(
 				"""
 				CREATE TABLE IF NOT EXISTS role_manifests (
@@ -51,7 +58,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 		with conn.cursor() as cur:
 			cur.execute(
 				"""
-				SELECT id, name, display_order, is_collapsed
+				SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
 				FROM role_categories
 				ORDER BY display_order ASC, name ASC
 				"""
@@ -62,6 +69,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 					"name": row[1],
 					"display_order": row[2],
 					"is_collapsed": row[3],
+					"permissions": int(row[4]),
 				}
 				for row in cur.fetchall()
 			]
@@ -98,14 +106,15 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 			for c in categories:
 				cur.execute(
 					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed)
-					VALUES (%s, %s, %s, %s)
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions)
+					VALUES (%s, %s, %s, %s, %s)
 					""",
 					(
 						c["id"],
 						c["name"],
 						c.get("display_order", 0),
 						c.get("is_collapsed", False),
+						int(c.get("permissions", 0)),
 					),
 				)
 
@@ -152,3 +161,12 @@ def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 					),
 				)
 	return len(roles)
+
+
+def update_role_id(old_id: str, new_id: str) -> None:
+	"""PushでDiscord側に作成されたロールの、DB上の仮IDを正規のDiscord IDに更新する。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
+
+
