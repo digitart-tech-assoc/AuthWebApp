@@ -1,0 +1,148 @@
+.board {
+  border: 1px solid #d4d7dc;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fb 100%);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid #e3e5e8;
+  background: #f2f3f5;
+}
+
+.search {
+  width: 100%;
+  max-width: 460px;
+  border: 1px solid #c8ccd1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2328;
+  font-size: 14px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.search:focus {
+  border-color: #5865f2;
+  box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.16);
+}
+
+.meta {
+  font-size: 12px;
+  color: #66707a;
+  font-weight: 600;
+}
+
+.group {
+  border-bottom: 1px solid #eceef1;
+}
+
+.group:last-child {
+  border-bottom: 0;
+}
+
+.groupHeader {
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #353a40;
+  background: #f7f8fa;
+  border-bottom: 1px solid #eceef1;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 1fr 120px 126px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #7a838d;
+  border-bottom: 1px solid #eceef1;
+}
+
+.roleRow {
+  display: grid;
+  grid-template-columns: 1fr 120px 126px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #f0f2f4;
+}
+
+.roleRow:last-child {
+  border-bottom: 0;
+}
+
+.roleNameWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.roleDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.roleName {
+  font-size: 14px;
+  color: #2f3136;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memberCol {
+  color: #5f6872;
+  font-size: 13px;
+}
+
+.actionCol {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.actionButton {
+  min-width: 34px;
+  height: 28px;
+  border: 1px solid #cfd4da;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4f5964;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.actionButton:hover {
+  background: #f3f5f8;
+}
+
+.empty {
+  padding: 16px 14px;
+  color: #7a838d;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .tableHeader,
+  .roleRow {
+    grid-template-columns: 1fr 80px 108px;
+  }
+
+  .search {
+    max-width: none;
+  }
+}
