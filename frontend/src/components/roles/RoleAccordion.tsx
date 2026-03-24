@@ -33,10 +33,13 @@ export default function RoleAccordion({ categories, roles }: Props) {
 	const [query, setQuery] = useState("");
 	const [allRoles, setAllRoles] = useState<Role[]>([]);
 	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+	const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 	const normalizedQuery = query.trim().toLowerCase();
 
 	useEffect(() => {
 		setAllRoles(roles.slice().sort((a, b) => b.position - a.position));
+		setHasUnsavedChanges(false);
+		setSaveState("idle");
 	}, [roles]);
 
 	async function persistRoles(nextRoles: Role[]) {
@@ -51,10 +54,18 @@ export default function RoleAccordion({ categories, roles }: Props) {
 				setSaveState("error");
 				return;
 			}
+			setHasUnsavedChanges(false);
 			setSaveState("saved");
 		} catch {
 			setSaveState("error");
 		}
+	}
+
+	async function handleSaveOrder() {
+		if (saveState === "saving" || !hasUnsavedChanges) {
+			return;
+		}
+		await persistRoles(allRoles);
 	}
 
 	function reorderGroup(orderedRoleIds: string[]) {
@@ -85,7 +96,8 @@ export default function RoleAccordion({ categories, roles }: Props) {
 		}));
 
 		setAllRoles(withPosition);
-		void persistRoles(withPosition);
+		setHasUnsavedChanges(true);
+		setSaveState("idle");
 	}
 
 	const statusText =
@@ -95,7 +107,9 @@ export default function RoleAccordion({ categories, roles }: Props) {
 				? "並び順を保存しました"
 				: saveState === "error"
 					? "並び順の保存に失敗しました"
-					: null;
+					: hasUnsavedChanges
+						? "未保存の変更があります"
+						: null;
 
 	const filteredRoles = useMemo(() => {
 		if (!normalizedQuery) {
@@ -115,8 +129,18 @@ export default function RoleAccordion({ categories, roles }: Props) {
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
 					/>
-					<span className={styles.meta}>ロール {filteredRoles.length}</span>
-					{statusText ? <span className={styles.meta}>{statusText}</span> : null}
+					<div className={styles.toolbarRight}>
+						<span className={styles.meta}>ロール {filteredRoles.length}</span>
+						<button
+							type="button"
+							className={styles.saveButton}
+							onClick={handleSaveOrder}
+							disabled={saveState === "saving" || !hasUnsavedChanges}
+						>
+							保存
+						</button>
+						{statusText ? <span className={styles.meta}>{statusText}</span> : null}
+					</div>
 				</div>
 				<div className={styles.group}>
 					<div className={styles.groupHeader}>ロール一覧</div>
@@ -141,8 +165,18 @@ export default function RoleAccordion({ categories, roles }: Props) {
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 				/>
-				<span className={styles.meta}>ロール {filteredRoles.length}</span>
-				{statusText ? <span className={styles.meta}>{statusText}</span> : null}
+				<div className={styles.toolbarRight}>
+					<span className={styles.meta}>ロール {filteredRoles.length}</span>
+					<button
+						type="button"
+						className={styles.saveButton}
+						onClick={handleSaveOrder}
+						disabled={saveState === "saving" || !hasUnsavedChanges}
+					>
+						保存
+					</button>
+					{statusText ? <span className={styles.meta}>{statusText}</span> : null}
+				</div>
 			</div>
 			{categories.map((category) => {
 				const filtered = filteredRoles.filter((r) => r.category_id === category.id);
