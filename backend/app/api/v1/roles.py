@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import os
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.core.auth import get_current_principal
 from app.db.repository import fetch_manifest, replace_roles_from_discord, update_role_id
 from app.services.discord_client import (
 	build_role_create_payload,
@@ -21,7 +22,6 @@ from app.services.discord_client import (
 
 
 router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "1304058364560543815")
 
