@@ -1,29 +1,8 @@
 // 役割: ロール管理画面
 
 import { fetchManifest } from "@/actions/manifest";
-import { triggerSync } from "@/actions/sync";
 import RoleAccordion from "@/components/roles/RoleAccordion";
-import { redirect } from "next/navigation";
-
-async function SyncButton() {
-	async function runSync() {
-		"use server";
-		let roles = 0;
-		try {
-			const result = await triggerSync();
-			roles = result.roles ?? 0;
-		} catch {
-			redirect("/roles?error=1");
-		}
-		redirect(`/roles?synced=1&roles=${roles}`);
-	}
-
-	return (
-		<form action={runSync}>
-			<button type="submit">同期を実行</button>
-		</form>
-	);
-}
+import SyncButton from "@/components/roles/SyncButton";
 
 type RolesPageProps = {
 	searchParams?:
