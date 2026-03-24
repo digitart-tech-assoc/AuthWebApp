@@ -30,14 +30,8 @@ def _get_token() -> str:
 	return DISCORD_TOKEN.strip()
 
 
-def _auth(authorization: str | None) -> None:
-	if authorization != f"Bearer {SHARED_SECRET}":
-		raise HTTPException(status_code=401, detail="Unauthorized")
-
-
 @router.post("/refresh")
-async def refresh_roles_from_discord(authorization: str | None = Header(default=None)) -> dict:
-	_auth(authorization)
+async def refresh_roles_from_discord(_principal: dict = Depends(get_current_principal)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -52,8 +46,7 @@ async def refresh_roles_from_discord(authorization: str | None = Header(default=
 
 
 @router.post("/push")
-async def push_roles_to_discord(authorization: str | None = Header(default=None)) -> dict:
-	_auth(authorization)
+async def push_roles_to_discord(_principal: dict = Depends(get_current_principal)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -146,10 +139,9 @@ class PermissionsPayload(BaseModel):
 async def update_role_permissions(
 	role_id: str,
 	payload: PermissionsPayload,
-	authorization: str | None = Header(default=None),
+	_principal: dict = Depends(get_current_principal),
 ) -> dict:
 	"""特定ロールの権限を即時 Discord に反映（個別更新）。"""
-	_auth(authorization)
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")

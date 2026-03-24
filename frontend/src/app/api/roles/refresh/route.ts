@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
-
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { fetchBackend } from "@/lib/backendFetch";
 
 export async function POST() {
 	try {
@@ -11,7 +10,7 @@ export async function POST() {
 			return NextResponse.json({ ok: false, detail: "Unauthorized" }, { status: 401 });
 		}
 
-		const res = await fetch(`${BACKEND_URL}/api/v1/roles/refresh`, {
+		const res = await fetchBackend("/api/v1/roles/refresh", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",

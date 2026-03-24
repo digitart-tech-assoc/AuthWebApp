@@ -2,8 +2,7 @@
 "use server";
 
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
-
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { fetchBackend } from "@/lib/backendFetch";
 
 export type ManifestCategory = {
 	id: string;
@@ -35,7 +34,7 @@ export async function fetchManifest(): Promise<Manifest> {
 		throw new Error("unauthorized");
 	}
 
-	const res = await fetch(`${BACKEND_URL}/api/v1/manifest`, {
+	const res = await fetchBackend("/api/v1/manifest", {
 		headers: { Authorization: authorization },
 		cache: "no-store",
 	});
@@ -56,7 +55,7 @@ export async function saveManifest(payload: Manifest): Promise<Manifest> {
 		throw new Error("unauthorized");
 	}
 
-	const res = await fetch(`${BACKEND_URL}/api/v1/manifest`, {
+	const res = await fetchBackend("/api/v1/manifest", {
 		method: "PUT",
 		headers: {
 			"Content-Type": "application/json",

@@ -2,8 +2,7 @@
 "use server";
 
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
-
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { fetchBackend } from "@/lib/backendFetch";
 
 export async function triggerSync(): Promise<{ ok: boolean; guild_id?: string; roles?: number }> {
 	const authorization = await getBackendAuthorizationHeader();
@@ -11,7 +10,7 @@ export async function triggerSync(): Promise<{ ok: boolean; guild_id?: string; r
 		throw new Error("unauthorized");
 	}
 
-	const res = await fetch(`${BACKEND_URL}/api/v1/roles/refresh`, {
+	const res = await fetchBackend("/api/v1/roles/refresh", {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
