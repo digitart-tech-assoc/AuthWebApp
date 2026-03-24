@@ -1,6 +1,8 @@
 // 役割: マニフェスト操作
 "use server";
 
+import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export type ManifestCategory = {
@@ -27,7 +29,13 @@ export type Manifest = {
 };
 
 export async function fetchManifest(): Promise<Manifest> {
+	const authorization = await getBackendAuthorizationHeader();
+	if (!authorization) {
+		throw new Error("unauthorized");
+	}
+
 	const res = await fetch(`${BACKEND_URL}/api/v1/manifest`, {
+		headers: { Authorization: authorization },
 		cache: "no-store",
 	});
 	if (!res.ok) {
@@ -37,9 +45,17 @@ export async function fetchManifest(): Promise<Manifest> {
 }
 
 export async function saveManifest(payload: Manifest): Promise<Manifest> {
+	const authorization = await getBackendAuthorizationHeader();
+	if (!authorization) {
+		throw new Error("unauthorized");
+	}
+
 	const res = await fetch(`${BACKEND_URL}/api/v1/manifest`, {
 		method: "PUT",
-		headers: { "Content-Type": "application/json" },
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: authorization,
+		},
 		body: JSON.stringify(payload),
 		cache: "no-store",
 	});

@@ -1,9 +1,11 @@
 // 役割: ロール管理画面
 
+import { auth } from "@/auth";
 import { fetchManifest } from "@/actions/manifest";
 import PushButton from "@/components/roles/PushButton";
 import RoleAccordion from "@/components/roles/RoleAccordion";
 import SyncButton from "@/components/roles/SyncButton";
+import { redirect } from "next/navigation";
 
 type RolesPageProps = {
 	searchParams?:
@@ -32,6 +34,17 @@ type RolesPageProps = {
 };
 
 export default async function RolesPage({ searchParams }: RolesPageProps) {
+	const keycloakConfigured = Boolean(
+		process.env.AUTH_KEYCLOAK_ISSUER?.trim() &&
+			process.env.AUTH_KEYCLOAK_CLIENT_ID?.trim() &&
+			process.env.AUTH_KEYCLOAK_CLIENT_SECRET?.trim(),
+	);
+	const authRequired = process.env.AUTH_REQUIRED !== "false" && keycloakConfigured;
+	const session = await auth();
+	if (authRequired && !session?.user) {
+		redirect("/api/auth/signin?callbackUrl=%2Froles");
+	}
+
 	const manifest = await fetchManifest();
 	const params = await Promise.resolve(searchParams);
 	const synced = params?.synced === "1";
@@ -48,6 +61,18 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 		<main style={{ padding: 24 }}>
 			<h1>ロール管理</h1>
 			<p>Discordから取得して保存したロールを表示します。</p>
+			{process.env.AUTH_REQUIRED !== "false" && !keycloakConfigured ? (
+				<p style={{ marginTop: 8, color: "#b91c1c" }}>
+					認証が有効ですが Keycloak 設定が不足しています。AUTH_KEYCLOAK_ISSUER / AUTH_KEYCLOAK_CLIENT_ID /
+					AUTH_KEYCLOAK_CLIENT_SECRET を設定してください。
+				</p>
+			) : null}
+			{session?.user ? (
+				<p style={{ marginBottom: 8 }}>
+					Signed in as {session.user.name ?? session.user.email ?? "unknown"} (
+					<a href="/api/auth/signout?callbackUrl=%2F">sign out</a>)
+				</p>
+			) : null}
 			<div style={{ display: "flex", gap: 8 }}>
 				<SyncButton />
 				<PushButton />
