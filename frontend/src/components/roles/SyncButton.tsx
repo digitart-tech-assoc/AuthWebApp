@@ -32,7 +32,7 @@ export default function SyncButton() {
 
 	return (
 		<button type="button" onClick={handleSync} disabled={isPending}>
-			{isPending ? "同期中..." : "同期を実行"}
+			{isPending ? "pulling..." : "pull"}
 		</button>
 	);
 }
