@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import RoleList from "./RoleList";
 import styles from "./roles.module.css";
@@ -16,6 +16,9 @@ type Category = {
 type Role = {
 	role_id: string;
 	name: string;
+	hoist: boolean;
+	mentionable: boolean;
+	permissions: number;
 	position: number;
 	color: string;
 	category_id: string | null;
@@ -28,14 +31,78 @@ type Props = {
 
 export default function RoleAccordion({ categories, roles }: Props) {
 	const [query, setQuery] = useState("");
+	const [allRoles, setAllRoles] = useState<Role[]>([]);
+	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 	const normalizedQuery = query.trim().toLowerCase();
+
+	useEffect(() => {
+		setAllRoles(roles.slice().sort((a, b) => b.position - a.position));
+	}, [roles]);
+
+	async function persistRoles(nextRoles: Role[]) {
+		setSaveState("saving");
+		try {
+			const res = await fetch("/api/manifest", {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ categories, roles: nextRoles }),
+			});
+			if (!res.ok) {
+				setSaveState("error");
+				return;
+			}
+			setSaveState("saved");
+		} catch {
+			setSaveState("error");
+		}
+	}
+
+	function reorderGroup(orderedRoleIds: string[]) {
+		const targetIds = new Set(orderedRoleIds);
+		const roleMap = new Map(allRoles.map((role) => [role.role_id, role]));
+		const reorderedGroup = orderedRoleIds
+			.map((id) => roleMap.get(id))
+			.filter((role): role is Role => Boolean(role));
+
+		if (reorderedGroup.length !== orderedRoleIds.length) {
+			return;
+		}
+
+		let pointer = 0;
+		const reordered = allRoles.map((role) => {
+			if (!targetIds.has(role.role_id)) {
+				return role;
+			}
+			const nextRole = reorderedGroup[pointer];
+			pointer += 1;
+			return nextRole;
+		});
+
+		const total = reordered.length;
+		const withPosition = reordered.map((role, index) => ({
+			...role,
+			position: total - index,
+		}));
+
+		setAllRoles(withPosition);
+		void persistRoles(withPosition);
+	}
+
+	const statusText =
+		saveState === "saving"
+			? "並び順を保存中..."
+			: saveState === "saved"
+				? "並び順を保存しました"
+				: saveState === "error"
+					? "並び順の保存に失敗しました"
+					: null;
 
 	const filteredRoles = useMemo(() => {
 		if (!normalizedQuery) {
-			return roles;
+			return allRoles;
 		}
-		return roles.filter((role) => role.name.toLowerCase().includes(normalizedQuery));
-	}, [normalizedQuery, roles]);
+		return allRoles.filter((role) => role.name.toLowerCase().includes(normalizedQuery));
+	}, [allRoles, normalizedQuery]);
 
 	if (categories.length === 0) {
 		return (
@@ -49,10 +116,11 @@ export default function RoleAccordion({ categories, roles }: Props) {
 						onChange={(e) => setQuery(e.target.value)}
 					/>
 					<span className={styles.meta}>ロール {filteredRoles.length}</span>
+					{statusText ? <span className={styles.meta}>{statusText}</span> : null}
 				</div>
 				<div className={styles.group}>
 					<div className={styles.groupHeader}>ロール一覧</div>
-					<RoleList roles={filteredRoles} />
+					<RoleList roles={filteredRoles} onReorder={reorderGroup} />
 				</div>
 			</div>
 		);
@@ -74,6 +142,7 @@ export default function RoleAccordion({ categories, roles }: Props) {
 					onChange={(e) => setQuery(e.target.value)}
 				/>
 				<span className={styles.meta}>ロール {filteredRoles.length}</span>
+				{statusText ? <span className={styles.meta}>{statusText}</span> : null}
 			</div>
 			{categories.map((category) => {
 				const filtered = filteredRoles.filter((r) => r.category_id === category.id);
@@ -83,14 +152,14 @@ export default function RoleAccordion({ categories, roles }: Props) {
 				return (
 					<div key={category.id} className={styles.group}>
 						<div className={styles.groupHeader}>{category.name}</div>
-						<RoleList roles={filtered} />
+						<RoleList roles={filtered} onReorder={reorderGroup} />
 					</div>
 				);
 			})}
 			{uncategorizedRoles.length > 0 ? (
 				<div className={styles.group}>
 					<div className={styles.groupHeader}>カテゴリ未設定</div>
-					<RoleList roles={uncategorizedRoles} />
+					<RoleList roles={uncategorizedRoles} onReorder={reorderGroup} />
 				</div>
 			) : null}
 		</div>

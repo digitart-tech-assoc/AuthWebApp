@@ -88,6 +88,28 @@
   min-width: 0;
 }
 
+.dragHandle {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #cfd4da;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #7a838d;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .roleDot {
   width: 12px;
   height: 12px;
