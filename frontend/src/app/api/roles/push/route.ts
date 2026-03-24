@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
 
 export async function POST() {
 	try {
