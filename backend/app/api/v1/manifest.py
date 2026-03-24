@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.core.auth import get_current_principal
 from app.db.repository import fetch_manifest, save_manifest
 
 
@@ -37,13 +38,13 @@ class Manifest(BaseModel):
 
 
 @router.get("/manifest", response_model=Manifest)
-async def get_manifest() -> Manifest:
+async def get_manifest(_principal: dict = Depends(get_current_principal)) -> Manifest:
 	data = await asyncio.to_thread(fetch_manifest)
 	return Manifest(**data)
 
 
 @router.put("/manifest", response_model=Manifest)
-async def put_manifest(payload: Manifest) -> Manifest:
+async def put_manifest(payload: Manifest, _principal: dict = Depends(get_current_principal)) -> Manifest:
 	await asyncio.to_thread(
 		save_manifest,
 		[c.model_dump() for c in payload.categories],

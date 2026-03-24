@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import os
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.auth import get_current_principal
 from app.db.repository import fetch_manifest, replace_roles_from_discord
 from app.services.discord_client import (
 	build_role_create_payload,
@@ -20,7 +21,6 @@ from app.services.discord_client import (
 
 
 router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "1304058364560543815")
 
@@ -30,10 +30,7 @@ def _get_token() -> str:
 
 
 @router.post("/refresh")
-async def refresh_roles_from_discord(authorization: str | None = Header(default=None)) -> dict:
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+async def refresh_roles_from_discord(_principal: dict = Depends(get_current_principal)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -48,10 +45,7 @@ async def refresh_roles_from_discord(authorization: str | None = Header(default=
 
 
 @router.post("/push")
-async def push_roles_to_discord(authorization: str | None = Header(default=None)) -> dict:
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+async def push_roles_to_discord(_principal: dict = Depends(get_current_principal)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
