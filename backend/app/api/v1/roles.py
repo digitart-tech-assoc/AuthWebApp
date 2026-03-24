@@ -30,6 +30,11 @@ def _get_token() -> str:
 	return DISCORD_TOKEN.strip()
 
 
+def _auth(authorization: str | None) -> None:
+	if authorization != f"Bearer {SHARED_SECRET}":
+		raise HTTPException(status_code=401, detail="Unauthorized")
+
+
 @router.post("/refresh")
 async def refresh_roles_from_discord(authorization: str | None = Header(default=None)) -> dict:
 	_auth(authorization)
@@ -74,10 +79,15 @@ async def push_roles_to_discord(authorization: str | None = Header(default=None)
 		actual = actual_by_id.get(role_id)
 		if actual is None:
 			try:
-				await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
+				new_role_discord = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
 				created += 1
+				# Replace temporary draft ID with the real Discord ID in the local DB
+				if str(role_id).startswith("draft-"):
+					real_id = new_role_discord["role_id"]
+					await asyncio.to_thread(update_role_id, role_id, real_id)
+					# Update our local mapping so the real role isn't accidentally deleted below
+					desired_by_id[real_id] = role
 			except Exception:
-				# DB role_id を保持する都合上、作成結果の role_id 再マッピングは現時点では行わない。
 				pass
 			continue
 		if actual.get("managed") or role_id == DISCORD_GUILD_ID:
@@ -126,3 +136,34 @@ async def push_roles_to_discord(authorization: str | None = Header(default=None)
 		"reordered": reordered,
 		"skipped_managed": skipped_managed,
 	}
+
+
+class PermissionsPayload(BaseModel):
+	permissions: int
+
+
+@router.patch("/{role_id}/permissions")
+async def update_role_permissions(
+	role_id: str,
+	payload: PermissionsPayload,
+	authorization: str | None = Header(default=None),
+) -> dict:
+	"""特定ロールの権限を即時 Discord に反映（個別更新）。"""
+	_auth(authorization)
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	try:
+		await edit_guild_role(
+			DISCORD_GUILD_ID,
+			role_id,
+			token,
+			{"permissions": str(int(payload.permissions))},
+		)
+	except Exception as exc:  # noqa: BLE001
+		raise HTTPException(status_code=502, detail=f"Discord update failed: {exc}") from exc
+
+	return {"ok": True, "role_id": role_id, "permissions": payload.permissions}
+
+

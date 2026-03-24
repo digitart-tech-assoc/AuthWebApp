@@ -1,0 +1,312 @@
+/* ===== Permission editor slide-out panel ===== */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 200;
+  animation: ovFade 0.2s ease;
+}
+
+@keyframes ovFade {
+  from { opacity: 0 }
+  to   { opacity: 1 }
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(520px, 100vw);
+  background: #fff;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  z-index: 201;
+  animation: slideIn 0.22s cubic-bezier(.25,.46,.45,.94);
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%) }
+  to   { transform: translateX(0) }
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.panelTitleWrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f1117;
+  margin: 0 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panelSubtitle {
+  font-size: 12px;
+  color: #7b8291;
+  margin: 0;
+}
+
+.categoryBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4c6ef5;
+  background: #eef2ff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.closeBtn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #7b8291;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.closeBtn:hover {
+  background: #f3f5f9;
+  color: #1a1d23;
+}
+
+/* ===== Scroll body ===== */
+.panelBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* ===== Inherited hint banner ===== */
+.inheritBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 12px;
+  color: #1e40af;
+}
+
+.inheritBannerApply {
+  margin-left: auto;
+  border: none;
+  background: #4c6ef5;
+  color: #fff;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.inheritBannerApply:hover {
+  background: #3b5bdb;
+}
+
+/* ===== Permission section ===== */
+.section {
+  padding: 0 0 8px;
+}
+
+.sectionLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ba3b5;
+  padding: 14px 20px 6px;
+}
+
+/* ===== Permission row ===== */
+.permRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-top: 1px solid #f3f5f9;
+  transition: background 0.1s;
+}
+
+.permRow:hover {
+  background: #f9fafb;
+}
+
+.permRow.inherited {
+  opacity: 0.6;
+}
+
+.permInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.permName {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #1a1d23;
+}
+
+.permDesc {
+  font-size: 11.5px;
+  color: #7b8291;
+  margin-top: 1px;
+}
+
+.inheritedTag {
+  font-size: 10.5px;
+  color: #4c6ef5;
+  background: #eef2ff;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ===== Toggle switch ===== */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggleSlider {
+  position: absolute;
+  inset: 0;
+  background: #dde1e8;
+  border-radius: 11px;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.toggleSlider::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+  transition: transform 0.2s;
+}
+
+.toggle input:checked + .toggleSlider {
+  background: #4c6ef5;
+}
+
+.toggle input:checked + .toggleSlider::after {
+  transform: translateX(18px);
+}
+
+.toggle input:disabled + .toggleSlider {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* warning for Administrator */
+.adminWarning {
+  margin: 0 20px 10px;
+  padding: 8px 12px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #9a3412;
+}
+
+/* ===== Footer ===== */
+.panelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid #edf0f4;
+  background: #fafbfc;
+}
+
+.footerHint {
+  flex: 1;
+  font-size: 12px;
+  color: #7b8291;
+}
+
+.cancelBtn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 7px;
+  border: 1px solid #dfe2e8;
+  background: #fff;
+  color: #1a1d23;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cancelBtn:hover {
+  background: #f3f5f9;
+}
+
+.saveBtn {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 7px;
+  border: none;
+  background: #4c6ef5;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.saveBtn:hover {
+  background: #3b5bdb;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

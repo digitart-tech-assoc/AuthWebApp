@@ -2,7 +2,6 @@
 
 import { auth } from "@/auth";
 import { fetchManifest } from "@/actions/manifest";
-import PushButton from "@/components/roles/PushButton";
 import RoleAccordion from "@/components/roles/RoleAccordion";
 import SyncButton from "@/components/roles/SyncButton";
 import { redirect } from "next/navigation";
