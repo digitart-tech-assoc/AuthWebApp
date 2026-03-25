@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_current_principal
+from app.core.auth import require_admin, require_member
 from app.db.repository import fetch_manifest, save_manifest
 
 
@@ -39,13 +39,15 @@ class Manifest(BaseModel):
 
 
 @router.get("/manifest", response_model=Manifest)
-async def get_manifest(_principal: dict = Depends(get_current_principal)) -> Manifest:
+async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
+	"""マニフェスト取得。member / obog / admin のみ許可。"""
 	data = await asyncio.to_thread(fetch_manifest)
 	return Manifest(**data)
 
 
 @router.put("/manifest", response_model=Manifest)
-async def put_manifest(payload: Manifest, _principal: dict = Depends(get_current_principal)) -> Manifest:
+async def put_manifest(payload: Manifest, _principal: dict = Depends(require_admin)) -> Manifest:
+	"""マニフェスト保存。admin のみ許可。"""
 	await asyncio.to_thread(
 		save_manifest,
 		[c.model_dump() for c in payload.categories],
