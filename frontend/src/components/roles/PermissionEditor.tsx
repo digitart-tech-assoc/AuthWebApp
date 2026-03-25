@@ -74,6 +74,7 @@ export type PermissionTarget = {
 
 type Props = {
   target: PermissionTarget;
+  botPermissions: bigint;
   onSave: (newPermissions: number) => void;
   onClose: () => void;
 };
@@ -96,10 +97,11 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
 
 // ===== Main Component =====
 
-export default function PermissionEditorPanel({ target, onSave, onClose }: Props) {
+export default function PermissionEditorPanel({ target, botPermissions, onSave, onClose }: Props) {
   const [perms, setPerms] = useState<bigint>(BigInt(target.currentPermissions));
   const catPerms = BigInt(target.categoryPermissions ?? 0);
   const isAdminActive = hasBitExact(perms, 3n);
+  const botHasAdmin = hasBitExact(botPermissions, 3n);
 
   useEffect(() => {
     setPerms(BigInt(target.currentPermissions));
@@ -136,18 +138,10 @@ export default function PermissionEditorPanel({ target, onSave, onClose }: Props
               {target.kind === "category" ? "📁 " : "🏷 "}
               {target.name}
             </p>
-            <p className={styles.panelSubtitle}>
-              {target.kind === "category"
-                ? "このカテゴリに含まれるロールのデフォルト権限"
-                : "このロール個別の権限設定"}
-            </p>
             {target.kind === "role" && target.categoryPermissions !== undefined && (
               <span className={styles.categoryBadge}>カテゴリ権限を参照中</span>
             )}
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="閉じる">
-            ✕
-          </button>
         </div>
 
         {/* Body */}
@@ -176,6 +170,10 @@ export default function PermissionEditorPanel({ target, onSave, onClose }: Props
               {section.perms.map((perm) => {
                 const isEnabled = hasBitExact(perms, perm.bit);
                 const isFromAdmin = isAdminActive && perm.bit !== 3n;
+
+                // --- BOT PERMISSION CHECK ---
+                const isBotAllowed = botHasAdmin || hasBitExact(botPermissions, perm.bit);
+
                 const isInheritedFromCat =
                   target.kind === "role" &&
                   target.categoryPermissions !== undefined &&
@@ -184,10 +182,13 @@ export default function PermissionEditorPanel({ target, onSave, onClose }: Props
                 return (
                   <div
                     key={String(perm.bit)}
-                    className={`${styles.permRow} ${isFromAdmin ? styles.inherited : ""}`}
+                    className={`${styles.permRow} ${isFromAdmin ? styles.inherited : ""} ${!isBotAllowed ? styles.disabledRow : ""}`}
                   >
                     <div className={styles.permInfo}>
-                      <div className={styles.permName}>{perm.name}</div>
+                      <div className={styles.permName}>
+                        {perm.name}
+                        {!isBotAllowed && <span className={styles.botLacksMsg}>(Bot権限不足)</span>}
+                      </div>
                       <div className={styles.permDesc}>{perm.description}</div>
                     </div>
                     {isInheritedFromCat && !isFromAdmin && (
@@ -197,8 +198,8 @@ export default function PermissionEditorPanel({ target, onSave, onClose }: Props
                       <input
                         type="checkbox"
                         checked={isFromAdmin ? true : isEnabled}
-                        disabled={isFromAdmin}
-                        onChange={() => !isFromAdmin && toggleBit(perm.bit)}
+                        disabled={isFromAdmin || !isBotAllowed}
+                        onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
                         aria-label={perm.name}
                       />
                       <span className={styles.toggleSlider} />
@@ -211,12 +212,9 @@ export default function PermissionEditorPanel({ target, onSave, onClose }: Props
         </div>
 
         {/* Footer */}
-        <div className={styles.panelFooter}>
-          <span className={styles.footerHint}>
-            変更は「保存する」フロートバーで確定されます
-          </span>
+        <div className={styles.footer}>
           <button type="button" className={styles.cancelBtn} onClick={onClose}>
-            キャンセル
+            戻る
           </button>
           <button
             type="button"

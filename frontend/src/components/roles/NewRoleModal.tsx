@@ -21,10 +21,12 @@ type NewRoleData = {
   permissions: number;
   position: number;
   category_id: string | null;
+  is_our_bot?: boolean;
 };
 
 type Props = {
   categories: Category[];
+  botPermissions: bigint;
   onCreated: (role: NewRoleData) => void;
   onClose: () => void;
 };
@@ -44,7 +46,7 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
   return value ? perms | (1n << bit) : perms & ~(1n << bit);
 }
 
-export default function NewRoleModal({ categories, onCreated, onClose }: Props) {
+export default function NewRoleModal({ categories, botPermissions, onCreated, onClose }: Props) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#99AAB5");
   const [hexInput, setHexInput] = useState("#99AAB5");
@@ -80,6 +82,7 @@ export default function NewRoleModal({ categories, onCreated, onClose }: Props) 
   }
 
   const isAdminActive = hasBitExact(perms, 3n);
+  const botHasAdmin = hasBitExact(botPermissions, 3n);
 
   async function handleCreate() {
     if (!name.trim()) {
@@ -111,7 +114,6 @@ export default function NewRoleModal({ categories, onCreated, onClose }: Props) 
             <p className={styles.title}>＋ 新規ロールを作成</p>
             <p className={styles.subtitle}>データベースに下書きとして保存します（Discordへの反映は「送信」を押してください）</p>
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
 
         {/* Tabs */}
@@ -240,21 +242,26 @@ export default function NewRoleModal({ categories, onCreated, onClose }: Props) 
                   {section.perms.map((perm) => {
                     const isEnabled = hasBitExact(perms, perm.bit);
                     const isFromAdmin = isAdminActive && perm.bit !== 3n;
+                    const isBotAllowed = botHasAdmin || hasBitExact(botPermissions, perm.bit);
+
                     return (
                       <div
                         key={String(perm.bit)}
-                        className={`${styles.permRow} ${isFromAdmin ? styles.dimmed : ""}`}
+                        className={`${styles.permRow} ${isFromAdmin ? styles.dimmed : ""} ${!isBotAllowed ? styles.disabledRow : ""}`}
                       >
                         <div className={styles.permInfo}>
-                          <div className={styles.permName}>{perm.name}</div>
+                          <div className={styles.permName}>
+                            {perm.name}
+                            {!isBotAllowed && <span className={styles.botLacksMsg}>(Bot権限不足)</span>}
+                          </div>
                           <div className={styles.permDesc}>{perm.description}</div>
                         </div>
                         <label className={styles.switch}>
                           <input
                             type="checkbox"
                             checked={isFromAdmin ? true : isEnabled}
-                            disabled={isFromAdmin}
-                            onChange={() => !isFromAdmin && toggleBit(perm.bit)}
+                            disabled={isFromAdmin || !isBotAllowed}
+                            onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
                           />
                           <span className={styles.switchSlider} />
                         </label>
@@ -270,7 +277,7 @@ export default function NewRoleModal({ categories, onCreated, onClose }: Props) 
         {/* Footer */}
         <div className={styles.footer}>
           {error && <span className={styles.errorMsg}>✕ {error}</span>}
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>キャンセル</button>
+          <button type="button" className={styles.cancelBtn} onClick={onClose}>戻る</button>
           <button
             type="button"
             className={styles.createBtn}

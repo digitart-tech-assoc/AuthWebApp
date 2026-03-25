@@ -120,7 +120,8 @@ function SortableRoleRow({
             type="button"
             className={styles.dragHandle}
             aria-label={`${role.name} 並び替え`}
-            disabled={!enableDrag}
+            disabled={!enableDrag || isDisabled}
+            style={isDisabled ? { cursor: 'not-allowed' } : {}}
             {...attributes}
             {...listeners}
           >
@@ -155,11 +156,11 @@ function SortableRoleRow({
         {onPermissions && !onToggle && (
           <button
             type="button"
-            className={styles.permBtn}
-            onClick={onPermissions}
+            className={`${styles.permBtn} ${isDisabled ? styles.disabledBtn : ""}`}
+            onClick={isDisabled ? undefined : onPermissions}
+            aria-disabled={isDisabled}
             aria-label={`${role.name} の権限設定`}
-            title="権限設定"
-            disabled={isDisabled}
+            title={isDisabled ? "Botより上の権限は編集できません" : "権限設定"}
           >
             <ShieldIcon />
             権限

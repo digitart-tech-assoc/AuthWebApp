@@ -25,8 +25,13 @@ async def fetch_guild_roles(guild_id: str, token: str) -> list[dict]:
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
 	async with httpx.AsyncClient(timeout=10.0) as client:
+		# Get the bot's own user ID to identify our bot role
+		me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
+		me_resp.raise_for_status()
+		bot_id = me_resp.json()["id"]
+
 		response = await client.get(url, headers=headers)
-	response.raise_for_status()
+		response.raise_for_status()
 
 	roles = response.json()
 	return [
@@ -39,6 +44,7 @@ async def fetch_guild_roles(guild_id: str, token: str) -> list[dict]:
 			"permissions": int(role.get("permissions", "0")),
 			"position": int(role.get("position", 0)),
 			"managed": bool(role.get("managed", False)),
+			"is_our_bot": (role.get("tags") or {}).get("bot_id") == bot_id,
 		}
 		for role in roles
 	]

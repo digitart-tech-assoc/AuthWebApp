@@ -3,8 +3,6 @@
 import { auth } from "@/auth";
 import { fetchManifest } from "@/actions/manifest";
 import RoleAccordion from "@/components/roles/RoleAccordion";
-import SyncButton from "@/components/roles/SyncButton";
-import PushButton from "@/components/roles/PushButton";
 import { redirect } from "next/navigation";
 
 type RolesPageProps = {
@@ -81,10 +79,6 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 					<a href="/api/auth/signout?callbackUrl=%2F">sign out</a>)
 				</p>
 			) : null}
-			<div style={{ display: "flex", gap: 8 }}>
-				<SyncButton />
-				<PushButton />
-			</div>
 			{synced && !hasError ? (
 				<p style={{ marginTop: 12, color: "#166534" }}>同期完了: {syncedRoles} 件のロールを更新しました。</p>
 			) : null}

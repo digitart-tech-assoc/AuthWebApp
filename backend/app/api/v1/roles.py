@@ -66,6 +66,7 @@ async def push_roles_to_discord(_principal: dict = Depends(get_current_principal
 	created = 0
 	deleted = 0
 	skipped_managed = 0
+	errors = []
 
 	for role in desired_roles:
 		role_id = role["role_id"]
@@ -80,8 +81,14 @@ async def push_roles_to_discord(_principal: dict = Depends(get_current_principal
 					await asyncio.to_thread(update_role_id, role_id, real_id)
 					# Update our local mapping so the real role isn't accidentally deleted below
 					desired_by_id[real_id] = role
-			except Exception:
-				pass
+					role["role_id"] = real_id
+					actual_by_id[real_id] = new_role_discord
+			except Exception as exc:
+				msg = f"Failed to create role locally {role_id}: {exc}"
+				print(msg)
+				errors.append(msg)
+				import traceback
+				traceback.print_exc()
 			continue
 		if actual.get("managed") or role_id == DISCORD_GUILD_ID:
 			skipped_managed += 1
@@ -92,8 +99,10 @@ async def push_roles_to_discord(_principal: dict = Depends(get_current_principal
 		try:
 			await edit_guild_role(DISCORD_GUILD_ID, role_id, token, payload)
 			updated += 1
-		except Exception:
-			pass
+		except Exception as exc:
+			msg = f"Failed to update role in discord {role_id}: {exc}"
+			print(msg)
+			errors.append(msg)
 
 	for role in actual_roles:
 		role_id = role["role_id"]
@@ -104,30 +113,38 @@ async def push_roles_to_discord(_principal: dict = Depends(get_current_principal
 		try:
 			await delete_guild_role(DISCORD_GUILD_ID, role_id, token)
 			deleted += 1
-		except Exception:
-			pass
+		except Exception as exc:
+			msg = f"Failed to delete role {role_id}: {exc}"
+			print(msg)
+			errors.append(msg)
 
-	position_payload = [
-		{"id": role["role_id"], "position": int(role.get("position", 0))}
-		for role in sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
-		if role["role_id"] in actual_by_id and role["role_id"] != DISCORD_GUILD_ID
-	]
+	desired_roles_sorted = sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
+	position_payload = []
+	current_pos = 1
+	for role in desired_roles_sorted:
+		if role["role_id"] in actual_by_id and role["role_id"] != DISCORD_GUILD_ID:
+			position_payload.append({"id": role["role_id"], "position": current_pos})
+			current_pos += 1
 	reordered = 0
 	if position_payload:
 		try:
 			await reorder_guild_roles(DISCORD_GUILD_ID, token, position_payload)
 			reordered = len(position_payload)
-		except Exception:
+		except Exception as exc:
+			msg = f"Failed to reorder roles: {exc}"
+			print(msg)
+			errors.append(msg)
 			reordered = 0
 
 	return {
-		"ok": True,
+		"ok": len(errors) == 0,
 		"guild_id": DISCORD_GUILD_ID,
 		"updated": updated,
 		"created": created,
 		"deleted": deleted,
 		"reordered": reordered,
 		"skipped_managed": skipped_managed,
+		"errors": errors,
 	}
 
 

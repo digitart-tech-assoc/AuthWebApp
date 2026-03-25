@@ -451,3 +451,15 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.disabledRow {
+  opacity: 0.5;
+}
+
+.botLacksMsg {
+  font-size: 10px;
+  color: #e11d48;
+  margin-left: 6px;
+  font-weight: 600;
+  vertical-align: middle;
+}

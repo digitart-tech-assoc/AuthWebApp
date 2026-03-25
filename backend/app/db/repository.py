@@ -51,6 +51,12 @@ def init_db() -> None:
 				);
 				"""
 			)
+			cur.execute(
+				"""
+				ALTER TABLE role_manifests
+				ADD COLUMN IF NOT EXISTS is_our_bot BOOLEAN DEFAULT FALSE;
+				"""
+			)
 
 
 def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
@@ -76,7 +82,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 
 			cur.execute(
 				"""
-				SELECT role_id, name, color, hoist, mentionable, permissions, position, category_id
+				SELECT role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot
 				FROM role_manifests
 				ORDER BY position DESC, name ASC
 				"""
@@ -91,6 +97,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 					"permissions": int(row[5]),
 					"position": row[6],
 					"category_id": row[7],
+					"is_our_bot": bool(row[8]),
 				}
 				for row in cur.fetchall()
 			]
@@ -122,8 +129,8 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 				cur.execute(
 					"""
 					INSERT INTO role_manifests
-					(role_id, name, color, hoist, mentionable, permissions, position, category_id)
-					VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+					(role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot)
+					VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 					""",
 					(
 						r["role_id"],
@@ -134,6 +141,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 						int(r.get("permissions", 0)),
 						r["position"],
 						r.get("category_id"),
+						r.get("is_our_bot", False),
 					),
 				)
 
@@ -141,13 +149,26 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute("DELETE FROM role_manifests")
+			existing_ids = tuple(role["role_id"] for role in roles)
+			if existing_ids:
+				cur.execute("DELETE FROM role_manifests WHERE role_id NOT IN %s", (existing_ids,))
+			else:
+				cur.execute("DELETE FROM role_manifests")
+				
 			for role in roles:
 				cur.execute(
 					"""
 					INSERT INTO role_manifests
-					(role_id, name, color, hoist, mentionable, permissions, position, category_id)
+					(role_id, name, color, hoist, mentionable, permissions, position, is_our_bot)
 					VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+					ON CONFLICT (role_id) DO UPDATE SET
+						name = EXCLUDED.name,
+						color = EXCLUDED.color,
+						hoist = EXCLUDED.hoist,
+						mentionable = EXCLUDED.mentionable,
+						permissions = EXCLUDED.permissions,
+						position = EXCLUDED.position,
+						is_our_bot = EXCLUDED.is_our_bot
 					""",
 					(
 						role["role_id"],
@@ -157,7 +178,7 @@ def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 						role["mentionable"],
 						role["permissions"],
 						role["position"],
-						None,
+						role.get("is_our_bot", False),
 					),
 				)
 	return len(roles)
