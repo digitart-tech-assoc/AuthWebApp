@@ -1,12 +1,54 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import styles from "../../../join/join.module.css";
 
+const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
+
+function buildAoyamaEmail(studentId: string): string {
+  const headMap: Record<string, string> = {
+    "1": "a",
+    "2": "b",
+    "3": "c",
+    "4": "d",
+    S: "s",
+  };
+
+  const normalized = studentId.trim();
+  const first = normalized.charAt(0).toUpperCase();
+  const tail = normalized.slice(1).toLowerCase();
+  const prefix = headMap[first];
+
+  if (!prefix) {
+    return "";
+  }
+
+  return `${prefix}${tail}@aoyama.ac.jp`;
+}
+
 export default function AoyamaStudentFormPage() {
+  const [studentId, setStudentId] = useState("");
+
+  const normalizedStudentId = useMemo(() => studentId.trim(), [studentId]);
+  const isStudentIdValid = STUDENT_ID_PATTERN.test(normalizedStudentId.toUpperCase());
+  const autoCompletedEmail = isStudentIdValid ? buildAoyamaEmail(normalizedStudentId) : "";
+
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <h1 className={styles.title}>入会フォーム（青山学院大学の学生）</h1>
+        <h1 className={styles.title}>仮入会フォーム（青山学院大学の学生）</h1>
         <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
+      </section>
+
+      <section className={styles.card} style={{ marginBottom: 16 }}>
+        <h2 className={styles.cardTitle}>仮入会の流れ</h2>
+        <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", lineHeight: 1.6 }}>
+          <li>必要事項（氏名、学生番号 等）を入力して「送信」を押してください。</li>
+          <li>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</li>
+          <li>メールに届いた認証パスワードをこのページの確認欄に入力して検証してください。</li>
+          <li>検証成功後、Discord招待リンクが発行されます。リンクからサーバーに参加してください。</li>
+        </ol>
       </section>
 
       <section className={styles.card}>
@@ -17,11 +59,34 @@ export default function AoyamaStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>学生番号<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: 12345678" />
+            <input
+              className={styles.input}
+              placeholder="例: 1A234567"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              aria-invalid={!isStudentIdValid && normalizedStudentId.length > 0}
+            />
+            {!isStudentIdValid && normalizedStudentId.length > 0 ? (
+              <p className={styles.errorText}>
+                学生番号は先頭が 1 / 2 / 3 / 4 / S で、全8文字の英数字で入力してください。
+              </p>
+            ) : (
+              <p className={styles.helperText}>
+                入力形式に合致すると、メールアドレスを自動補完します。
+              </p>
+            )}
           </div>
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
-            <input className={styles.input} type="email" placeholder="example@aoyama.jp" />
+            <input
+              className={`${styles.input} ${styles.readOnlyInput}`}
+              type="email"
+              placeholder="学生番号から自動補完"
+              value={autoCompletedEmail}
+              readOnly
+              aria-readonly="true"
+              title="学生番号から自動補完されるため編集できません"
+            />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>質問等</label>
