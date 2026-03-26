@@ -1,7 +1,7 @@
 // 役割: マニフェスト操作
 "use server";
 
-import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
 
 const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
@@ -32,6 +32,12 @@ export type Manifest = {
 };
 
 export async function fetchManifest(): Promise<Manifest> {
+	const role = await getSessionRole();
+	const allowed = new Set(["member", "admin", "obog"]);
+	if (!allowed.has(role)) {
+		throw new Error("forbidden");
+	}
+
 	const authorization = await getBackendAuthorizationHeader();
 	if (!authorization) {
 		throw new Error("unauthorized");
@@ -64,6 +70,11 @@ export async function fetchManifest(): Promise<Manifest> {
 }
 
 export async function saveManifest(payload: Manifest): Promise<Manifest> {
+	const role = await getSessionRole();
+	if (role !== "admin") {
+		throw new Error("forbidden");
+	}
+
 	const authorization = await getBackendAuthorizationHeader();
 	if (!authorization) {
 		throw new Error("unauthorized");
