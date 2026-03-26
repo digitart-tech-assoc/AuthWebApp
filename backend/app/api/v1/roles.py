@@ -8,7 +8,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.core.auth import require_admin
+from app.core.auth import require_admin, require_member
 from app.db.repository import fetch_manifest, replace_roles_from_discord, update_role_id
 from app.services.discord_client import (
 	build_role_create_payload,
@@ -31,7 +31,7 @@ def _get_token() -> str:
 
 
 @router.post("/refresh")
-async def refresh_roles_from_discord(_principal: dict = Depends(require_admin)) -> dict:
+async def refresh_roles_from_discord(_principal: dict = Depends(require_member)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")

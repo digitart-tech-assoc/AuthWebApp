@@ -27,6 +27,7 @@ type Role = {
   position: number;
   color: string;
   category_id: string | null;
+  is_our_bot?: boolean;
 };
 
 type Props = {

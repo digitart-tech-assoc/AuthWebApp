@@ -3,96 +3,92 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 import psycopg2
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://app:app@postgres:5432/authwebapp")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
 
 
 def _connect():
-	return psycopg2.connect(DATABASE_URL)
+    return psycopg2.connect(DATABASE_URL)
 
 
 def init_db() -> None:
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				CREATE TABLE IF NOT EXISTS role_categories (
-					id TEXT PRIMARY KEY,
-					name TEXT NOT NULL,
-					display_order INTEGER DEFAULT 0,
-					is_collapsed BOOLEAN DEFAULT FALSE
-				);
-				"""
-			)
-			# カテゴリ権限カラムを追加（既存DBへの後方互換対応）
-			cur.execute(
-				"""
-				ALTER TABLE role_categories
-				ADD COLUMN IF NOT EXISTS permissions BIGINT DEFAULT 0;
-				"""
-			)
-			cur.execute(
-				"""
-				CREATE TABLE IF NOT EXISTS role_manifests (
-					role_id TEXT PRIMARY KEY,
-					name TEXT NOT NULL,
-					color TEXT DEFAULT '#000000',
-					hoist BOOLEAN DEFAULT FALSE,
-					mentionable BOOLEAN DEFAULT FALSE,
-					permissions BIGINT DEFAULT 0,
-					position INTEGER NOT NULL,
-					category_id TEXT REFERENCES role_categories(id) ON DELETE SET NULL,
-					is_managed_by_app BOOLEAN DEFAULT TRUE,
-					updated_at TIMESTAMPTZ DEFAULT now()
-				);
-				"""
-			)
-			cur.execute(
-				"""
-				ALTER TABLE role_manifests
-				ADD COLUMN IF NOT EXISTS is_our_bot BOOLEAN DEFAULT FALSE;
-				"""
-			)
+    """初期テーブルを作成する。DBに接続できない場合は警告を出して終了しない。"""
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS role_categories (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        display_order INTEGER DEFAULT 0,
+                        is_collapsed BOOLEAN DEFAULT FALSE
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS role_manifests (
+                        role_id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        color TEXT DEFAULT '#000000',
+                        hoist BOOLEAN DEFAULT FALSE,
+                        mentionable BOOLEAN DEFAULT FALSE,
+                        permissions BIGINT DEFAULT 0,
+                        position INTEGER NOT NULL,
+                        category_id TEXT REFERENCES role_categories(id) ON DELETE SET NULL,
+                        is_managed_by_app BOOLEAN DEFAULT TRUE,
+                        is_our_bot BOOLEAN DEFAULT FALSE,
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
 
-			# ユーザー管理テーブル（アプリDB正本のRBAC）
-			cur.execute(
-				"""
-				CREATE TABLE IF NOT EXISTS users (
-					id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-					keycloak_sub TEXT UNIQUE NOT NULL,
-					discord_id TEXT UNIQUE,
-					app_role TEXT NOT NULL DEFAULT 'none'
-						CHECK (app_role IN ('member', 'admin', 'obog', 'pre_member', 'none')),
-					created_at TIMESTAMPTZ DEFAULT now(),
-					updated_at TIMESTAMPTZ DEFAULT now()
-				);
-				"""
-			)
+                # アプリユーザー RBAC（Supabase auth UUID をキーとして使用）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        user_id TEXT UNIQUE NOT NULL,
+                        discord_id TEXT UNIQUE,
+                        app_role TEXT NOT NULL DEFAULT 'none'
+                            CHECK (app_role IN ('member', 'admin', 'obog', 'pre_member', 'none')),
+                        created_at TIMESTAMPTZ DEFAULT now(),
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
 
-			# 入会費支払い済みリスト（adminが管理、discord_idで照合）
-			cur.execute(
-				"""
-				CREATE TABLE IF NOT EXISTS paid_invitations (
-					id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-					discord_id TEXT UNIQUE NOT NULL,
-					note TEXT,
-					expires_at TIMESTAMPTZ,
-					created_at TIMESTAMPTZ DEFAULT now()
-				);
-				"""
-			)
-
+                # 入会費支払い済みリスト（adminが管理、discord_idで照合）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS paid_invitations ( 
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        note TEXT,
+                        expires_at TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                conn.commit()
+    except Exception as e:
+        # If DB is unreachable during development, log and continue without exiting
+        # This allows the backend to start in degraded mode for local frontend debugging.
+        print(f"WARNING: init_db failed: {e}", file=sys.stderr)
+        return
 
 def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
 				"""
-				SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
+				SELECT id, name, display_order, is_collapsed
 				FROM role_categories
 				ORDER BY display_order ASC, name ASC
 				"""
@@ -103,7 +99,6 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 					"name": row[1],
 					"display_order": row[2],
 					"is_collapsed": row[3],
-					"permissions": int(row[4]),
 				}
 				for row in cur.fetchall()
 			]
@@ -182,7 +177,7 @@ def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 				cur.execute("DELETE FROM role_manifests WHERE role_id NOT IN %s", (existing_ids,))
 			else:
 				cur.execute("DELETE FROM role_manifests")
-				
+
 			for role in roles:
 				cur.execute(
 					"""
@@ -217,5 +212,3 @@ def update_role_id(old_id: str, new_id: str) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
-
-

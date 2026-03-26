@@ -1,58 +1,22 @@
-# 役割: ローカル一括起動
+# 役割: ローカル一括起動（Supabase Auth + DB 使用, postgres/keycloak 不要）
 
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
-      POSTGRES_DB: ${POSTGRES_DB:-authwebapp}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  keycloak:
-    build:
-      context: ./keycloak
-    command: start-dev --import-realm
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-authwebapp}
-      KC_DB_USERNAME: ${POSTGRES_USER:-app}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-app}
-      KC_HOSTNAME_STRICT: "false"
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY_HEADERS: xforwarded
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
-    depends_on:
-      - postgres
-
   backend:
     build:
       context: ./backend
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
-      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/authwebapp
-      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-}
-      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/authwebapp/protocol/openid-connect/certs
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/authwebapp}
+      DATABASE_URL: ${DATABASE_URL}
     ports:
       - "8000:8000"
-    depends_on:
-      - postgres
-      - keycloak
     extra_hosts:
       - "localhost:host-gateway"
+      - "host.docker.internal:host-gateway"
 
   discord-bot:
     build:
@@ -73,20 +37,15 @@ services:
     environment:
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
-      AUTH_SECRET: ${AUTH_SECRET:-dev-auth-secret-change-me}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
-      AUTH_KEYCLOAK_ISSUER: ${AUTH_KEYCLOAK_ISSUER:-http://localhost:8080/realms/authwebapp}
-      AUTH_KEYCLOAK_CLIENT_ID: ${AUTH_KEYCLOAK_CLIENT_ID:-authwebapp-frontend}
-      AUTH_KEYCLOAK_CLIENT_SECRET: ${AUTH_KEYCLOAK_CLIENT_SECRET:-keycloak-frontend-secret-change-me}
-      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:5173}
-      AUTH_TRUST_HOST: "true"
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
     ports:
       - "5173:5173"
     depends_on:
-      - backend
-      - keycloak
+      backend:
+        condition: service_started
     extra_hosts:
       - "localhost:host-gateway"
-
-volumes:
-  pgdata:
+      - "host.docker.internal:host-gateway"

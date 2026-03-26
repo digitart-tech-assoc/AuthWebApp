@@ -1,9 +1,18 @@
-import { signIn } from "@/auth";
+// 役割: Keycloak ログインルートは Discord ログインへリダイレクト（後方互換）
 
-export async function POST(request: Request) {
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export async function POST(request: NextRequest) {
 	const formData = await request.formData();
 	const callbackValue = formData.get("callbackUrl");
-	const callbackUrl = typeof callbackValue === "string" && callbackValue.startsWith("/") ? callbackValue : "/roles";
-
-	return signIn("keycloak", { redirectTo: callbackUrl });
+	const callbackUrl =
+		typeof callbackValue === "string" && callbackValue.startsWith("/")
+			? callbackValue
+			: "/roles";
+	const { getBaseUrl } = await import("@/lib/url");
+	const base = getBaseUrl(request as NextRequest);
+	return NextResponse.redirect(
+		`${base}/api/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`,
+	);
 }

@@ -1,29 +1,55 @@
-import { auth } from "@/auth";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// 認証が必要なパスのプレフィックス
-const MEMBER_ONLY_PATHS = ["/roles", "/admin"];
+const PROTECTED_PATHS = ["/roles", "/admin"];
 
-export default auth((req) => {
-	const { pathname } = req.nextUrl;
+export async function middleware(request: NextRequest) {
+	let supabaseResponse = NextResponse.next({ request });
 
-	const isMemberPath = MEMBER_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
-	if (!isMemberPath) {
-		return NextResponse.next();
+	const supabase = createServerClient(
+		process.env.NEXT_PUBLIC_SUPABASE_URL!,
+		process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+		{
+			cookies: {
+				getAll() {
+					return request.cookies.getAll();
+				},
+				setAll(cookiesToSet) {
+					cookiesToSet.forEach(({ name, value }) =>
+						request.cookies.set(name, value),
+					);
+					supabaseResponse = NextResponse.next({ request });
+					cookiesToSet.forEach(({ name, value, options }) =>
+						supabaseResponse.cookies.set(name, value, options),
+					);
+				},
+			},
+		},
+	);
+
+	// セッション检查: 認証状態をリフレッシュ
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	const { pathname } = request.nextUrl;
+	const isProtected = PROTECTED_PATHS.some(
+		(p) => pathname === p || pathname.startsWith(p + "/"),
+	);
+
+	if (isProtected && !user) {
+		const loginUrl = request.nextUrl.clone();
+		loginUrl.pathname = "/login";
+		loginUrl.searchParams.set("callbackUrl", pathname);
+		return NextResponse.redirect(loginUrl);
 	}
 
-	const session = req.auth;
-	if (!session) {
-		// 未認証: サインインページへ
-		const signInUrl = req.nextUrl.clone();
-		signInUrl.pathname = "/api/auth/signin";
-		signInUrl.searchParams.set("callbackUrl", pathname);
-		return NextResponse.redirect(signInUrl);
-	}
-
-	return NextResponse.next();
-});
+	return supabaseResponse;
+}
 
 export const config = {
-	matcher: ["/roles/:path*", "/admin/:path*"],
+	matcher: [
+		"/((?!_next/static|_next/image|favicon.ico|api/auth/callback).*)",
+	],
 };

@@ -25,6 +25,9 @@ type RoleItem = {
   position: number;
   color: string;
   permissions: number;
+  hoist: boolean;
+  mentionable: boolean;
+  category_id: string | null;
 };
 
 type RoleListProps = {

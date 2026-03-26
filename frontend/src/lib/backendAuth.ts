@@ -1,26 +1,31 @@
 import "server-only";
+import { createSupabaseServer } from "./supabase";
 
-import { auth } from "@/auth";
-
-const KEYCLOAK_CONFIGURED = Boolean(
-	process.env.AUTH_KEYCLOAK_ISSUER?.trim() &&
-		process.env.AUTH_KEYCLOAK_CLIENT_ID?.trim() &&
-		process.env.AUTH_KEYCLOAK_CLIENT_SECRET?.trim(),
-);
-const AUTH_REQUIRED = process.env.AUTH_REQUIRED !== "false" && KEYCLOAK_CONFIGURED;
+const AUTH_REQUIRED = process.env.AUTH_REQUIRED !== "false";
 const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
-
-type SessionWithToken = {
-	accessToken?: string;
-	user?: { role?: string; discordId?: string | null };
-} | null;
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function getBackendAuthorizationHeader(): Promise<string | null> {
-	const session = (await auth()) as SessionWithToken;
-	const accessToken = session?.accessToken?.trim();
+	const supabase = await createSupabaseServer();
+	const {
+		data: { session },
+	} = await supabase.auth.getSession();
+	const accessToken = session?.access_token?.trim();
 
 	if (accessToken) {
 		return `Bearer ${accessToken}`;
+	}
+
+	try {
+		const {
+			data: { session: refreshedSession },
+		} = await supabase.auth.refreshSession();
+		const refreshedToken = refreshedSession?.access_token?.trim();
+		if (refreshedToken) {
+			return `Bearer ${refreshedToken}`;
+		}
+	} catch {
+		// refresh 失敗時は通常のフォールバックへ
 	}
 
 	if (!AUTH_REQUIRED) {
@@ -30,8 +35,28 @@ export async function getBackendAuthorizationHeader(): Promise<string | null> {
 	return null;
 }
 
-/** セッションからアプリロールを取得する */
+/** バックエンドの /auth/me を呼んでアプリロールを取得する。
+ * バックエンドが 401 を返した場合は login redirectさせるため、ここでは raise する。
+ */
 export async function getSessionRole(): Promise<string> {
-	const session = (await auth()) as SessionWithToken;
-	return session?.user?.role ?? "none";
+	const authorization = await getBackendAuthorizationHeader();
+	if (!authorization) {
+		throw new Error("unauthorized");
+	}
+
+	const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+		headers: { Authorization: authorization },
+		cache: "no-store",
+	});
+
+	if (res.status === 401 || res.status === 403) {
+		throw new Error(`auth-error-${res.status}`);
+	}
+
+	if (res.ok) {
+		const data = (await res.json()) as { app_role?: string };
+		return data.app_role ?? "none";
+	}
+
+	throw new Error(`auth-error-${res.status}`);
 }
