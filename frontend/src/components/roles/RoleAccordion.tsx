@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import RoleList from "./RoleList";
 import SyncButton from "./SyncButton";
 import PushButton from "./PushButton";
+import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
 import NewRoleModal from "./NewRoleModal";
 import styles from "./roles.module.css";
@@ -484,6 +485,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           onClose={() => setShowNewRole(false)}
         />
       )}
+
+      {/* Members management panel */}
+      <MembersPanel />
     </div>
   );
 }
