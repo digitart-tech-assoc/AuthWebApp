@@ -17,6 +17,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 from app.db import repository
 from app.utils import otp as otp_utils
+import httpx
 
 print('Starting OTP automated test')
 
@@ -36,6 +37,20 @@ code_hash = otp_utils.hash_otp_code(code)
 print('Generated OTP (plaintext):', code)
 created_otp = repository.create_otp_code(join_request_id=join_id, code_hash=code_hash, expires_in_minutes=15)
 print('Inserted otp_codes id:', created_otp['id'])
+
+# Call the backend API verify endpoint to exercise invite creation path
+base = os.getenv('BACKEND_URL', 'http://localhost:8000')
+verify_url = f"{base}/api/v1/join/verify"
+print('Calling API verify endpoint:', verify_url)
+try:
+    resp = httpx.post(verify_url, json={'join_request_id': join_id, 'otp_code': code}, timeout=10.0)
+    print('API verify response status:', resp.status_code)
+    try:
+        print('API verify response JSON:', resp.json())
+    except Exception:
+        print('API verify response text:', resp.text)
+except Exception as e:
+    print('API call failed:', e)
 
 # 3) Direct DB check and manual verification flow (simulate repository.verify_otp)
 conn = repository._connect()
