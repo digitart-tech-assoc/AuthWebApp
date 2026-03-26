@@ -423,6 +423,36 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           );
         })}
 
+        {/* ===== Uncategorized group ===== */}
+        {(uncategorizedRoles.length > 0 || isSelectMode) && (
+          <div className={styles.group}>
+            <div
+              className={styles.groupHeader}
+              onClick={() => toggleCollapse("__uncategorized__")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__uncategorized__"); }}
+            >
+              <ChevronIcon open={!collapsedIds.has("__uncategorized__")} />
+              <span className={styles.groupName}>未分類</span>
+              <span className={styles.groupCount}>{uncategorizedRoles.length}</span>
+            </div>
+
+            {!collapsedIds.has("__uncategorized__") && (
+              <RoleList
+                roles={uncategorizedRoles}
+                showHeader={false}
+                selectedIds={isSelectMode ? selectedRoleIds : undefined}
+                onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
+                onReorder={!isSelectMode ? reorderGroup : undefined}
+                onPermissions={!isSelectMode ? openRolePermissions : undefined}
+                onDelete={!isSelectMode ? deleteRole : undefined}
+                botPosition={botPosition}
+              />
+            )}
+          </div>
+        )}
+
         {/* ===== Master All Roles ===== */}
         <div className={styles.group}>
           <div
