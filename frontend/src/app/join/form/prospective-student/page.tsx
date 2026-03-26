@@ -61,7 +61,6 @@ export default function ProspectiveStudentFormPage() {
     <main className={styles.page}>
       <section className={styles.hero}>
         <h1 className={styles.title}>仮入会フォーム（青山学院大学入学見込み）</h1>
-        <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
       <section className={styles.card} style={{ marginBottom: 16 }}>
@@ -174,7 +173,7 @@ export default function ProspectiveStudentFormPage() {
                 setShowOtp(true);
               }}
             >
-              送信（モック）
+              送信
             </button>
             <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
           </div>
