@@ -5,33 +5,19 @@ export default function OtherApplicantFormPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <h1 className={styles.title}>入会フォーム（その他）</h1>
-        <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
+        <h1 className={styles.title}>その他</h1>
       </section>
 
       <section className={styles.card}>
-        <form className={styles.form}>
-          <div className={styles.field}>
-            <label className={styles.label}>氏名<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: ニックネーム可" />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
-            <input className={styles.input} type="email" placeholder="example@mail.com" />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>区分・所属</label>
-            <input className={styles.input} placeholder="例: 卒業生 / 他大学 / 社会人" />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>本文</label>
-            <textarea className={styles.textarea} placeholder="参加希望の背景など" />
-          </div>
-          <div className={styles.actions}>
-            <button type="button" className={styles.primary}>送信（モック）</button>
-            <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
-          </div>
-        </form>
+        <p className={styles.cardText}>
+          digitartテクノロジー愛好会に興味を持ってくださりありがとうございます。
+          当団体は青山学院大学の学生のみ入会できます。質問等ございましたら
+          <Link href="/join/contact">お問合せフォーム</Link>
+          よりご質問ください。
+        </p>
+        <div className={styles.actions} style={{ marginTop: 12 }}>
+          <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
+        </div>
       </section>
     </main>
   );
