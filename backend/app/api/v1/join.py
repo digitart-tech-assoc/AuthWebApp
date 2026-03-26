@@ -154,6 +154,30 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 			traceback.print_exc()
 			discord_invite_url = None
 
+	# If we have a discord invite URL, attempt to email it to the user
+	if discord_invite_url:
+		try:
+			brevo = BrevoClient()
+			# look up join_request to get recipient email & name
+			join_req = repository.get_join_request(req.join_request_id)
+			if join_req:
+				email = join_req.get("email")
+				name = join_req.get("name")
+				# send invite email asynchronously
+				try:
+					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, name=name, form_type=join_req.get("form_type"))
+					if result.get("status") != "success":
+						# log but do not fail verification
+						import logging
+						logging.getLogger(__name__).error(f"Failed to send invite email: {result}")
+				except Exception:
+					import logging, traceback
+					logging.getLogger(__name__).exception("Error while sending invite email")
+		except Exception:
+			# swallow any Brevo initialization errors
+			import logging
+			logging.getLogger(__name__).exception("Failed to initialize BrevoClient for invite email")
+
 	return JoinVerifyResponse(
 		status="verified",
 		message="OTP verified successfully. Discord invite sent.",
