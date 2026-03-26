@@ -3,6 +3,52 @@ import { useState } from "react";
 import styles from "../../../join/join.module.css";
 
 export default function ProspectiveStudentFormPage() {
+  const [year, setYear] = useState("");
+  const [yearTouched, setYearTouched] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [emailChecking, setEmailChecking] = useState(false);
+  const [emailExists, setEmailExists] = useState<boolean | null>(null);
+
+  const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
+
+  const emailFormatValid = (value: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  };
+
+  async function checkEmailMx(domain: string) {
+    try {
+      const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`;
+      const res = await fetch(url, { headers: { Accept: "application/dns-json" } });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return Array.isArray(json.Answer) && json.Answer.length > 0;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function validateEmail(value: string) {
+    if (!emailFormatValid(value)) {
+      setEmailExists(null);
+      return;
+    }
+    const domain = value.split("@").slice(1).join("@");
+    if (!domain) {
+      setEmailExists(null);
+      return;
+    }
+    setEmailChecking(true);
+    const hasMx = await checkEmailMx(domain);
+    setEmailChecking(false);
+    if (hasMx === null) {
+      setEmailExists(null);
+    } else {
+      setEmailExists(Boolean(hasMx));
+    }
+  }
+
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
@@ -28,7 +74,28 @@ export default function ProspectiveStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
-            <input className={styles.input} type="email" placeholder="example@mail.com" />
+            <input
+              className={styles.input}
+              type="email"
+              placeholder="example@mail.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setEmailExists(null); }}
+              onBlur={async () => { setEmailTouched(true); await validateEmail(email); }}
+              inputMode="email"
+              aria-invalid={emailTouched && !emailFormatValid(email)}
+              aria-describedby="email-help"
+            />
+            {emailTouched && !emailFormatValid(email) ? (
+              <p className={styles.errorText} id="email-help">メールアドレスの形式が正しくありません。</p>
+            ) : emailChecking ? (
+              <p className={styles.helperText} id="email-help">メールサーバーを確認しています…</p>
+            ) : emailExists === true ? (
+              <p className={styles.helperText} id="email-help">受信可能なドメインが見つかりました。</p>
+            ) : emailExists === false ? (
+              <p className={styles.errorText} id="email-help">メールサーバーが見つかりません。ドメイン名を確認してください。</p>
+            ) : (
+              <p className={styles.helperText} id="email-help">入力後にドメインのMXレコードを確認します（ネットワークの影響で検証できない場合があります）。</p>
+            )}
           </div>
           <div className={styles.field}>
             <label className={styles.label}>入学予定年度</label>
