@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import OTPInput from "./OTPInput";
 import { requestOtp, verifyOtp } from "../lib/join";
 import styles from "./OTPModal.module.css";
@@ -18,6 +18,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const autoSendRef = useRef(false);
 
   async function sendOtp() {
     setError(null);
@@ -33,7 +34,8 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
   }
 
   useEffect(() => {
-    if (autoSend && status === null) {
+    if (autoSend && status === null && !autoSendRef.current) {
+      autoSendRef.current = true;
       void sendOtp();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
