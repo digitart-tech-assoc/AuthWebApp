@@ -9,13 +9,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.auth import require_admin, require_member
-from app.db.repository import fetch_manifest, replace_roles_from_discord, update_role_id
+from app.db.repository import (
+	fetch_manifest,
+	get_member_lists,
+	replace_roles_from_discord,
+	sync_member_lists,
+	update_role_id,
+)
 from app.services.discord_client import (
 	build_role_create_payload,
 	build_role_edit_payload,
 	create_guild_role,
 	delete_guild_role,
 	edit_guild_role,
+	fetch_guild_members_with_role,
 	fetch_guild_roles,
 	reorder_guild_roles,
 )
@@ -176,3 +183,76 @@ async def update_role_permissions(
 	return {"ok": True, "role_id": role_id, "permissions": payload.permissions}
 
 
+@router.post("/members/sync")
+async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -> dict:
+	"""Discord ギルドメンバーから member_list / admin_list / pre_member_list を同期."""
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	try:
+		print(f"[DEBUG] sync_members: GUILD_ID={DISCORD_GUILD_ID}")
+		
+		# Get all roles from Discord
+		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
+		print(f"[DEBUG] Fetched {len(roles)} roles from Discord")
+		for r in roles:
+			print(f"[DEBUG]   Role: {r['name']} (id={r['role_id']})")
+		
+		# Identify role IDs by name pattern (configurable from env)
+		# Expected roles: "member", "OBOG", "administrator", "pre-member"
+		member_role_names = {"member", "会員", "Member"}
+		obog_role_names = {"OBOG", "OB/OG", "OB-OG"}
+		admin_role_names = {"administrator", "管理者", "Administrator"}
+		pre_member_role_name = "pre-member"
+		
+		member_role_ids = [r["role_id"] for r in roles if r["name"] in member_role_names]
+		obog_role_ids = [r["role_id"] for r in roles if r["name"] in obog_role_names]
+		admin_role_ids = [r["role_id"] for r in roles if r["name"] in admin_role_names]
+		pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == pre_member_role_name), None)
+		
+		print(f"[DEBUG] Matched roles:")
+		print(f"[DEBUG]   member_role_ids={member_role_ids}")
+		print(f"[DEBUG]   obog_role_ids={obog_role_ids}")
+		print(f"[DEBUG]   admin_role_ids={admin_role_ids}")
+		print(f"[DEBUG]   pre_member_role_id={pre_member_role_id}")
+		
+		# Fetch members for each role
+		members_data = {}
+		for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else []):
+			if role_id:
+				members = await fetch_guild_members_with_role(DISCORD_GUILD_ID, role_id, token)
+				print(f"[DEBUG] Fetched {len(members)} members for role {role_id}")
+				members_data[role_id] = members
+		
+		# Sync to DB
+		print(f"[DEBUG] Syncing to DB with members_data keys: {list(members_data.keys())}")
+		result = await asyncio.to_thread(
+			sync_member_lists,
+			member_role_ids,
+			obog_role_ids,
+			admin_role_ids,
+			pre_member_role_id,
+			members_data
+		)
+		print(f"[DEBUG] Sync result: {result}")
+		
+		return {
+			"ok": True,
+			"guild_id": DISCORD_GUILD_ID,
+			"member_list": result["member_list"],
+			"admin_list": result["admin_list"],
+			"pre_member_list": result["pre_member_list"],
+		}
+	except Exception as exc:  # noqa: BLE001
+		import traceback
+		print(f"[ERROR] Discord sync failed: {exc}")
+		traceback.print_exc()
+		raise HTTPException(status_code=502, detail=f"Discord sync failed: {exc}") from exc
+
+
+@router.get("/lists")
+async def get_lists(_principal: dict = Depends(require_member)) -> dict:
+	"""member_list / admin_list / pre_member_list を取得."""
+	result = await asyncio.to_thread(get_member_lists)
+	return result

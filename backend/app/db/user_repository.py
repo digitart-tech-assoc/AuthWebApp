@@ -32,15 +32,44 @@ def find_user_by_sub(user_id: str) -> dict[str, Any] | None:
 			}
 
 
+def _resolve_role_from_lists(discord_id: str | None) -> str:
+	"""member/admin/pre_member リストから app_role を解決する。
+	優先順位: admin > member > pre_member > none
+	"""
+	if not discord_id:
+		return "none"
+
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			try:
+				cur.execute("SELECT 1 FROM admin_list WHERE discord_id = %s LIMIT 1", (discord_id,))
+				if cur.fetchone() is not None:
+					return "admin"
+
+				cur.execute("SELECT 1 FROM member_list WHERE discord_id = %s LIMIT 1", (discord_id,))
+				if cur.fetchone() is not None:
+					return "member"
+
+				cur.execute("SELECT 1 FROM pre_member_list WHERE discord_id = %s LIMIT 1", (discord_id,))
+				if cur.fetchone() is not None:
+					return "pre_member"
+			except Exception:
+				# リストテーブル未作成などの環境では none を返す
+				return "none"
+
+	return "none"
+
+
 def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
-	"""ユーザーを存在すれば返し、存在しなければ app_role='none' で新規作成する。
-	discord_id は初回登録時のみ設定し、以後は更新しない（上書きしない）。
+	"""ユーザーを存在すれば更新して返し、存在しなければ新規作成する。
+	サインイン時に member/admin/pre_member リストを参照し app_role を自動同期する。
 	"""
 	if not user_id:
 		raise ValueError("user_id is required")
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			resolved_role = _resolve_role_from_lists(discord_id)
 			# 1) user_id 一致を最優先
 			cur.execute(
 				"""
@@ -52,16 +81,18 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 			)
 			row = cur.fetchone()
 			if row is not None:
-				# discord_id 未設定なら補完する
-				if discord_id and not row[2]:
+				next_discord_id = row[2] or discord_id
+				next_role = _resolve_role_from_lists(next_discord_id)
+				# discord_id/app_role のどちらかが変わる場合のみ更新
+				if (discord_id and not row[2]) or (next_role != row[3]):
 					cur.execute(
 						"""
 						UPDATE users
-						SET discord_id = %s, updated_at = now()
+						SET discord_id = %s, app_role = %s, updated_at = now()
 						WHERE id = %s
 						RETURNING id, user_id, discord_id, app_role
 						""",
-						(discord_id, row[0]),
+						(next_discord_id, next_role, row[0]),
 					)
 					updated = cur.fetchone()
 					return {
@@ -73,8 +104,8 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				return {
 					"id": row[0],
 					"user_id": row[1],
-					"discord_id": row[2],
-					"app_role": row[3],
+					"discord_id": next_discord_id,
+					"app_role": next_role,
 				}
 
 			# 2) discord_id 一致があれば、既存ロールを保ったまま user_id を最新化
@@ -89,14 +120,15 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				)
 				by_discord = cur.fetchone()
 				if by_discord is not None:
+					next_role = _resolve_role_from_lists(discord_id)
 					cur.execute(
 						"""
 						UPDATE users
-						SET user_id = %s, updated_at = now()
+						SET user_id = %s, app_role = %s, updated_at = now()
 						WHERE id = %s
 						RETURNING id, user_id, discord_id, app_role
 						""",
-						(user_id, by_discord[0]),
+						(user_id, next_role, by_discord[0]),
 					)
 					updated = cur.fetchone()
 					return {
@@ -110,10 +142,10 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 			cur.execute(
 				"""
 				INSERT INTO users (user_id, discord_id, app_role)
-				VALUES (%s, %s, 'none')
+				VALUES (%s, %s, %s)
 				RETURNING id, user_id, discord_id, app_role
 				""",
-				(user_id, discord_id),
+				(user_id, discord_id, resolved_role),
 			)
 			row = cur.fetchone()
 			return {

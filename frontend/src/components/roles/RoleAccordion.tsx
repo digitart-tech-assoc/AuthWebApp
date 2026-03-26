@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import RoleList from "./RoleList";
 import SyncButton from "./SyncButton";
 import PushButton from "./PushButton";
+import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
 import NewRoleModal from "./NewRoleModal";
 import styles from "./roles.module.css";
@@ -33,6 +34,7 @@ type Role = {
 type Props = {
   categories: Category[];
   roles: Role[];
+  accessRole: string;
 };
 
 type Status = {
@@ -60,7 +62,7 @@ function ShieldIcon() {
 
 // ===== Component =====
 
-export default function RoleAccordion({ categories: initCategories, roles: initRoles }: Props) {
+export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole }: Props) {
   const [query, setQuery] = useState("");
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
@@ -82,6 +84,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== New role modal =====
   const [showNewRole, setShowNewRole] = useState(false);
+
+  const isAdmin = accessRole === "admin";
+  const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
+  const canManageMembers = isAdmin;
+  const canEditManifest = isAdmin;
 
   function showStatus(s: Status, durationMs = 5000) {
     setStatus(s);
@@ -110,6 +117,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== Persist =====
   async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
+    if (!canEditManifest) {
+      showStatus({ kind: "error", msg: "member 権限では保存できません（モック表示）" });
+      return;
+    }
+
     setSaveState("saving");
     try {
       const res = await fetch("/api/manifest", {
@@ -330,13 +342,27 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           />
         </div>
         <SyncButton onSuccess={handleSyncSuccess} onError={handleSyncError} />
-        <PushButton onSuccess={handlePushSuccess} onError={handlePushError} />
-        <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
-          + ロール作成
-        </button>
-        <button type="button" className={isSelectMode ? styles.btnDanger : styles.btnSecondary} onClick={toggleSelectMode}>
+        {isAdmin ? <PushButton onSuccess={handlePushSuccess} onError={handlePushError} /> : null}
+        {canCreateRole ? (
+          <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
+            + ロール作成
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={isSelectMode ? styles.btnDanger : styles.btnSecondary}
+          onClick={toggleSelectMode}
+          disabled={!isAdmin}
+          title={isAdmin ? "カテゴリ作成" : "カテゴリ作成は admin のみ可能"}
+        >
           {isSelectMode ? "戻る" : "⊙ カテゴリ作成"}
         </button>
+      </div>
+
+      <div className={`${styles.statusBanner} ${styles.info}`}>
+        {isAdmin
+          ? "adminモード: すべての管理操作が有効です。"
+          : "memberモード: admin専用操作（カテゴリ作成・権限編集・並び替え・会員管理）は無効です。"}
       </div>
 
       {/* Category creation selection bar */}
@@ -383,27 +409,31 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                 <span className={styles.groupCount}>{catRoles.length}</span>
 
                 {/* Category permissions button */}
-                <button
-                  type="button"
-                  className={styles.catPermBtn}
-                  onClick={(e) => { e.stopPropagation(); openCategoryPermissions(cat); }}
-                  title="カテゴリ権限設定"
-                  aria-label={`${cat.name} の権限設定`}
-                >
-                  <ShieldIcon />
-                  権限
-                </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className={styles.catPermBtn}
+                    onClick={(e) => { e.stopPropagation(); openCategoryPermissions(cat); }}
+                    title="カテゴリ権限設定"
+                    aria-label={`${cat.name} の権限設定`}
+                  >
+                    <ShieldIcon />
+                    権限
+                  </button>
+                ) : null}
 
                 {/* Delete button */}
-                <button
-                  type="button"
-                  className={styles.groupDeleteBtn}
-                  onClick={(e) => { e.stopPropagation(); deleteCategory(cat.id); }}
-                  aria-label={`${cat.name} を削除`}
-                  title="カテゴリを削除"
-                >
-                  ✕
-                </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className={styles.groupDeleteBtn}
+                    onClick={(e) => { e.stopPropagation(); deleteCategory(cat.id); }}
+                    aria-label={`${cat.name} を削除`}
+                    title="カテゴリを削除"
+                  >
+                    ✕
+                  </button>
+                ) : null}
               </div>
 
               {isOpen && (
@@ -412,15 +442,45 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   showHeader={false}
                   selectedIds={isSelectMode ? selectedRoleIds : undefined}
                   onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-                  onReorder={!isSelectMode ? reorderGroup : undefined}
-                  onPermissions={!isSelectMode ? openRolePermissions : undefined}
-                  onDelete={!isSelectMode ? deleteRole : undefined}
+                  onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+                  onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+                  onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
                   botPosition={botPosition}
                 />
               )}
             </div>
           );
         })}
+
+        {/* ===== Uncategorized group ===== */}
+        {(uncategorizedRoles.length > 0 || isSelectMode) && (
+          <div className={styles.group}>
+            <div
+              className={styles.groupHeader}
+              onClick={() => toggleCollapse("__uncategorized__")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__uncategorized__"); }}
+            >
+              <ChevronIcon open={!collapsedIds.has("__uncategorized__")} />
+              <span className={styles.groupName}>未分類</span>
+              <span className={styles.groupCount}>{uncategorizedRoles.length}</span>
+            </div>
+
+            {!collapsedIds.has("__uncategorized__") && (
+              <RoleList
+                roles={uncategorizedRoles}
+                showHeader={false}
+                selectedIds={isSelectMode ? selectedRoleIds : undefined}
+                onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
+                onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+                onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+                onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
+                botPosition={botPosition}
+              />
+            )}
+          </div>
+        )}
 
         {/* ===== Master All Roles ===== */}
         <div className={styles.group}>
@@ -441,9 +501,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               showHeader={false}
               selectedIds={isSelectMode ? selectedRoleIds : undefined}
               onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-              onReorder={!isSelectMode ? reorderGroup : undefined}
-              onPermissions={!isSelectMode ? openRolePermissions : undefined}
-              onDelete={!isSelectMode ? deleteRole : undefined}
+              onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+              onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+              onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
               botPosition={botPosition}
             />
           )}
@@ -453,14 +513,18 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {/* Floating save bar */}
       {hasUnsaved && (
         <div className={styles.unsavedBar}>
-          <span>未保存の変更があります</span>
+          <span>
+            {canEditManifest
+              ? "未保存の変更があります"
+              : "未保存の変更があります（memberモック: 保存はadminのみ）"}
+          </span>
           <button
             type="button"
             className={styles.unsavedBarBtn}
-            disabled={saveState === "saving"}
+            disabled={saveState === "saving" || !canEditManifest}
             onClick={() => persistRoles(allRoles, localCategories)}
           >
-            {saveState === "saving" ? "保存中..." : "保存する"}
+            {saveState === "saving" ? "保存中..." : canEditManifest ? "保存する" : "保存不可"}
           </button>
         </div>
       )}
@@ -483,6 +547,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           onCreated={handleRoleCreated}
           onClose={() => setShowNewRole(false)}
         />
+      )}
+
+      {/* Members management panel */}
+      {canManageMembers ? (
+        <MembersPanel />
+      ) : (
+        <div className={styles.lockedPanel}>
+          会員情報カテゴリの操作・会員管理は admin のみ利用できます。
+        </div>
       )}
     </div>
   );

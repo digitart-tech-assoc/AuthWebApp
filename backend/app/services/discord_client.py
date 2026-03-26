@@ -117,3 +117,52 @@ def build_role_create_payload(desired: dict) -> dict:
 		"permissions": str(int(desired.get("permissions", 0))),
 		"color": _hex_color_to_int(str(desired.get("color", "#000000"))),
 	}
+
+
+async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str) -> list[dict]:
+	"""ギルド内の特定のロールを持つメンバーを取得"""
+	headers = {"Authorization": f"Bot {token}"}
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members"
+	
+	members = []
+	after = "0"
+	total_checked = 0
+	
+	try:
+		async with httpx.AsyncClient(timeout=30.0) as client:
+			while True:
+				params = {"limit": 1000, "after": after}
+				response = await client.get(url, headers=headers, params=params)
+				response.raise_for_status()
+				
+				batch = response.json()
+				print(f"[DEBUG] fetch_members: role_id={role_id} (type={type(role_id).__name__}), batch size={len(batch)}")
+				if not batch:
+					break
+				
+				total_checked += len(batch)
+				# ロールを持つメンバーをフィルタ
+				for i, member in enumerate(batch):
+					member_roles = member.get("roles", [])
+					# Debug: first member only
+					if i == 0:
+						print(f"[DEBUG]   first member roles: {member_roles} (types: {[type(r).__name__ for r in member_roles]})")
+						print(f"[DEBUG]   checking if {role_id} in {member_roles}")
+					
+					if str(role_id) in [str(r) for r in member_roles]:
+						members.append({
+							"user_id": member["user"]["id"],
+							"username": member["user"]["username"],
+							"discriminator": member["user"].get("discriminator", "0"),
+							"display_name": member.get("nick") or member["user"]["username"],
+						})
+				
+				print(f"[DEBUG] fetch_members: found {len(members)} total so far (checked {total_checked})")
+				after = batch[-1]["user"]["id"]
+	except Exception as e:
+		print(f"[ERROR] fetch_guild_members_with_role failed: {e}")
+		import traceback
+		traceback.print_exc()
+	
+	print(f"[DEBUG] fetch_members: role_id={role_id} final count={len(members)}")
+	return members

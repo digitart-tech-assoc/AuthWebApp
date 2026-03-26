@@ -76,6 +76,46 @@ def init_db() -> None:
                     );
                     """
                 )
+
+
+
+                # member / admin / pre_member リスト（Discord IDベース）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS member_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS pre_member_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
                 conn.commit()
     except Exception as e:
         # If DB is unreachable during development, log and continue without exiting
@@ -212,3 +252,129 @@ def update_role_id(old_id: str, new_id: str) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
+
+
+def sync_member_lists(
+	member_role_ids: list[str],
+	obog_role_ids: list[str],
+	admin_role_ids: list[str],
+	pre_member_role_id: str | None,
+	members: dict[str, list[dict[str, Any]]]
+) -> dict[str, int]:
+	"""
+	Discord ロール情報から member_list / admin_list / pre_member_list を同期。
+	
+	Parameters:
+	- member_role_ids: member ロール ID のリスト（member または OBOG ロール）
+	- obog_role_ids: OBOG ロール ID のリスト
+	- admin_role_ids: admin ロール ID のリスト
+	- pre_member_role_id: pre-member ロール ID（持っている場合）
+	- members: role_id -> [members] のマッピング（fetch_guild_members_with_role から取得）
+	
+	Returns:
+	- {'member_list': count, 'admin_list': count, 'pre_member_list': count}
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			# member_list の同期（member または OBOG ロール）
+			member_discord_ids = set()
+			for role_id in member_role_ids + obog_role_ids:
+				for member in members.get(role_id, []):
+					member_discord_ids.add(member["user_id"])
+			
+			cur.execute("DELETE FROM member_list")
+			member_count = 0
+			for discord_id in member_discord_ids:
+				cur.execute(
+					"""
+					INSERT INTO member_list (discord_id)
+					VALUES (%s)
+					ON CONFLICT (discord_id) DO NOTHING
+					""",
+					(discord_id,)
+				)
+				member_count += 1
+			
+			# admin_list の同期
+			admin_discord_ids = set()
+			for role_id in admin_role_ids:
+				for member in members.get(role_id, []):
+					admin_discord_ids.add(member["user_id"])
+			
+			cur.execute("DELETE FROM admin_list")
+			admin_count = 0
+			for discord_id in admin_discord_ids:
+				cur.execute(
+					"""
+					INSERT INTO admin_list (discord_id)
+					VALUES (%s)
+					ON CONFLICT (discord_id) DO NOTHING
+					""",
+					(discord_id,)
+				)
+				admin_count += 1
+			
+			# pre_member_list の同期
+			pre_member_count = 0
+			if pre_member_role_id:
+				pre_member_discord_ids = set()
+				for member in members.get(pre_member_role_id, []):
+					pre_member_discord_ids.add(member["user_id"])
+				
+				cur.execute("DELETE FROM pre_member_list")
+				for discord_id in pre_member_discord_ids:
+					cur.execute(
+						"""
+						INSERT INTO pre_member_list (discord_id)
+						VALUES (%s)
+						ON CONFLICT (discord_id) DO NOTHING
+						""",
+						(discord_id,)
+					)
+					pre_member_count += 1
+			
+			conn.commit()
+			
+			return {
+				"member_list": member_count,
+				"admin_list": admin_count,
+				"pre_member_list": pre_member_count
+			}
+
+
+def get_member_lists() -> dict[str, list[dict[str, Any]]]:
+	"""member_list, admin_list, pre_member_list を取得."""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			# member_list
+			cur.execute(
+				"SELECT discord_id, user_id, assigned_at FROM member_list ORDER BY assigned_at DESC"
+			)
+			members = [
+				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
+				for row in cur.fetchall()
+			]
+			
+			# admin_list
+			cur.execute(
+				"SELECT discord_id, user_id, assigned_at FROM admin_list ORDER BY assigned_at DESC"
+			)
+			admins = [
+				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
+				for row in cur.fetchall()
+			]
+			
+			# pre_member_list
+			cur.execute(
+				"SELECT discord_id, user_id, assigned_at FROM pre_member_list ORDER BY assigned_at DESC"
+			)
+			pre_members = [
+				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
+				for row in cur.fetchall()
+			]
+	
+	return {
+		"member_list": members,
+		"admin_list": admins,
+		"pre_member_list": pre_members,
+	}
