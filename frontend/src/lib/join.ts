@@ -15,8 +15,15 @@ export async function requestOtp(payload: JoinRequestPayload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`requestOtp failed: ${res.status} ${err}`);
+    // try parse JSON body for structured error (e.g. { detail: "..." })
+    let bodyText = await res.text();
+    try {
+      const json = JSON.parse(bodyText);
+      const detail = json.detail ?? json.message ?? JSON.stringify(json);
+      throw new Error(`${res.status} ${detail}`);
+    } catch (_) {
+      throw new Error(`${res.status} ${bodyText}`);
+    }
   }
   return res.json();
 }
@@ -28,8 +35,14 @@ export async function verifyOtp(join_request_id: string, otp_code: string) {
     body: JSON.stringify({ join_request_id, otp_code }),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`verifyOtp failed: ${res.status} ${err}`);
+    let bodyText = await res.text();
+    try {
+      const json = JSON.parse(bodyText);
+      const detail = json.detail ?? json.message ?? JSON.stringify(json);
+      throw new Error(`${res.status} ${detail}`);
+    } catch (_) {
+      throw new Error(`${res.status} ${bodyText}`);
+    }
   }
   return res.json();
 }

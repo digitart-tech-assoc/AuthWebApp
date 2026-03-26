@@ -102,10 +102,17 @@ digitart Technology Society
 					json=payload,
 					headers=headers,
 				)
-				response.raise_for_status()
-				data = response.json()
+				# Inspect response for debugging: Brevo returns 201 on success, 4xx/5xx on errors
+				if response.status_code >= 400:
+					text = response.text
+					logger.error(f"Brevo API returned error: status={response.status_code} body={text}")
+					return {"error": f"{response.status_code} {text}", "status": "failed"}
+				try:
+					data = response.json()
+				except Exception:
+					data = {}
 				return {
-					"message_id": data.get("messageId"),
+					"message_id": data.get("messageId") or data.get("message_id"),
 					"status": "success",
 				}
 		except httpx.HTTPError as e:

@@ -412,11 +412,48 @@ def create_join_request(
 	"""
 	from uuid import uuid4
 	import json
-	
+
 	request_id = str(uuid4())
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			try:
+				# まず既存レコードを確認する
+				cur.execute(
+					"SELECT id, status, name, form_type, metadata, created_at, updated_at FROM join_requests WHERE email = %s",
+					(email,)
+				)
+				existing = cur.fetchone()
+				if existing:
+					existing_id, existing_status = existing[0], existing[1]
+					# pending/failed の場合は既存レコードを更新して再利用する
+					if existing_status in ("pending", "failed"):
+						cur.execute(
+							"""
+							UPDATE join_requests
+							SET name = %s, form_type = %s, metadata = %s, status = 'pending', updated_at = now()
+							WHERE id = %s
+							RETURNING id, email, name, form_type, status, metadata, created_at, updated_at
+							""",
+							(name, form_type, json.dumps(metadata or {}), existing_id),
+						)
+						row = cur.fetchone()
+						if row is None:
+							raise RuntimeError("Failed to update existing join request")
+						conn.commit()
+						return {
+							"id": row[0],
+							"email": row[1],
+							"name": row[2],
+							"form_type": row[3],
+							"status": row[4],
+							"metadata": row[5],
+							"created_at": row[6].isoformat() if row[6] else None,
+							"updated_at": row[7].isoformat() if row[7] else None,
+						}
+					# verified/completed 等は既存登録として扱いエラーを返す
+					raise ValueError(f"Email {email} already registered")
+
+				# 存在しなければ新規挿入
 				cur.execute(
 					"""
 					INSERT INTO join_requests (id, email, name, form_type, metadata, status)
