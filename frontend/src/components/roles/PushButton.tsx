@@ -10,11 +10,12 @@ type PushResult = {
   created?: number;
   deleted?: number;
   reordered?: number;
+  errors?: string[];
 };
 
 type Props = {
   onSuccess?: (result: PushResult) => void;
-  onError?: () => void;
+  onError?: (errors?: string[]) => void;
 };
 
 export default function PushButton({ onSuccess, onError }: Props) {
@@ -33,9 +34,10 @@ export default function PushButton({ onSuccess, onError }: Props) {
         created?: number;
         deleted?: number;
         reordered?: number;
+        errors?: string[];
       };
       if (!res.ok || !body.ok) {
-        onError?.();
+        onError?.(body.errors);
         return;
       }
       onSuccess?.({

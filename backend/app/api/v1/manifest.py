@@ -31,6 +31,7 @@ class Role(BaseModel):
 	permissions: int = 0
 	position: int
 	category_id: str | None = None
+	is_our_bot: bool = False
 
 
 class Manifest(BaseModel):

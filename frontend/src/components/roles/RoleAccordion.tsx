@@ -209,7 +209,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== SyncButton / PushButton =====
   function handleSyncSuccess(count: number) {
-    showStatus({ kind: "success", msg: `Discord から ${count} 件のロールを取得しました` });
+    window.location.href = `/roles?synced=1&roles=${count}&t=${Date.now()}`;
   }
   function handleSyncError() {
     showStatus({ kind: "error", msg: "Discord からの取得に失敗しました" });
@@ -221,10 +221,14 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     if (result.deleted) parts.push(`削除 ${result.deleted}`);
     if (result.reordered) parts.push(`並び替え ${result.reordered}`);
     const detail = parts.length ? `（${parts.join(" / ")}）` : "";
-    showStatus({ kind: "success", msg: `Discord への送信が完了しました${detail}` });
+    window.location.href = `/roles?pushed=1&updated=${result.updated ?? 0}&created=${result.created ?? 0}&deleted=${result.deleted ?? 0}&reordered=${result.reordered ?? 0}&t=${Date.now()}`;
   }
-  function handlePushError() {
-    showStatus({ kind: "error", msg: "Discord への送信に失敗しました" });
+  function handlePushError(errors?: string[]) {
+    if (errors && errors.length > 0) {
+      showStatus({ kind: "error", msg: `Discord への送信エラー: ${errors[0]}` });
+    } else {
+      showStatus({ kind: "error", msg: "Discord への送信に失敗しました" });
+    }
   }
 
   // ===== Permission panel callbacks =====
@@ -276,11 +280,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   function handleRoleCreated(role: {
     role_id: string; name: string; color: string;
     hoist: boolean; mentionable: boolean; permissions: number;
-    position: number; category_id: string | null;
+    position: number; category_id: string | null; is_our_bot?: boolean;
   }) {
-    setAllRoles((prev) => [role, ...prev]);
+    setAllRoles((prev) => [...prev, role]);
     setShowNewRole(false);
-    showStatus({ kind: "success", msg: `ロール「${role.name}」をDiscordに作成しました！` });
+    showStatus({ kind: "success", msg: `ロール「${role.name}」を作成しました！（保存ボタンで確定）` });
     // Mark as unsaved so the manifest can be persisted with the new role
     setHasUnsaved(true);
     setSaveState("idle");
@@ -290,8 +294,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const uncategorizedRoles = filteredRoles.filter((r) => !r.category_id || !categoryIds.has(r.category_id));
 
   // Determine the highest position of the bot role to prevent editing roles above it
-  const botRole = allRoles.find((r) => r.name.toLowerCase() === "bot");
+  const botRole = allRoles.find((r) => r.is_our_bot);
   const botPosition = botRole ? botRole.position : undefined;
+  const botPermissions = botRole ? BigInt(botRole.permissions) : 0n;
 
   return (
     <div className={styles.page}>
@@ -325,11 +330,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         </div>
         <SyncButton onSuccess={handleSyncSuccess} onError={handleSyncError} />
         <PushButton onSuccess={handlePushSuccess} onError={handlePushError} />
-        <button type="button" className={styles.btnPrimary} onClick={() => setShowNewRole(true)}>
+        <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
           + ロール作成
         </button>
         <button type="button" className={isSelectMode ? styles.btnDanger : styles.btnSecondary} onClick={toggleSelectMode}>
-          {isSelectMode ? "キャンセル" : "⊙ カテゴリ作成"}
+          {isSelectMode ? "戻る" : "⊙ カテゴリ作成"}
         </button>
       </div>
 
@@ -416,36 +421,32 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           );
         })}
 
-        {/* ===== Uncategorized / All roles ===== */}
-        {(uncategorizedRoles.length > 0 || localCategories.length === 0) && (
-          <div className={styles.group}>
-            <div
-              className={styles.groupHeader}
-              onClick={() => toggleCollapse("__uncategorized__")}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__uncategorized__"); }}
-            >
-              <ChevronIcon open={!collapsedIds.has("__uncategorized__")} />
-              <span className={styles.groupName}>
-                {localCategories.length === 0 ? "ロール一覧" : "カテゴリ未設定"}
-              </span>
-              <span className={styles.groupCount}>{uncategorizedRoles.length}</span>
-            </div>
-            {!collapsedIds.has("__uncategorized__") && (
-              <RoleList
-                roles={uncategorizedRoles}
-                showHeader={false}
-                selectedIds={isSelectMode ? selectedRoleIds : undefined}
-                onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-                onReorder={!isSelectMode ? reorderGroup : undefined}
-                onPermissions={!isSelectMode ? openRolePermissions : undefined}
-                onDelete={!isSelectMode ? deleteRole : undefined}
-                botPosition={botPosition}
-              />
-            )}
+        {/* ===== Master All Roles ===== */}
+        <div className={styles.group}>
+          <div
+            className={styles.groupHeader}
+            onClick={() => toggleCollapse("__all_roles__")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__all_roles__"); }}
+          >
+            <ChevronIcon open={!collapsedIds.has("__all_roles__")} />
+            <span className={styles.groupName}>ロール一覧</span>
+            <span className={styles.groupCount}>{filteredRoles.length}</span>
           </div>
-        )}
+          {!collapsedIds.has("__all_roles__") && (
+            <RoleList
+              roles={filteredRoles}
+              showHeader={false}
+              selectedIds={isSelectMode ? selectedRoleIds : undefined}
+              onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
+              onReorder={!isSelectMode ? reorderGroup : undefined}
+              onPermissions={!isSelectMode ? openRolePermissions : undefined}
+              onDelete={!isSelectMode ? deleteRole : undefined}
+              botPosition={botPosition}
+            />
+          )}
+        </div>
       </div>
 
       {/* Floating save bar */}
@@ -467,6 +468,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {permTarget && (
         <PermissionEditorPanel
           target={permTarget}
+          botPermissions={botPermissions}
           onSave={handlePermissionSave}
           onClose={() => setPermTarget(null)}
         />
@@ -476,6 +478,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {showNewRole && (
         <NewRoleModal
           categories={localCategories}
+          botPermissions={botPermissions}
           onCreated={handleRoleCreated}
           onClose={() => setShowNewRole(false)}
         />

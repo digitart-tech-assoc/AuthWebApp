@@ -26,6 +26,7 @@ export async function POST() {
 			reordered?: number;
 			guild_id?: string;
 			detail?: string;
+			errors?: string[];
 		};
 		return NextResponse.json(body, { status: res.status });
 	} catch {

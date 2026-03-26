@@ -38,7 +38,7 @@ export default function SyncButton({ onSuccess, onError }: Props) {
       type="button"
       onClick={handleSync}
       disabled={isPending}
-      className={styles.btnSecondary}
+      className={styles.btnSync}
     >
       {isPending ? (
         <>

@@ -124,6 +124,47 @@
   cursor: not-allowed;
 }
 
+/* Distinct Action Buttons */
+.btnSync {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: #475569;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btnSync:hover:not(:disabled) {
+  background: #334155;
+}
+
+.btnCreate {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: #10b981;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btnCreate:hover:not(:disabled) {
+  background: #059669;
+}
+
 .btnDanger {
   height: 36px;
   padding: 0 16px;
@@ -369,6 +410,20 @@
   background: #e5edff;
 }
 
+.roleRow.disabledRow {
+  background: #f8fafc;
+  color: #94a3b8;
+  /* Visual gray out */
+}
+
+.roleRow.disabledRow .roleName {
+  color: #94a3b8;
+}
+
+.roleRow.disabledRow .roleDot {
+  opacity: 0.3;
+}
+
 /* Handle/checkbox cell — first grid column */
 .roleHandleCell {
   display: flex;
@@ -517,10 +572,17 @@
   white-space: nowrap;
 }
 
-.permBtn:hover {
+.permBtn:hover:not(.disabledBtn) {
   background: #eef2ff;
   border-color: #a5b4fc;
   color: #3730a3;
+}
+
+.permBtn.disabledBtn {
+  cursor: not-allowed;
+  background: transparent;
+  border-color: #e2e8f0;
+  color: #cbd5e1;
 }
 
 /* Category header permissions button */
