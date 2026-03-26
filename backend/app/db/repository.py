@@ -76,6 +76,46 @@ def init_db() -> None:
                     );
                     """
                 )
+
+
+
+                # member / admin / pre_member リスト（Discord IDベース）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS member_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS pre_member_list (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
                 conn.commit()
     except Exception as e:
         # If DB is unreachable during development, log and continue without exiting
