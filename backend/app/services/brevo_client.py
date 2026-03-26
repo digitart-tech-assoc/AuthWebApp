@@ -217,3 +217,34 @@ Digitart Technology Association
 		except Exception as e:
 			logger.error(f"Unexpected error sending invite email: {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}
+
+
+# ============================================================================
+# Synchronous wrapper functions for use in thread executor
+# ============================================================================
+
+def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
+	"""Synchronous wrapper for sending OTP email.
+	
+	Args:
+		email: recipient email (e.g., a2412345@aoyama.ac.jp)
+		code: 6-digit OTP code
+		name: recipient name
+	
+	Returns:
+		dict with messageId or error information
+	"""
+	import asyncio
+	
+	client = BrevoClient()
+	
+	# Create or get event loop
+	try:
+		loop = asyncio.get_event_loop()
+	except RuntimeError:
+		loop = asyncio.new_event_loop()
+		asyncio.set_event_loop(loop)
+	
+	# Run async method
+	result = loop.run_until_complete(client.send_otp_email(email, code, name, "full-registration"))
+	return result
