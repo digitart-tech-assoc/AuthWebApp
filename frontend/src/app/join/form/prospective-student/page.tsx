@@ -5,7 +5,7 @@ export default function ProspectiveStudentFormPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <h1 className={styles.title}>入会フォーム（青山学院大学入学見込み）</h1>
+        <h1 className={styles.title}>仮入会フォーム（青山学院大学入学見込み）</h1>
         <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
