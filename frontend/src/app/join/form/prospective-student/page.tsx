@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useState } from "react";
 import styles from "../../../join/join.module.css";
 
 export default function ProspectiveStudentFormPage() {
@@ -31,7 +32,26 @@ export default function ProspectiveStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>入学予定年度</label>
-            <input className={styles.input} placeholder="例: 2027年度" />
+            <input
+              className={styles.input}
+              placeholder="例: 2027"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              onBlur={() => setYearTouched(true)}
+              inputMode="numeric"
+              pattern="\d*"
+              aria-invalid={!isYearValid}
+              aria-describedby="year-help"
+            />
+            {!isYearValid && yearTouched ? (
+              <p className={styles.errorText} id="year-help">
+                入学予定年度は半角数字のみで入力してください（例: 2027）。
+              </p>
+            ) : (
+              <p className={styles.helperText} id="year-help">
+                半角数字で入力してください（例: 2027）。任意入力です。
+              </p>
+            )}
           </div>
           <div className={styles.field}>
             <label className={styles.label}>質問等</label>
