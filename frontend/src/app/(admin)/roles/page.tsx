@@ -7,6 +7,48 @@ import SyncButton from "@/components/roles/SyncButton";
 import PushButton from "@/components/roles/PushButton";
 import { redirect } from "next/navigation";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
+
+async function resolveRoleFromBackend(
+	accessToken: string | undefined,
+	sub: string | undefined,
+	fallbackRole: string,
+): Promise<string> {
+	if (accessToken) {
+		try {
+			const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+				headers: { Authorization: `Bearer ${accessToken}` },
+				cache: "no-store",
+			});
+			if (res.ok) {
+				const data = (await res.json()) as { app_role?: string };
+				return data.app_role ?? fallbackRole;
+			}
+		} catch {
+			// フォールバックへ
+		}
+	}
+
+	try {
+		if (!sub) {
+			return fallbackRole;
+		}
+		const url = `${BACKEND_URL}/api/v1/auth/role-by-sub?sub=${encodeURIComponent(sub)}`;
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${SHARED_SECRET}` },
+			cache: "no-store",
+		});
+		if (!res.ok) {
+			return fallbackRole;
+		}
+		const data = (await res.json()) as { app_role?: string };
+		return data.app_role ?? fallbackRole;
+	} catch {
+		return fallbackRole;
+	}
+}
+
 type SearchParamsType = {
 	synced?: string;
 	roles?: string;
@@ -26,7 +68,8 @@ type RolesPageProps = {
 export default async function RolesPage({ searchParams }: RolesPageProps) {
 	const session = await auth();
 	const sessionWithRole = session as typeof session & {
-		user?: { role?: string; discordId?: string | null };
+		accessToken?: string;
+		user?: { role?: string; discordId?: string | null; sub?: string };
 	};
 
 	// middleware でルート保護済みだが、念のためSSR側でも確認
@@ -34,23 +77,24 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 		redirect("/api/auth/signin?callbackUrl=%2Froles");
 	}
 
-	const role = sessionWithRole?.user?.role ?? "none";
+	const fallbackRole = sessionWithRole?.user?.role ?? "none";
+	const role = await resolveRoleFromBackend(sessionWithRole?.accessToken, sessionWithRole?.user?.sub, fallbackRole);
 	const isAdmin = role === "admin";
-	const isMember = ["member", "admin", "obog"].includes(role);
-
-	// 非会員は /join に
-	if (!isMember) {
-		redirect("/join");
-	}
 
 	let manifest;
+	let accessError: string | null = null;
 	try {
 		manifest = await fetchManifest();
 	} catch (error) {
 		if (error instanceof Error && (error.message === "unauthorized" || error.message.includes("manifest fetch failed"))) {
 			redirect("/api/auth/signin?callbackUrl=%2Froles");
 		}
-		throw error;
+		if (error instanceof Error && error.message === "forbidden") {
+			accessError = "このアカウントは現在メンバー権限として認識されていません。管理者に権限を確認してください。";
+			manifest = { categories: [], roles: [] };
+		} else {
+			throw error;
+		}
 	}
 
 	const params = await Promise.resolve(searchParams);
@@ -102,6 +146,10 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 			) : null}
 			{pushError ? (
 				<p style={{ marginTop: 8, color: "#b91c1c" }}>pushに失敗しました。設定と権限を確認してください。</p>
+			) : null}
+
+			{accessError ? (
+				<p style={{ marginTop: 8, color: "#b91c1c" }}>{accessError}</p>
 			) : null}
 
 			<RoleAccordion

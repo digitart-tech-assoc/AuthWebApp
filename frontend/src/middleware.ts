@@ -21,17 +21,6 @@ export default auth((req) => {
 		return NextResponse.redirect(signInUrl);
 	}
 
-	// role 確認 (session はカスタム型を通じて any キャストで取得)
-	const role = (session as any)?.user?.role as string | undefined;
-	const memberRoles = new Set(["member", "admin", "obog"]);
-
-	if (!role || !memberRoles.has(role)) {
-		// 非会員: /join にリダイレクト
-		const joinUrl = req.nextUrl.clone();
-		joinUrl.pathname = "/join";
-		return NextResponse.redirect(joinUrl);
-	}
-
 	return NextResponse.next();
 });
 

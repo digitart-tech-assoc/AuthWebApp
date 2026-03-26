@@ -39,7 +39,7 @@ services:
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/authwebapp
-      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-authwebapp-frontend}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-}
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/authwebapp/protocol/openid-connect/certs
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync

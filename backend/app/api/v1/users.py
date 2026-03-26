@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.auth import get_current_principal
@@ -49,6 +49,34 @@ async def get_me(principal: dict = Depends(get_current_principal)) -> UserMeResp
 	sub = principal.get("sub", "")
 	discord_id = principal.get("discord_id", sub)
 	app_role = principal.get("app_role", "none")
+
+	paid = False
+	if discord_id and app_role == "none":
+		paid = await asyncio.to_thread(is_paid_invitation, discord_id)
+
+	return UserMeResponse(
+		sub=sub,
+		discord_id=discord_id,
+		app_role=app_role,
+		is_paid=paid,
+	)
+
+
+@router.get("/role-by-sub", response_model=UserMeResponse)
+async def get_role_by_sub(
+	sub: str = Query(..., min_length=1),
+	principal: dict = Depends(get_current_principal),
+) -> UserMeResponse:
+	"""内部連携向け: keycloak sub から app_role を取得する。"""
+	if principal.get("auth_type") != "internal":
+		raise HTTPException(status_code=403, detail="Internal access required")
+
+	user = await asyncio.to_thread(find_user_by_sub, sub)
+	if user is None:
+		return UserMeResponse(sub=sub, discord_id=None, app_role="none", is_paid=False)
+
+	discord_id = user.get("discord_id")
+	app_role = user.get("app_role", "none")
 
 	paid = False
 	if discord_id and app_role == "none":

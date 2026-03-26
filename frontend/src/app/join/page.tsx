@@ -3,9 +3,56 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
+
+async function resolveRoleFromBackend(
+	accessToken: string | undefined,
+	sub: string | undefined,
+	fallbackRole: string,
+): Promise<string> {
+	if (accessToken) {
+		try {
+			const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+				headers: { Authorization: `Bearer ${accessToken}` },
+				cache: "no-store",
+			});
+			if (res.ok) {
+				const data = (await res.json()) as { app_role?: string };
+				return data.app_role ?? fallbackRole;
+			}
+		} catch {
+			// フォールバックへ
+		}
+	}
+
+	try {
+		if (!sub) {
+			return fallbackRole;
+		}
+		const url = `${BACKEND_URL}/api/v1/auth/role-by-sub?sub=${encodeURIComponent(sub)}`;
+		const res = await fetch(url, {
+			headers: { Authorization: `Bearer ${SHARED_SECRET}` },
+			cache: "no-store",
+		});
+		if (!res.ok) {
+			return fallbackRole;
+		}
+		const data = (await res.json()) as { app_role?: string };
+		return data.app_role ?? fallbackRole;
+	} catch {
+		return fallbackRole;
+	}
+}
+
 export default async function JoinPage() {
 	const session = await auth();
-	const role = (session as any)?.user?.role as string | undefined;
+	const sessionData = session as typeof session & {
+		accessToken?: string;
+		user?: { role?: string; discordId?: string | null; name?: string | null; sub?: string };
+	};
+	const fallbackRole = sessionData?.user?.role ?? "none";
+	const role = await resolveRoleFromBackend(sessionData?.accessToken, sessionData?.user?.sub, fallbackRole);
 
 	// 既に会員の場合はリダイレクト
 	if (role && ["member", "admin", "obog"].includes(role)) {
@@ -123,7 +170,7 @@ export default async function JoinPage() {
 			)}
 
 			<p style={{ fontSize: 13, color: "#9ca3af" }}>
-				Discordアカウント: {(session as any)?.user?.discordId ?? (session?.user?.name ?? "不明")}
+				Discordアカウント: {sessionData?.user?.discordId ?? (sessionData?.user?.name ?? "不明")}
 			</p>
 		</main>
 	);
