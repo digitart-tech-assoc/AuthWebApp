@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import styles from "../../../join/join.module.css";
+import OTPModal from "../../../../components/OTPModal";
 
 const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
 
@@ -29,6 +30,9 @@ function buildAoyamaEmail(studentId: string): string {
 
 export default function AoyamaStudentFormPage() {
   const [studentId, setStudentId] = useState("");
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const normalizedStudentId = useMemo(() => studentId.trim(), [studentId]);
   const isStudentIdValid = STUDENT_ID_PATTERN.test(normalizedStudentId.toUpperCase());
@@ -93,11 +97,32 @@ export default function AoyamaStudentFormPage() {
             <textarea className={styles.textarea} placeholder="質問、連絡事項等あればご記入ください" />
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.primary}>送信（モック）</button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => {
+                console.log("aoyama 送信ボタン押下", { studentId, autoCompletedEmail });
+                setFormError(null);
+                if (!isStudentIdValid) {
+                  setFormError("学生番号が正しくありません。");
+                  return;
+                }
+                if (!autoCompletedEmail) {
+                  setFormError("自動補完されたメールアドレスが生成できません。");
+                  return;
+                }
+                setOtpEmail(autoCompletedEmail);
+                setShowOtp(true);
+              }}
+            >
+              送信（モック）
+            </button>
             <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
           </div>
         </form>
       </section>
+      {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
+      {showOtp && <OTPModal email={otpEmail} name="" formType="aoyama-student" onClose={() => setShowOtp(false)} />}
     </main>
   );
 }

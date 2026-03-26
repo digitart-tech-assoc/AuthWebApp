@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import styles from "../join/join.module.css";
+import OTPModal from "../../components/OTPModal";
 
 export default function ContactPage() {
   const [email, setEmail] = useState("");
@@ -10,6 +11,9 @@ export default function ContactPage() {
   const [confirmTouched, setConfirmTouched] = useState(false);
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const emailFormatValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -120,10 +124,33 @@ export default function ContactPage() {
           </div>
 
           <div className={styles.actions}>
-            <button type="button" className={styles.primary}>送信（モック）</button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => {
+                  console.log("contact 送信ボタン押下", { email, confirmEmail });
+                  setFormError(null);
+                  setEmailTouched(true);
+                  setConfirmTouched(true);
+                  if (!email || !confirmEmail) {
+                    setFormError("メールアドレスと確認用欄を入力してください。");
+                    return;
+                  }
+                  if (email !== confirmEmail) {
+                    setFormError("メールアドレスが一致しません。");
+                    return;
+                  }
+                  setOtpEmail(email);
+                  setShowOtp(true);
+                }}
+            >
+              送信（モック）
+            </button>
           </div>
         </form>
       </section>
+      {showOtp && <OTPModal email={otpEmail} name="" formType="contact" onClose={() => setShowOtp(false)} />}
+      {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
     </main>
   );
 }

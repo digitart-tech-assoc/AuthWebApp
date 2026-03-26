@@ -1,7 +1,21 @@
-import "server-only";
+// This module must be usable from both Client and Server components.
+// Do not import `server-only` here so it can be bundled for the browser.
+const PRIMARY_BACKEND_URL = ((): string => {
+	if (typeof window === "undefined") {
+		// Server runtime: use BACKEND_URL if set
+		return process.env.BACKEND_URL ?? "http://localhost:8000";
+	}
+	// Client/runtime: use NEXT_PUBLIC_BACKEND_URL which is exposed to the browser
+	// fallback to same-origin backend assumption
+	return (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000").trim();
+})();
 
-const PRIMARY_BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-const FALLBACK_BACKEND_URL = process.env.BACKEND_FALLBACK_URL ?? "http://localhost:8000";
+const FALLBACK_BACKEND_URL = ((): string => {
+	if (typeof window === "undefined") {
+		return process.env.BACKEND_FALLBACK_URL ?? "http://localhost:8000";
+	}
+	return (process.env.NEXT_PUBLIC_BACKEND_FALLBACK_URL ?? "http://localhost:8000").trim();
+})();
 
 function buildBackendCandidates(): string[] {
 	const candidates = [PRIMARY_BACKEND_URL, FALLBACK_BACKEND_URL]
