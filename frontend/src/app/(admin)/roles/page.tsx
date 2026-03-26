@@ -3,6 +3,8 @@
 import { auth } from "@/auth";
 import { fetchManifest } from "@/actions/manifest";
 import RoleAccordion from "@/components/roles/RoleAccordion";
+import SyncButton from "@/components/roles/SyncButton";
+import PushButton from "@/components/roles/PushButton";
 import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
