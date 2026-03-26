@@ -166,3 +166,30 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 	
 	print(f"[DEBUG] fetch_members: role_id={role_id} final count={len(members)}")
 	return members
+
+
+async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, max_age_seconds: int = 604800, unique: bool = True) -> dict:
+	"""Create a Discord invite for a specific channel.
+
+	Args:
+		channel_id: Channel Snowflake ID
+		token: Bot token
+		max_uses: Maximum number of uses (1 => single-use)
+		max_age_seconds: Expiration in seconds (604800 = 7 days)
+		unique: Whether to create a unique invite even if similar exists
+
+	Returns:
+		Invite payload as returned by Discord API.
+	"""
+	url = f"{DISCORD_API_BASE}/channels/{channel_id}/invites"
+	payload = {
+		"max_uses": int(max_uses),
+		"max_age": int(max_age_seconds),
+		"unique": bool(unique),
+		"temporary": False,
+		# target_type/target_user can be omitted for a normal invite
+	}
+	async with httpx.AsyncClient(timeout=10.0) as client:
+		response = await client.post(url, headers=_headers(token), json=payload)
+		response.raise_for_status()
+		return response.json()

@@ -8,6 +8,8 @@ from pydantic import BaseModel, EmailStr
 from app.services.brevo_client import BrevoClient
 from app.db import repository
 from app.utils.otp import generate_otp_code, hash_otp_code
+from app.services.discord_client import create_channel_invite
+import os
 
 router = APIRouter(prefix="/api/v1/join", tags=["join"])
 
@@ -136,8 +138,21 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 		raise HTTPException(status_code=400, detail=str(e))
 
 	# Discord 招待 URL 生成（現在はスタブ）
-	# TODO: Discord Bot 招待リンク生成ロジック
-	discord_invite_url = "https://discord.gg/example-invite"
+	# Attempt to create a single-use invite that expires in 1 week.
+	DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+	DISCORD_INVITE_CHANNEL_ID = os.getenv("DISCORD_INVITE_CHANNEL_ID")
+	discord_invite_url = None
+	if DISCORD_BOT_TOKEN and DISCORD_INVITE_CHANNEL_ID:
+		try:
+			invite = await create_channel_invite(DISCORD_INVITE_CHANNEL_ID, DISCORD_BOT_TOKEN, max_uses=1, max_age_seconds=7 * 24 * 60 * 60)
+			code = invite.get("code") or invite.get("id")
+			if code:
+				discord_invite_url = f"https://discord.gg/{code}"
+		except Exception:
+			# Fail silently for now — verification already succeeded.
+			import traceback
+			traceback.print_exc()
+			discord_invite_url = None
 
 	return JoinVerifyResponse(
 		status="verified",
