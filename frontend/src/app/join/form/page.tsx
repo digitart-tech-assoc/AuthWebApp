@@ -5,7 +5,7 @@ export default function JoinFormSelectPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <h1 className={styles.title}>入会フォーム</h1>
+        <h1 className={styles.title}>仮入会フォーム</h1>
         <p className={styles.lead}>該当する区分を選択してください。選択後、それぞれの入力フォームへ遷移します。</p>
       </section>
 
