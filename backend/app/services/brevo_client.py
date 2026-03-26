@@ -115,12 +115,12 @@ Digitart Technology Association
 					return {"error": f"{response.status_code} {text}", "status": "failed"}
 				try:
 					data = response.json()
+					logger.info(f"Brevo send_otp response: status={response.status_code} body={data}")
 				except Exception:
 					data = {}
-				return {
-					"message_id": data.get("messageId") or data.get("message_id"),
-					"status": "success",
-				}
+				message_id = data.get("messageId") or data.get("message_id")
+				logger.info(f"Brevo send_otp success message_id={message_id}")
+				return {"message_id": message_id, "status": "success"}
 		except httpx.HTTPError as e:
 			logger.error(f"Brevo API error: {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}
@@ -205,9 +205,12 @@ Digitart Technology Association
 					return {"error": f"{response.status_code} {text}", "status": "failed"}
 				try:
 					data = response.json()
+					logger.info(f"Brevo send_invite response: status={response.status_code} body={data}")
 				except Exception:
 					data = {}
-				return {"message_id": data.get("messageId") or data.get("message_id"), "status": "success"}
+				message_id = data.get("messageId") or data.get("message_id")
+				logger.info(f"Brevo send_invite success message_id={message_id}")
+				return {"message_id": message_id, "status": "success"}
 		except httpx.HTTPError as e:
 			logger.error(f"Brevo API error sending invite: {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}

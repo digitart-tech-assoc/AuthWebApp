@@ -166,10 +166,15 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 				# send invite email asynchronously
 				try:
 					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, name=name, form_type=join_req.get("form_type"))
+					# Print to stdout as well so container logs capture the result
+					print(f"[invite-email] result={result}")
 					if result.get("status") != "success":
 						# log but do not fail verification
 						import logging
 						logging.getLogger(__name__).error(f"Failed to send invite email: {result}")
+					else:
+						import logging
+						logging.getLogger(__name__).info(f"Invite email sent: {result}")
 				except Exception:
 					import logging, traceback
 					logging.getLogger(__name__).exception("Error while sending invite email")
