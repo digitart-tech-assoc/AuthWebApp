@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.manifest import router as manifest_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.sync import router as sync_router
+from app.api.v1.users import router as users_router
 from app.db.repository import init_db
 
 
@@ -38,3 +39,4 @@ async def health() -> dict:
 app.include_router(manifest_router)
 app.include_router(roles_router)
 app.include_router(sync_router)
+app.include_router(users_router)

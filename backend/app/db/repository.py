@@ -58,6 +58,34 @@ def init_db() -> None:
 				"""
 			)
 
+			# ユーザー管理テーブル（アプリDB正本のRBAC）
+			cur.execute(
+				"""
+				CREATE TABLE IF NOT EXISTS users (
+					id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+					keycloak_sub TEXT UNIQUE NOT NULL,
+					discord_id TEXT UNIQUE,
+					app_role TEXT NOT NULL DEFAULT 'none'
+						CHECK (app_role IN ('member', 'admin', 'obog', 'pre_member', 'none')),
+					created_at TIMESTAMPTZ DEFAULT now(),
+					updated_at TIMESTAMPTZ DEFAULT now()
+				);
+				"""
+			)
+
+			# 入会費支払い済みリスト（adminが管理、discord_idで照合）
+			cur.execute(
+				"""
+				CREATE TABLE IF NOT EXISTS paid_invitations (
+					id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+					discord_id TEXT UNIQUE NOT NULL,
+					note TEXT,
+					expires_at TIMESTAMPTZ,
+					created_at TIMESTAMPTZ DEFAULT now()
+				);
+				"""
+			)
+
 
 def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 	with _connect() as conn:

@@ -8,7 +8,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.core.auth import get_current_principal
+from app.core.auth import require_admin
 from app.db.repository import fetch_manifest, replace_roles_from_discord, update_role_id
 from app.services.discord_client import (
 	build_role_create_payload,
@@ -31,7 +31,7 @@ def _get_token() -> str:
 
 
 @router.post("/refresh")
-async def refresh_roles_from_discord(_principal: dict = Depends(get_current_principal)) -> dict:
+async def refresh_roles_from_discord(_principal: dict = Depends(require_admin)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -46,7 +46,7 @@ async def refresh_roles_from_discord(_principal: dict = Depends(get_current_prin
 
 
 @router.post("/push")
-async def push_roles_to_discord(_principal: dict = Depends(get_current_principal)) -> dict:
+async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -156,7 +156,7 @@ class PermissionsPayload(BaseModel):
 async def update_role_permissions(
 	role_id: str,
 	payload: PermissionsPayload,
-	_principal: dict = Depends(get_current_principal),
+	_principal: dict = Depends(require_admin),
 ) -> dict:
 	"""特定ロールの権限を即時 Discord に反映（個別更新）。"""
 	token = _get_token()

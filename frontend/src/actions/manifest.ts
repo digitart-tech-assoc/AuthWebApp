@@ -4,6 +4,9 @@
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
 
+const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
+const IS_PROD = process.env.NODE_ENV === "production";
+
 export type ManifestCategory = {
 	id: string;
 	name: string;
@@ -34,14 +37,25 @@ export async function fetchManifest(): Promise<Manifest> {
 		throw new Error("unauthorized");
 	}
 
-	const res = await fetchBackend("/api/v1/manifest", {
+	let res = await fetchBackend("/api/v1/manifest", {
 		headers: { Authorization: authorization },
 		cache: "no-store",
 	});
 
+	// 開発環境向けフォールバック: Keycloakトークン検証に失敗した場合のみ再試行する
+	if (!res.ok && !IS_PROD && (res.status === 401 || res.status === 403) && SHARED_SECRET) {
+		res = await fetchBackend("/api/v1/manifest", {
+			headers: { Authorization: `Bearer ${SHARED_SECRET}` },
+			cache: "no-store",
+		});
+	}
+
 	if (!res.ok) {
 		if (res.status === 401) {
 			throw new Error("unauthorized");
+		}
+		if (res.status === 403) {
+			throw new Error("forbidden");
 		}
 		throw new Error(`manifest fetch failed: ${res.status}`);
 	}
