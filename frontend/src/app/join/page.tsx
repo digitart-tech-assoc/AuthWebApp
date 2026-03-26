@@ -1,63 +1,46 @@
 // 役割: 非会員ユーザー向けメッセージ・誘導ページ
 
-import { auth } from "@/auth";
+import { createSupabaseServer } from "@/lib/supabase";
+import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
-const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
 
-async function resolveRoleFromBackend(
-	accessToken: string | undefined,
-	sub: string | undefined,
-	fallbackRole: string,
-): Promise<string> {
-	if (accessToken) {
-		try {
-			const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
-				headers: { Authorization: `Bearer ${accessToken}` },
-				cache: "no-store",
-			});
-			if (res.ok) {
-				const data = (await res.json()) as { app_role?: string };
-				return data.app_role ?? fallbackRole;
-			}
-		} catch {
-			// フォールバックへ
-		}
-	}
-
+async function resolveRoleFromBackend(authorization: string): Promise<string> {
 	try {
-		if (!sub) {
-			return fallbackRole;
-		}
-		const url = `${BACKEND_URL}/api/v1/auth/role-by-sub?sub=${encodeURIComponent(sub)}`;
-		const res = await fetch(url, {
-			headers: { Authorization: `Bearer ${SHARED_SECRET}` },
+		const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+			headers: { Authorization: authorization },
 			cache: "no-store",
 		});
-		if (!res.ok) {
-			return fallbackRole;
+		if (res.ok) {
+			const data = (await res.json()) as { app_role?: string };
+			return data.app_role ?? "none";
 		}
-		const data = (await res.json()) as { app_role?: string };
-		return data.app_role ?? fallbackRole;
 	} catch {
-		return fallbackRole;
+		// フォールバック
 	}
+	return "none";
 }
 
 export default async function JoinPage() {
-	const session = await auth();
-	const sessionData = session as typeof session & {
-		accessToken?: string;
-		user?: { role?: string; discordId?: string | null; name?: string | null; sub?: string };
-	};
-	const fallbackRole = sessionData?.user?.role ?? "none";
-	const role = await resolveRoleFromBackend(sessionData?.accessToken, sessionData?.user?.sub, fallbackRole);
+	const supabase = await createSupabaseServer();
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	const authorization = await getBackendAuthorizationHeader();
+	const role = authorization ? await resolveRoleFromBackend(authorization) : "none";
 
 	// 既に会員の場合はリダイレクト
 	if (role && ["member", "admin", "obog"].includes(role)) {
 		redirect("/roles");
 	}
+
+	const discordName =
+		user?.user_metadata?.full_name ??
+		user?.user_metadata?.name ??
+		user?.email ??
+		"不明";
 
 	const isPaid = false; // TODO: バックエンドで確認（将来実装）
 
@@ -170,7 +153,7 @@ export default async function JoinPage() {
 			)}
 
 			<p style={{ fontSize: 13, color: "#9ca3af" }}>
-				Discordアカウント: {sessionData?.user?.discordId ?? (sessionData?.user?.name ?? "不明")}
+				Discordアカウント: {discordName}
 			</p>
 		</main>
 	);
