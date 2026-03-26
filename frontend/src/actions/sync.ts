@@ -3,8 +3,15 @@
 
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
+import { getSessionRole } from "@/lib/backendAuth";
 
 export async function triggerSync(): Promise<{ ok: boolean; guild_id?: string; roles?: number }> {
+	const role = await getSessionRole();
+	const allowed = new Set(["member", "admin", "obog"]);
+	if (!allowed.has(role)) {
+		throw new Error("forbidden");
+	}
+
 	const authorization = await getBackendAuthorizationHeader();
 	if (!authorization) {
 		throw new Error("unauthorized");
