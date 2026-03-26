@@ -16,6 +16,18 @@ export async function getBackendAuthorizationHeader(): Promise<string | null> {
 		return `Bearer ${accessToken}`;
 	}
 
+	try {
+		const {
+			data: { session: refreshedSession },
+		} = await supabase.auth.refreshSession();
+		const refreshedToken = refreshedSession?.access_token?.trim();
+		if (refreshedToken) {
+			return `Bearer ${refreshedToken}`;
+		}
+	} catch {
+		// refresh 失敗時は通常のフォールバックへ
+	}
+
 	if (!AUTH_REQUIRED) {
 		return `Bearer ${SHARED_SECRET}`;
 	}

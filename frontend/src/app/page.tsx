@@ -1,6 +1,21 @@
 import Image from "next/image";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+type HomePageProps = {
+  searchParams?:
+    | { code?: string; next?: string }
+    | Promise<{ code?: string; next?: string }>;
+};
+
+export default async function Home({ searchParams }: HomePageProps) {
+  const params = await Promise.resolve(searchParams);
+  const code = params?.code?.trim();
+  if (code) {
+    const requestedNext = params?.next ?? "/roles";
+    const next = requestedNext.startsWith("/") ? requestedNext : "/roles";
+    redirect(`/api/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`);
+  }
+
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">

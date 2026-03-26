@@ -1,37 +1,23 @@
 // 役割: Supabase OAuth コールバック処理
 
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createSupabaseRouteClient } from "@/lib/supabaseRoute";
+import { getBaseUrl } from "@/lib/url";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
 	const { searchParams, origin } = new URL(request.url);
 	const code = searchParams.get("code");
-	const next = searchParams.get("next") ?? "/roles";
+	const requestedNext = searchParams.get("next") ?? "/roles";
+	const next = requestedNext.startsWith("/") ? requestedNext : "/roles";
 
 	if (code) {
-		const cookieStore = await cookies();
-		const supabase = createServerClient(
-			process.env.NEXT_PUBLIC_SUPABASE_URL!,
-			process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-			{
-				cookies: {
-					getAll() {
-						return cookieStore.getAll();
-					},
-					setAll(cookiesToSet) {
-						cookiesToSet.forEach(({ name, value, options }) =>
-							cookieStore.set(name, value, options),
-						);
-					},
-				},
-			},
-		);
+		const { supabase, applyCookies } = createSupabaseRouteClient(request);
 
 		const { error } = await supabase.auth.exchangeCodeForSession(code);
 		if (!error) {
-			return NextResponse.redirect(`${origin}${next}`);
+			const base = getBaseUrl(request);
+			return applyCookies(NextResponse.redirect(`${base}${next}`));
 		}
 	}
 

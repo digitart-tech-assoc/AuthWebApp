@@ -10,8 +10,9 @@ export async function POST(request: NextRequest) {
 		typeof callbackValue === "string" && callbackValue.startsWith("/")
 			? callbackValue
 			: "/roles";
-	const { origin } = new URL(request.url);
+	const { getBaseUrl } = await import("@/lib/url");
+	const base = getBaseUrl(request as NextRequest);
 	return NextResponse.redirect(
-		`${origin}/api/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`,
+		`${base}/api/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`,
 	);
 }
