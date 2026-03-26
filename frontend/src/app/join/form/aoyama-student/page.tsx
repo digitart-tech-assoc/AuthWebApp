@@ -128,7 +128,7 @@ export default function AoyamaStudentFormPage() {
         </form>
       </section>
       {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
-      {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" onClose={() => setShowOtp(false)} />}
+      {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" autoSend onClose={() => setShowOtp(false)} />}
     </main>
   );
 }

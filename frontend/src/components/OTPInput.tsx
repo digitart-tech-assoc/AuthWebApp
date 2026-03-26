@@ -53,7 +53,7 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true }: P
       {Array.from({ length }).map((_, i) => (
         <input
           key={i}
-          ref={(el) => (inputs.current[i] = el)}
+          ref={(el) => { inputs.current[i] = el; }}
           inputMode="numeric"
           pattern="[0-9]*"
           maxLength={1}

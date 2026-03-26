@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import OTPInput from "./OTPInput";
 import { requestOtp, verifyOtp } from "../lib/join";
 import styles from "./OTPModal.module.css";
@@ -10,9 +10,10 @@ type Props = {
   name: string;
   formType: string;
   onClose?: () => void;
+  autoSend?: boolean;
 };
 
-export default function OTPModal({ email, name, formType, onClose }: Props) {
+export default function OTPModal({ email, name, formType, onClose, autoSend }: Props) {
   const [joinId, setJoinId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,13 @@ export default function OTPModal({ email, name, formType, onClose }: Props) {
       setStatus(null);
     }
   }
+
+  useEffect(() => {
+    if (autoSend && status === null) {
+      void sendOtp();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleComplete(code: string) {
     if (!joinId) return setError("No join id");
