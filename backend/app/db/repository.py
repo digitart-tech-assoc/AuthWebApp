@@ -8,7 +8,7 @@ from typing import Any
 import psycopg2
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://app:app@postgres:5432/authwebapp")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
 
 
 def _connect():
@@ -24,15 +24,9 @@ def init_db() -> None:
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
 					display_order INTEGER DEFAULT 0,
-					is_collapsed BOOLEAN DEFAULT FALSE
+					is_collapsed BOOLEAN DEFAULT FALSE,
+					permissions BIGINT DEFAULT 0
 				);
-				"""
-			)
-			# カテゴリ権限カラムを追加（既存DBへの後方互換対応）
-			cur.execute(
-				"""
-				ALTER TABLE role_categories
-				ADD COLUMN IF NOT EXISTS permissions BIGINT DEFAULT 0;
 				"""
 			)
 			cur.execute(
@@ -47,23 +41,18 @@ def init_db() -> None:
 					position INTEGER NOT NULL,
 					category_id TEXT REFERENCES role_categories(id) ON DELETE SET NULL,
 					is_managed_by_app BOOLEAN DEFAULT TRUE,
+					is_our_bot BOOLEAN DEFAULT FALSE,
 					updated_at TIMESTAMPTZ DEFAULT now()
 				);
 				"""
 			)
-			cur.execute(
-				"""
-				ALTER TABLE role_manifests
-				ADD COLUMN IF NOT EXISTS is_our_bot BOOLEAN DEFAULT FALSE;
-				"""
-			)
 
-			# ユーザー管理テーブル（アプリDB正本のRBAC）
+			# アプリユーザー RBAC（Supabase auth UUID をキーとして使用）
 			cur.execute(
 				"""
 				CREATE TABLE IF NOT EXISTS users (
 					id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-					keycloak_sub TEXT UNIQUE NOT NULL,
+					user_id TEXT UNIQUE NOT NULL,
 					discord_id TEXT UNIQUE,
 					app_role TEXT NOT NULL DEFAULT 'none'
 						CHECK (app_role IN ('member', 'admin', 'obog', 'pre_member', 'none')),
@@ -182,7 +171,7 @@ def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 				cur.execute("DELETE FROM role_manifests WHERE role_id NOT IN %s", (existing_ids,))
 			else:
 				cur.execute("DELETE FROM role_manifests")
-				
+
 			for role in roles:
 				cur.execute(
 					"""
@@ -217,5 +206,3 @@ def update_role_id(old_id: str, new_id: str) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
-
-
