@@ -207,10 +207,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   function deleteCategory(catId: string) {
     const nextCats = localCategories.filter((c) => c.id !== catId);
     setLocalCategories(nextCats);
-    setAllRoles((prev) => prev.filter((r) => r.category_id !== catId));
+    // Uncategorize roles (don't delete them)
+    setAllRoles((prev) => prev.map((r) => r.category_id === catId ? { ...r, category_id: null } : r));
     setHasUnsaved(true);
     setSaveState("idle");
-    showStatus({ kind: "info", msg: "カテゴリとそれに含まれるロールを削除しました（保存ボタンで確定）" });
+    showStatus({ kind: "info", msg: "カテゴリを削除しました。属していたロールは「未分類」に移動しました（保存ボタンで確定）" });
   }
 
   function deleteRole(roleId: string) {
@@ -295,7 +296,20 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     hoist: boolean; mentionable: boolean; permissions: number;
     position: number; category_id: string | null; is_our_bot?: boolean;
   }) {
-    setAllRoles((prev) => [...prev, role]);
+    // Assign the new role a position that places it at the bottom of editable roles.
+    // Editable roles are those below botPosition (or all roles if no bot found).
+    // Discord positions: higher number = higher in hierarchy. 0 = @everyone.
+    // We want lowest editable position = 1 (just above @everyone).
+    const editableRoles = botPosition !== undefined
+      ? allRoles.filter((r) => r.position < botPosition)
+      : allRoles;
+    const lowestEditablePos = editableRoles.length > 0
+      ? Math.min(...editableRoles.map((r) => r.position))
+      : 1;
+    // Place new role one below the current minimum to put it at the bottom
+    const newPos = Math.max(1, lowestEditablePos - 1);
+    const roleWithPos = { ...role, position: newPos };
+    setAllRoles((prev) => [...prev, roleWithPos]);
     setShowNewRole(false);
     showStatus({ kind: "success", msg: `ロール「${role.name}」を作成しました！（保存ボタンで確定）` });
     // Mark as unsaved so the manifest can be persisted with the new role
@@ -306,8 +320,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const categoryIds = new Set(localCategories.map((c) => c.id));
   const uncategorizedRoles = filteredRoles.filter((r) => !r.category_id || !categoryIds.has(r.category_id));
 
-  // Determine the highest position of the bot role to prevent editing roles above it
-  const botRole = allRoles.find((r) => r.is_our_bot);
+  // Determine the bot role: prefer is_our_bot flag, fall back to name 'bot' as a safety net
+  const botRole = allRoles.find((r) => r.is_our_bot) ?? allRoles.find((r) => r.name.toLowerCase() === "bot");
   const botPosition = botRole ? botRole.position : undefined;
   const botPermissions = botRole ? BigInt(botRole.permissions) : 0n;
 

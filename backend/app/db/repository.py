@@ -27,8 +27,15 @@ def init_db() -> None:
                         id TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         display_order INTEGER DEFAULT 0,
-                        is_collapsed BOOLEAN DEFAULT FALSE
+                        is_collapsed BOOLEAN DEFAULT FALSE,
+                        permissions BIGINT DEFAULT 0
                     );
+                    """
+                )
+                # Migration: add permissions column if it was created without it
+                cur.execute(
+                    """
+                    ALTER TABLE role_categories ADD COLUMN IF NOT EXISTS permissions BIGINT DEFAULT 0;
                     """
                 )
                 cur.execute(
@@ -128,7 +135,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 		with conn.cursor() as cur:
 			cur.execute(
 				"""
-				SELECT id, name, display_order, is_collapsed
+				SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
 				FROM role_categories
 				ORDER BY display_order ASC, name ASC
 				"""
@@ -139,6 +146,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
 					"name": row[1],
 					"display_order": row[2],
 					"is_collapsed": row[3],
+					"permissions": int(row[4]),
 				}
 				for row in cur.fetchall()
 			]

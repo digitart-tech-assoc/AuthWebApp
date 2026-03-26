@@ -99,14 +99,16 @@ function SortableRoleRow({
   const dotColor =
     !role.color || role.color === "#000000" ? "#d1d5db" : role.color;
 
-  // Detect if role has Administrator (bit 3) set
-  const isAdmin = Boolean(BigInt(role.permissions) & (1n << 3n));
-
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        cursor: isDisabled ? 'not-allowed' : undefined,
+        opacity: isDisabled ? 0.5 : 1,
+      }}
       className={`${styles.roleRow} ${isSelected ? styles.selected : ""} ${isDisabled ? styles.disabledRow : ""}`}
+      title={isDisabled ? "Botロール以上は編集できません" : undefined}
     >
       {/* Col 1: handle or checkbox */}
       <div className={styles.roleHandleCell}>
@@ -117,6 +119,7 @@ function SortableRoleRow({
             checked={isSelected}
             onChange={onToggle}
             aria-label={`${role.name} を選択`}
+            disabled={isDisabled}
           />
         ) : (
           <button
@@ -124,61 +127,44 @@ function SortableRoleRow({
             className={styles.dragHandle}
             aria-label={`${role.name} 並び替え`}
             disabled={!enableDrag || isDisabled}
-            style={isDisabled ? { cursor: 'not-allowed' } : {}}
+            style={{ cursor: isDisabled ? 'not-allowed' : 'grab' }}
             {...attributes}
-            {...listeners}
+            {...(isDisabled ? {} : listeners)}
           >
             <DragIcon />
           </button>
         )}
       </div>
 
-      {/* Col 2: dot + name + admin badge */}
-      <div className={styles.roleNameWrap}>
+      {/* Col 2: dot + name */}
+      <div className={styles.roleNameWrap} style={{ cursor: isDisabled ? 'not-allowed' : undefined }}>
         <span className={styles.roleDot} style={{ backgroundColor: dotColor }} />
         <span className={styles.roleName}>{role.name}</span>
-        {isAdmin && (
-          <span
-            style={{
-              fontSize: "10px",
-              background: "#fef3c7",
-              color: "#92400e",
-              borderRadius: "3px",
-              padding: "1px 5px",
-              fontWeight: 700,
-              flexShrink: 0,
-            }}
-          >
-            ADMIN
-          </span>
-        )}
       </div>
 
-      {/* Col 3: Default Empty space if no actions */}
+      {/* Col 3: action buttons — hidden for disabled roles */}
       <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '100px' }}>
-        {onPermissions && !onToggle && (
+        {onPermissions && !onToggle && !isDisabled && (
           <button
             type="button"
-            className={`${styles.permBtn} ${isDisabled ? styles.disabledBtn : ""}`}
-            onClick={isDisabled ? undefined : onPermissions}
-            aria-disabled={isDisabled}
+            className={styles.permBtn}
+            onClick={onPermissions}
             aria-label={`${role.name} の権限設定`}
-            title={isDisabled ? "Botより上の権限は編集できません" : "権限設定"}
+            title="権限設定"
           >
             <ShieldIcon />
             権限
           </button>
         )}
         
-        {onDelete && !onToggle && (
+        {onDelete && !onToggle && !isDisabled && (
           <button
             type="button"
             className={styles.roleDeleteBtn}
             onClick={onDelete}
             aria-label={`${role.name} を削除`}
             title="ロールを削除"
-            disabled={isDisabled}
-            style={{ background: 'none', border: 'none', color: isDisabled ? '#9ca3af' : '#ef4444', cursor: isDisabled ? 'not-allowed' : 'pointer', fontSize: '14px', padding: '4px' }}
+            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '4px' }}
           >
             ✕
           </button>
