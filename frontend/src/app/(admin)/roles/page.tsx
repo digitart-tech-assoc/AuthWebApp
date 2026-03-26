@@ -70,11 +70,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	try {
 		manifest = await fetchManifest();
 	} catch (error) {
-		if (
-			error instanceof Error &&
-			(error.message === "unauthorized" ||
-				error.message.includes("manifest fetch failed"))
-		) {
+		if (error instanceof Error && error.message === "unauthorized") {
 			redirect("/login?callbackUrl=%2Froles");
 		}
 		if (error instanceof Error && error.message === "forbidden") {

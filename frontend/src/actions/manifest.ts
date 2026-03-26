@@ -32,29 +32,16 @@ export type Manifest = {
 };
 
 export async function fetchManifest(): Promise<Manifest> {
-	const role = await getSessionRole();
-	const allowed = new Set(["member", "admin", "obog"]);
-	if (!allowed.has(role)) {
-		throw new Error("forbidden");
-	}
-
+	// role 判定はバックエンド側で行う（デュアル判定を避ける）
 	const authorization = await getBackendAuthorizationHeader();
 	if (!authorization) {
 		throw new Error("unauthorized");
 	}
 
-	let res = await fetchBackend("/api/v1/manifest", {
+	const res = await fetchBackend("/api/v1/manifest", {
 		headers: { Authorization: authorization },
 		cache: "no-store",
 	});
-
-	// 開発環境向けフォールバック: Keycloakトークン検証に失敗した場合のみ再試行する
-	if (!res.ok && !IS_PROD && (res.status === 401 || res.status === 403) && SHARED_SECRET) {
-		res = await fetchBackend("/api/v1/manifest", {
-			headers: { Authorization: `Bearer ${SHARED_SECRET}` },
-			cache: "no-store",
-		});
-	}
 
 	if (!res.ok) {
 		if (res.status === 401) {

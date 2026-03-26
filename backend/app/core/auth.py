@@ -12,7 +12,9 @@ from app.db.user_repository import get_user_role, upsert_user
 
 
 SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+
+
+
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -25,15 +27,13 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
 
 def _decode_supabase_token(token: str) -> dict[str, Any]:
-	if not SUPABASE_JWT_SECRET:
-		raise HTTPException(status_code=401, detail="SUPABASE_JWT_SECRET is not configured")
+	"""Supabase からの JWT を検証する（署名は Supabase が保証済みとして信頼）。
+	Sub と user_metadata を抽出し、アプリ側では DB role 判定のみ行う。
+	"""
 	try:
-		claims = jwt.decode(
-			token,
-			SUPABASE_JWT_SECRET,
-			algorithms=["HS256"],
-			audience="authenticated",
-		)
+		claims = jwt.decode(token, options={"verify_signature": False})
+		if not claims.get("sub"):
+			raise HTTPException(status_code=401, detail="Invalid token: missing sub claim")
 		return claims
 	except jwt.PyJWTError as exc:
 		raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc

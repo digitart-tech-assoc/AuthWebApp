@@ -35,25 +35,28 @@ export async function getBackendAuthorizationHeader(): Promise<string | null> {
 	return null;
 }
 
-/** バックエンドの /auth/me を呼んでアプリロールを取得する */
+/** バックエンドの /auth/me を呼んでアプリロールを取得する。
+ * バックエンドが 401 を返した場合は login redirectさせるため、ここでは raise する。
+ */
 export async function getSessionRole(): Promise<string> {
 	const authorization = await getBackendAuthorizationHeader();
 	if (!authorization) {
-		return "none";
+		throw new Error("unauthorized");
 	}
 
-	try {
-		const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
-			headers: { Authorization: authorization },
-			cache: "no-store",
-		});
-		if (res.ok) {
-			const data = (await res.json()) as { app_role?: string };
-			return data.app_role ?? "none";
-		}
-	} catch {
-		// バックエンドが落ちている場合はフォールバック
+	const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
+		headers: { Authorization: authorization },
+		cache: "no-store",
+	});
+
+	if (res.status === 401 || res.status === 403) {
+		throw new Error(`auth-error-${res.status}`);
 	}
 
-	return "none";
+	if (res.ok) {
+		const data = (await res.json()) as { app_role?: string };
+		return data.app_role ?? "none";
+	}
+
+	throw new Error(`auth-error-${res.status}`);
 }

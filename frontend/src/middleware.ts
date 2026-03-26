@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
 		},
 	);
 
-	// セッションを更新（クッキーの有効期限を延長）
+	// セッション检查: 認証状態をリフレッシュ
 	const {
 		data: { user },
 	} = await supabase.auth.getUser();
