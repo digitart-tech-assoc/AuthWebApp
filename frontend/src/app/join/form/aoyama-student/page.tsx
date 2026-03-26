@@ -30,6 +30,7 @@ function buildAoyamaEmail(studentId: string): string {
 
 export default function AoyamaStudentFormPage() {
   const [studentId, setStudentId] = useState("");
+  const [name, setName] = useState("");
   const [showOtp, setShowOtp] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -59,7 +60,12 @@ export default function AoyamaStudentFormPage() {
         <form className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label}>氏名<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: 山田 太郎" />
+            <input
+              className={styles.input}
+              placeholder="例: 山田 太郎"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>学生番号<span className={styles.required}>*</span></label>
@@ -122,7 +128,7 @@ export default function AoyamaStudentFormPage() {
         </form>
       </section>
       {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
-      {showOtp && <OTPModal email={otpEmail} name="" formType="aoyama-student" onClose={() => setShowOtp(false)} />}
+      {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" onClose={() => setShowOtp(false)} />}
     </main>
   );
 }

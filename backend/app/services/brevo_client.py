@@ -81,9 +81,15 @@ digitart Technology Society
 © 2026 All rights reserved.
 		"""
 
+		# Ensure recipient name is present for Brevo API (some templates require it)
+		recipient_name = (name or "").strip()
+		if not recipient_name:
+			# fallback to local-part of email if name is missing
+			recipient_name = email.split("@")[0]
+
 		payload = {
 			"sender": {"email": self.sender_email, "name": self.sender_name},
-			"to": [{"email": email, "name": name}],
+			"to": [{"email": email, "name": recipient_name}],
 			"subject": subject,
 			"htmlContent": html_body,
 			"textContent": text_body,
