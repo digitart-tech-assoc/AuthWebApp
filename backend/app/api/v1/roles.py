@@ -74,6 +74,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	deleted = 0
 	skipped_managed = 0
 	errors = []
+	created_real_ids: set[str] = set()  # track real Discord IDs for newly created roles
 
 	for role in desired_roles:
 		role_id = role["role_id"]
@@ -82,14 +83,15 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			try:
 				new_role_discord = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
 				created += 1
+				real_id = new_role_discord["role_id"]
 				# Replace temporary draft ID with the real Discord ID in the local DB
 				if str(role_id).startswith("draft-"):
-					real_id = new_role_discord["role_id"]
 					await asyncio.to_thread(update_role_id, role_id, real_id)
 					# Update our local mapping so the real role isn't accidentally deleted below
 					desired_by_id[real_id] = role
 					role["role_id"] = real_id
 					actual_by_id[real_id] = new_role_discord
+					created_real_ids.add(real_id)
 			except Exception as exc:
 				msg = f"Failed to create role locally {role_id}: {exc}"
 				print(msg)
@@ -125,12 +127,18 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			print(msg)
 			errors.append(msg)
 
+	# Build position payload: sort all desired roles by their position value (ascending = lower priority).
+	# Assign contiguous 1..N positions so Discord gets a clean, gapless ordering.
+	# Include roles that were just created (created_real_ids) since their real IDs are now in actual_by_id.
 	desired_roles_sorted = sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
 	position_payload = []
 	current_pos = 1
 	for role in desired_roles_sorted:
-		if role["role_id"] in actual_by_id and role["role_id"] != DISCORD_GUILD_ID:
-			position_payload.append({"id": role["role_id"], "position": current_pos})
+		rid = role["role_id"]
+		if rid == DISCORD_GUILD_ID:
+			continue
+		if rid in actual_by_id or rid in created_real_ids:
+			position_payload.append({"id": rid, "position": current_pos})
 			current_pos += 1
 	reordered = 0
 	if position_payload:
