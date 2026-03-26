@@ -128,6 +128,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 			<RoleAccordion
 				categories={manifest.categories}
 				roles={manifest.roles}
+				accessRole={role}
 			/>
 		</main>
 	);
