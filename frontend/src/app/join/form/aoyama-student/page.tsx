@@ -1,7 +1,39 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import styles from "../../../join/join.module.css";
 
+const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
+
+function buildAoyamaEmail(studentId: string): string {
+  const headMap: Record<string, string> = {
+    "1": "a",
+    "2": "b",
+    "3": "c",
+    "4": "d",
+    S: "s",
+  };
+
+  const normalized = studentId.trim();
+  const first = normalized.charAt(0).toUpperCase();
+  const tail = normalized.slice(1).toLowerCase();
+  const prefix = headMap[first];
+
+  if (!prefix) {
+    return "";
+  }
+
+  return `${prefix}${tail}@aoyama.ac.jp`;
+}
+
 export default function AoyamaStudentFormPage() {
+  const [studentId, setStudentId] = useState("");
+
+  const normalizedStudentId = useMemo(() => studentId.trim(), [studentId]);
+  const isStudentIdValid = STUDENT_ID_PATTERN.test(normalizedStudentId.toUpperCase());
+  const autoCompletedEmail = isStudentIdValid ? buildAoyamaEmail(normalizedStudentId) : "";
+
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
@@ -17,11 +49,32 @@ export default function AoyamaStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>学生番号<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: 12345678" />
+            <input
+              className={styles.input}
+              placeholder="例: 1A234567"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              aria-invalid={!isStudentIdValid && normalizedStudentId.length > 0}
+            />
+            {!isStudentIdValid && normalizedStudentId.length > 0 ? (
+              <p className={styles.errorText}>
+                学生番号は先頭が 1 / 2 / 3 / 4 / S で、全8文字の英数字で入力してください。
+              </p>
+            ) : (
+              <p className={styles.helperText}>
+                入力形式に合致すると、メールアドレスを自動補完します。
+              </p>
+            )}
           </div>
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
-            <input className={styles.input} type="email" placeholder="example@aoyama.jp" />
+            <input
+              className={styles.input}
+              type="email"
+              placeholder="学生番号から自動補完"
+              value={autoCompletedEmail}
+              readOnly
+            />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>質問等</label>
