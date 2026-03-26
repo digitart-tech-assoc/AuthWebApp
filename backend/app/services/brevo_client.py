@@ -18,7 +18,7 @@ class BrevoClient:
 	def __init__(self):
 		self.api_key = os.getenv("BREVO_API_KEY")
 		self.sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@example.com")
-		self.sender_name = os.getenv("BREVO_SENDER_NAME", "digitart Technology Society")
+		self.sender_name = os.getenv("BREVO_SENDER_NAME", "Digitart Technology Society")
 		self.base_url = "https://api.brevo.com/v3"
 
 		if not self.api_key:
@@ -42,7 +42,7 @@ class BrevoClient:
 		Returns:
 			{"message_id": "...", "status": "success"} or {"error": "..."}
 		"""
-		subject = "メール認証コード - digitart"
+		subject = "メール認証コード - Digitart"
 		
 		# HTML body
 		html_body = f"""
@@ -57,7 +57,7 @@ class BrevoClient:
 			<p style="color: #64748b;">このメールに心当たりがない場合は、このメッセージを無視してください。</p>
 			<hr style="border: none; border-top: 1px solid #e5e7eb;">
 			<p style="font-size: 12px; color: #94a3b8;">
-				digitart Technology Society<br>
+				Digitart Technology Association<br>
 				© 2026 All rights reserved.
 			</p>
 		</body>
@@ -66,7 +66,7 @@ class BrevoClient:
 
 		# Text fallback
 		text_body = f"""
-メール認証コード - digitart
+メール認証コード - Digitart
 
 こんにちは {name} さん、
 
@@ -77,7 +77,7 @@ class BrevoClient:
 このメールに心当たりがない場合は、このメッセージを無視してください。
 
 ---
-digitart Technology Society
+Digitart Technology Association
 © 2026 All rights reserved.
 		"""
 
@@ -139,21 +139,21 @@ digitart Technology Society
 		Returns:
 			{"message_id": "...", "status": "success"} or {"error": "..."}
 		"""
-		subject = "Discord招待リンク - digitart"
+		subject = "Discord招待リンク - Digitart"
 
 		html_body = f"""
 		<html>
 		<body style="font-family: Arial, sans-serif; color: #333;">
 			<h2 style="color: #2563eb;">Discord 招待リンク</h2>
 			<p>こんにちは {name} さん、</p>
-			<p>認証が完了しました。以下のリンクから Discord サーバーに参加してください（招待は一度のみ使用可能、期限あり）。</p>
+			<p>認証が完了しました。以下のリンクから Discord サーバーに参加してください（招待は一度のみ使用可能、期限あり(7日間)）。</p>
 			<div style="background-color: #f8fafc; padding: 16px; border-radius: 8px;">
 				<p style="margin:0;"><a href=\"{invite_url}\" target=\"_blank\" rel=\"noreferrer\">{invite_url}</a></p>
 			</div>
 			<p style="color: #64748b;">問題がある場合はこのメールに返信してください。</p>
 			<hr style="border: none; border-top: 1px solid #e5e7eb;">
 			<p style="font-size: 12px; color: #94a3b8;">
-				digitart Technology Society<br>
+				Digitart Technology Association<br>
 				© 2026 All rights reserved.
 			</p>
 		</body>
@@ -161,17 +161,17 @@ digitart Technology Society
 		"""
 
 		text_body = f"""
-Discord 招待リンク - digitart
+        Discord 招待リンク - Digitart
 
-こんにちは {name} さん、
+        こんにちは {name} さん、
 
-認証が完了しました。以下のリンクから Discord サーバーに参加してください：
+        認証が完了しました。以下のリンクから Discord サーバーに参加してください：
 
-{invite_url}
+        {invite_url}
 
----
-digitart Technology Society
-© 2026 All rights reserved.
+        ---
+        Digitart Technology Association
+        © 2026 All rights reserved.
 		"""
 
 		recipient_name = (name or "").strip()
