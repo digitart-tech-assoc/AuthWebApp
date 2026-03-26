@@ -12,6 +12,7 @@ from app.api.v1.roles import router as roles_router
 from app.api.v1.sync import router as sync_router
 from app.api.v1.users import router as users_router
 from app.api.v1.join import router as join_router
+from app.api.v1.contact import router as contact_router
 from app.db.repository import init_db
 
 
@@ -42,3 +43,4 @@ app.include_router(roles_router)
 app.include_router(sync_router)
 app.include_router(users_router)
 app.include_router(join_router)
+app.include_router(contact_router)

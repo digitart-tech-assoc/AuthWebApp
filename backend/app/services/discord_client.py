@@ -193,3 +193,32 @@ async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, 
 		response = await client.post(url, headers=_headers(token), json=payload)
 		response.raise_for_status()
 		return response.json()
+
+
+async def send_message_to_channel(channel_id: str, token: str, content: str | None = None, embed: dict | None = None) -> dict:
+	"""チャンネルにメッセージを送信する
+
+	Args:
+		channel_id: チャンネル ID
+		token: Bot トークン
+		content: メッセージ本文（テキスト）
+		embed: 埋め込みオブジェクト（Discord Embed形式）
+
+	Returns:
+		送信されたメッセージのペイロード
+	"""
+	url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
+	payload: dict = {}
+	
+	if content:
+		payload["content"] = content
+	if embed:
+		payload["embeds"] = [embed] if isinstance(embed, dict) else embed
+	
+	if not payload:
+		raise ValueError("content or embed must be provided")
+	
+	async with httpx.AsyncClient(timeout=10.0) as client:
+		response = await client.post(url, headers=_headers(token), json=payload)
+		response.raise_for_status()
+		return response.json()
