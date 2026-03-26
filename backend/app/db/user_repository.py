@@ -7,24 +7,24 @@ from typing import Any
 from app.db.repository import _connect
 
 
-def find_user_by_sub(keycloak_sub: str) -> dict[str, Any] | None:
-	"""keycloak_sub でユーザーを検索する。見つからない場合は None を返す。"""
+def find_user_by_sub(user_id: str) -> dict[str, Any] | None:
+	"""user_id (Supabase auth UUID) でユーザーを検索する。見つからない場合は None を返す。"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
 				"""
-				SELECT id, keycloak_sub, discord_id, app_role, created_at, updated_at
+				SELECT id, user_id, discord_id, app_role, created_at, updated_at
 				FROM users
-				WHERE keycloak_sub = %s
+				WHERE user_id = %s
 				""",
-				(keycloak_sub,),
+				(user_id,),
 			)
 			row = cur.fetchone()
 			if row is None:
 				return None
 			return {
 				"id": row[0],
-				"keycloak_sub": row[1],
+				"user_id": row[1],
 				"discord_id": row[2],
 				"app_role": row[3],
 				"created_at": row[4],
@@ -32,43 +32,23 @@ def find_user_by_sub(keycloak_sub: str) -> dict[str, Any] | None:
 			}
 
 
-def find_discord_id_by_keycloak_sub(keycloak_sub: str) -> str | None:
-	"""Keycloak user_id(sub) から federated_identity の discord_id を解決する。"""
-	if not keycloak_sub:
-		return None
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT federated_user_id
-				FROM federated_identity
-				WHERE identity_provider = 'discord'
-				  AND user_id = %s
-				LIMIT 1
-				""",
-				(keycloak_sub,),
-			)
-			row = cur.fetchone()
-			return None if row is None else row[0]
-
-
-def upsert_user(keycloak_sub: str, discord_id: str | None = None) -> dict[str, Any]:
+def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 	"""ユーザーを存在すれば返し、存在しなければ app_role='none' で新規作成する。
 	discord_id は初回登録時のみ設定し、以後は更新しない（上書きしない）。
 	"""
-	if not keycloak_sub:
-		raise ValueError("keycloak_sub is required")
+	if not user_id:
+		raise ValueError("user_id is required")
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			# 1) keycloak_sub 一致を最優先
+			# 1) user_id 一致を最優先
 			cur.execute(
 				"""
-				SELECT id, keycloak_sub, discord_id, app_role
+				SELECT id, user_id, discord_id, app_role
 				FROM users
-				WHERE keycloak_sub = %s
+				WHERE user_id = %s
 				""",
-				(keycloak_sub,),
+				(user_id,),
 			)
 			row = cur.fetchone()
 			if row is not None:
@@ -79,29 +59,29 @@ def upsert_user(keycloak_sub: str, discord_id: str | None = None) -> dict[str, A
 						UPDATE users
 						SET discord_id = %s, updated_at = now()
 						WHERE id = %s
-						RETURNING id, keycloak_sub, discord_id, app_role
+						RETURNING id, user_id, discord_id, app_role
 						""",
 						(discord_id, row[0]),
 					)
 					updated = cur.fetchone()
 					return {
 						"id": updated[0],
-						"keycloak_sub": updated[1],
+						"user_id": updated[1],
 						"discord_id": updated[2],
 						"app_role": updated[3],
 					}
 				return {
 					"id": row[0],
-					"keycloak_sub": row[1],
+					"user_id": row[1],
 					"discord_id": row[2],
 					"app_role": row[3],
 				}
 
-			# 2) discord_id 一致があれば、既存ロールを保ったまま keycloak_sub を最新化
+			# 2) discord_id 一致があれば、既存ロールを保ったまま user_id を最新化
 			if discord_id:
 				cur.execute(
 					"""
-					SELECT id, keycloak_sub, discord_id, app_role
+					SELECT id, user_id, discord_id, app_role
 					FROM users
 					WHERE discord_id = %s
 					""",
@@ -112,16 +92,16 @@ def upsert_user(keycloak_sub: str, discord_id: str | None = None) -> dict[str, A
 					cur.execute(
 						"""
 						UPDATE users
-						SET keycloak_sub = %s, updated_at = now()
+						SET user_id = %s, updated_at = now()
 						WHERE id = %s
-						RETURNING id, keycloak_sub, discord_id, app_role
+						RETURNING id, user_id, discord_id, app_role
 						""",
-						(keycloak_sub, by_discord[0]),
+						(user_id, by_discord[0]),
 					)
 					updated = cur.fetchone()
 					return {
 						"id": updated[0],
-						"keycloak_sub": updated[1],
+						"user_id": updated[1],
 						"discord_id": updated[2],
 						"app_role": updated[3],
 					}
@@ -129,30 +109,30 @@ def upsert_user(keycloak_sub: str, discord_id: str | None = None) -> dict[str, A
 			# 3) どちらにも一致しない場合だけ新規作成
 			cur.execute(
 				"""
-				INSERT INTO users (keycloak_sub, discord_id, app_role)
+				INSERT INTO users (user_id, discord_id, app_role)
 				VALUES (%s, %s, 'none')
-				RETURNING id, keycloak_sub, discord_id, app_role
+				RETURNING id, user_id, discord_id, app_role
 				""",
-				(keycloak_sub, discord_id),
+				(user_id, discord_id),
 			)
 			row = cur.fetchone()
 			return {
 				"id": row[0],
-				"keycloak_sub": row[1],
+				"user_id": row[1],
 				"discord_id": row[2],
 				"app_role": row[3],
 			}
 
 
-def get_user_role(keycloak_sub: str) -> str:
+def get_user_role(user_id: str) -> str:
 	"""ユーザーのapp_roleを返す。未登録の場合は 'none' を返す。"""
-	user = find_user_by_sub(keycloak_sub)
+	user = find_user_by_sub(user_id)
 	if user is None:
 		return "none"
 	return user["app_role"]
 
 
-def update_user_role(keycloak_sub: str, role: str) -> None:
+def update_user_role(user_id: str, role: str) -> None:
 	"""ユーザーのapp_roleを更新する。"""
 	valid_roles = {"member", "admin", "obog", "pre_member", "none"}
 	if role not in valid_roles:
@@ -162,9 +142,9 @@ def update_user_role(keycloak_sub: str, role: str) -> None:
 			cur.execute(
 				"""
 				UPDATE users SET app_role = %s, updated_at = now()
-				WHERE keycloak_sub = %s
+				WHERE user_id = %s
 				""",
-				(role, keycloak_sub),
+				(role, user_id),
 			)
 
 
