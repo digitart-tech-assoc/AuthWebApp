@@ -41,6 +41,16 @@ export default function AoyamaStudentFormPage() {
         <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
+      <section className={styles.card} style={{ marginBottom: 16 }}>
+        <h2 className={styles.cardTitle}>入会の流れ</h2>
+        <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", lineHeight: 1.6 }}>
+          <li>必要事項（氏名、学生番号 等）を入力して「送信」を押してください。</li>
+          <li>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</li>
+          <li>メールに届いた認証パスワードをこのページの確認欄に入力して検証してください。</li>
+          <li>検証成功後、Discord招待リンクが発行されます。リンクからサーバーに参加してください。</li>
+        </ol>
+      </section>
+
       <section className={styles.card}>
         <form className={styles.form}>
           <div className={styles.field}>
@@ -69,11 +79,13 @@ export default function AoyamaStudentFormPage() {
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
             <input
-              className={styles.input}
+              className={`${styles.input} ${styles.readOnlyInput}`}
               type="email"
               placeholder="学生番号から自動補完"
               value={autoCompletedEmail}
               readOnly
+              aria-readonly="true"
+              title="学生番号から自動補完されるため編集できません"
             />
           </div>
           <div className={styles.field}>
