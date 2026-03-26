@@ -37,12 +37,12 @@ export default function AoyamaStudentFormPage() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <h1 className={styles.title}>入会フォーム（青山学院大学の学生）</h1>
+        <h1 className={styles.title}>仮入会フォーム（青山学院大学の学生）</h1>
         <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
       <section className={styles.card} style={{ marginBottom: 16 }}>
-        <h2 className={styles.cardTitle}>入会の流れ</h2>
+        <h2 className={styles.cardTitle}>仮入会の流れ</h2>
         <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", lineHeight: 1.6 }}>
           <li>必要事項（氏名、学生番号 等）を入力して「送信」を押してください。</li>
           <li>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</li>
