@@ -16,6 +16,46 @@
   box-shadow: 0 6px 18px rgba(15,23,42,0.04);
 }
 
+.heroNonMember {
+  padding: 36px;
+}
+
+.heroContent {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.heroCard {
+  width: 320px;
+  background: linear-gradient(180deg,#ffffff,#fbfdff);
+  border: 1px solid rgba(15,23,42,0.03);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 8px 30px rgba(2,6,23,0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.badge {
+  background: linear-gradient(90deg,#06b6d4,#3b82f6);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.kicker {
+  margin: 6px 0 10px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
 .title {
   margin: 0 0 8px;
   font-size: 26px;
