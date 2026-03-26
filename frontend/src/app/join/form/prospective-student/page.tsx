@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { useState } from "react";
 import styles from "../../../join/join.module.css";
@@ -10,6 +12,8 @@ export default function ProspectiveStudentFormPage() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [confirmEmailTouched, setConfirmEmailTouched] = useState(false);
 
   const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
 
@@ -95,6 +99,27 @@ export default function ProspectiveStudentFormPage() {
               <p className={styles.errorText} id="email-help">メールサーバーが見つかりません。ドメイン名を確認してください。</p>
             ) : (
               <p className={styles.helperText} id="email-help">入力後にドメインのMXレコードを確認します（ネットワークの影響で検証できない場合があります）。</p>
+            )}
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label}>メールアドレス（確認）<span className={styles.required}>*</span></label>
+            <input
+              className={styles.input}
+              type="email"
+              placeholder="example@mail.com"
+              value={confirmEmail}
+              onChange={(e) => setConfirmEmail(e.target.value)}
+              onBlur={() => setConfirmEmailTouched(true)}
+              inputMode="email"
+              aria-invalid={confirmEmailTouched && (confirmEmail !== email || !emailFormatValid(confirmEmail))}
+              aria-describedby="confirm-email-help"
+            />
+            {confirmEmailTouched && confirmEmail !== email ? (
+              <p className={styles.errorText} id="confirm-email-help">メールアドレスが一致しません。</p>
+            ) : confirmEmailTouched && !emailFormatValid(confirmEmail) ? (
+              <p className={styles.errorText} id="confirm-email-help">確認用メールアドレスの形式が正しくありません。</p>
+            ) : (
+              <p className={styles.helperText} id="confirm-email-help">上と同じメールアドレスを再入力してください。</p>
             )}
           </div>
           <div className={styles.field}>
