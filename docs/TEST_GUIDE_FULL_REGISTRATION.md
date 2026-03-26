@@ -71,16 +71,17 @@ EOF
 ### テスト Case 1: 資格確認 - 全条件満たす
 
 **前提**:
-- Keycloak で `discord:test_discord_001` にログイン
-- Discord ID: `test_discord_001`
+- Supabase Auth で Discord ログイン（テスト用 Discord アカウント）
+- Discord ID: `test_discord_001` が pre_member_list と paid_invitations に登録済み
 
 **手順**:
 1. ブラウザで `http://localhost:3000/join/form` にアクセス
-2. フォームが読み込まれるまで待機
+2. Supabase Auth のログイン画面で Discord でログイン
+3. フォームが読み込まれるまで待機
 
 **期待結果**:
 - ✓ Step 1 (資格確認) が表示される
-- ✓ Discord ログイン: ✓ 確認済み
+- ✓ Discord ログイン: ✓ 確認済み（Supabase user_metadata から抽出）
 - ✓ Pre-member 登録: ✓ 登録済み
 - ✓ 支払済み確認: ✓ 確認済み
 - ✓ 「続行」ボタンが有効
@@ -91,7 +92,7 @@ EOF
 ### テスト Case 2: 資格確認 - Pre-member 未登録
 
 **前提**:
-- Keycloak で `discord:test_discord_999` にログイン
+- Supabase Auth で Discord ログイン（テスト用 Discord アカウント別）
 - Discord ID: `test_discord_999` (pre_member_list に未登録)
 
 **手順**:
@@ -110,7 +111,7 @@ EOF
 ### テスト Case 3: 個人情報入力 - 既存プロフィール自動入力
 
 **前提**:
-- Test Discord ID: `test_discord_001` でログイン
+- Test Discord ID: `test_discord_001` でログイン（Supabase Auth）
 - Step 1 で「続行」をクリック
 
 **手順**:

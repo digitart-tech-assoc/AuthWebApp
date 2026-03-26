@@ -71,10 +71,10 @@
 ```
 サイトアクセス (/join/form)
     ↓
-[ページ読み込み] Keycloak session 確認
+[ページ読み込み] Supabase Auth session 確認
     ↓
 [Step 1] validate-eligibility API 呼び出し
-    - Discord リンク確認
+    - Discord ログイン確認（Supabase user_metadata から Discord ID 抽出）
     - pre_member_list チェック
     - paid_invitations チェック
     ↓ (全条件 OK の場合)

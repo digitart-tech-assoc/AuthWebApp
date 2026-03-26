@@ -69,7 +69,7 @@ alembic upgrade head
 
 #### POST /api/v1/student/validate-eligibility
 **説明**: 入会資格確認。ログイン後、フロント側がチェック  
-**認証**: Bearer (Keycloak token)  
+**認証**: Bearer (Supabase JWT token)  
 **レスポンス**:
 ```json
 {
@@ -83,7 +83,7 @@ alembic upgrade head
 
 #### POST /api/v1/student/otp/send
 **説明**: 大学メール(@aoyama.ac.jp)に OTP を送信  
-**認証**: Bearer (Keycloak token)  
+**認証**: Bearer (Supabase JWT token)  
 **リクエスト**:
 ```json
 {
@@ -102,7 +102,7 @@ alembic upgrade head
 
 #### POST /api/v1/student/otp/verify
 **説明**: OTP を検証  
-**認証**: Bearer (Keycloak token)  
+**認証**: Bearer (Supabase JWT token)  
 **リクエスト**:
 ```json
 {
@@ -119,7 +119,7 @@ alembic upgrade head
 
 #### POST /api/v1/student/profile
 **説明**: 入会情報を保存  
-**認証**: Bearer (Keycloak token)  
+**認証**: Bearer (Supabase JWT token)  
 **リクエスト**:
 ```json
 {
@@ -141,7 +141,7 @@ alembic upgrade head
 
 #### GET /api/v1/student/profile
 **説明**: Pre-member が既に登録している情報を取得  
-**認証**: Bearer (Keycloak token)  
+**認証**: Bearer (Supabase JWT token)  
 **レスポンス**:
 ```json
 {
