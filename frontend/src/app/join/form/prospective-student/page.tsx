@@ -9,6 +9,16 @@ export default function ProspectiveStudentFormPage() {
         <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
+      <section className={styles.card} style={{ marginBottom: 16 }}>
+        <h2 className={styles.cardTitle}>入会の流れ</h2>
+        <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", lineHeight: 1.6 }}>
+          <li>必要事項（氏名、メールアドレス 等）を入力して「送信」を押してください。</li>
+          <li>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</li>
+          <li>メールに届いた認証パスワードをこのページの確認欄に入力して検証してください。</li>
+          <li>検証成功後、Discord招待リンクが発行されます。リンクからサーバーに参加してください。</li>
+        </ol>
+      </section>
+
       <section className={styles.card}>
         <form className={styles.form}>
           <div className={styles.field}>
@@ -24,8 +34,8 @@ export default function ProspectiveStudentFormPage() {
             <input className={styles.input} placeholder="例: 2027年度" />
           </div>
           <div className={styles.field}>
-            <label className={styles.label}>自己紹介</label>
-            <textarea className={styles.textarea} placeholder="興味分野など" />
+            <label className={styles.label}>質問等</label>
+            <textarea className={styles.textarea} placeholder="質問、連絡事項等あればご記入ください" />
           </div>
           <div className={styles.actions}>
             <button type="button" className={styles.primary}>送信（モック）</button>
