@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import OTPInput from "./OTPInput";
 import { requestOtp, verifyOtp } from "../lib/join";
+import styles from "./OTPModal.module.css";
 
 type Props = {
   email: string;
@@ -45,53 +46,58 @@ export default function OTPModal({ email, name, formType, onClose }: Props) {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(2,6,23,0.5)", zIndex: 9999 }}>
-      <div style={{ background: "white", padding: 24, borderRadius: 8, width: 520, maxWidth: "96%" }}>
-        <h3>メール認証コードの送信</h3>
-        <p style={{ color: "#374151" }}>送信先: {email}</p>
+    <div className={styles.backdrop} role="dialog" aria-modal="true">
+      <div className={styles.modal}>
+        <div className={styles.header}>
+          <h3 className={styles.title}>メール認証コードの送信</h3>
+          <p className={styles.subtitle}>送信先: {email}</p>
+        </div>
 
-        {status === null && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={sendOtp} style={{ padding: "8px 12px" }}>送信</button>
-            <button onClick={onClose} style={{ padding: "8px 12px" }}>キャンセル</button>
-          </div>
-        )}
-
-        {status === "sending" && <p>送信中…</p>}
-        {status === "sent" && (
-          <div>
-            <p>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
-            <OTPInput onComplete={handleComplete} />
-            <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-              <button onClick={sendOtp} style={{ padding: "8px 12px" }}>再送</button>
-              <button onClick={onClose} style={{ padding: "8px 12px" }}>閉じる</button>
+        <div className={styles.body}>
+          {status === null && (
+            <div className={styles.row}>
+              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`}>送信</button>
+              <button onClick={onClose} className={styles.button}>キャンセル</button>
             </div>
-          </div>
-        )}
+          )}
 
-        {status === "verifying" && <p>確認中…</p>}
+          {status === "sending" && <p className={styles.info}>送信中…</p>}
 
-        {status === "verified" && (
-          <div>
-            <p style={{ color: "green" }}>認証に成功しました。</p>
-            {inviteUrl ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <p style={{ margin: 0 }}>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer">{inviteUrl}</a></p>
-                <button
-                  onClick={() => void navigator.clipboard.writeText(inviteUrl)}
-                  style={{ padding: "6px 10px" }}
-                >コピー</button>
+          {status === "sent" && (
+            <div>
+              <p className={styles.info}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
+              <OTPInput onComplete={handleComplete} />
+              <div className={styles.row} style={{ marginTop: 12 }}>
+                <button onClick={sendOtp} className={styles.button}>再送</button>
+                <button onClick={onClose} className={styles.button}>閉じる</button>
               </div>
-            ) : (
-              <p>招待リンクはまもなく届きます。</p>
-            )}
-            <div style={{ marginTop: 12 }}>
-              <button onClick={onClose} style={{ padding: "8px 12px" }}>閉じる</button>
             </div>
-          </div>
-        )}
+          )}
 
-        {error && <p style={{ color: "#b91c1c" }}>エラー: {error}</p>}
+          {status === "verifying" && <p className={styles.info}>確認中…</p>}
+
+          {status === "verified" && (
+            <div>
+              <p className={styles.success}>認証に成功しました。</p>
+              {inviteUrl ? (
+                <div className={styles.inviteRow}>
+                  <p className={styles.inviteText}>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer" className={styles.inviteLink}>{inviteUrl}</a></p>
+                  <button
+                    onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+                    className={`${styles.button} ${styles.copyButton}`}
+                  >コピー</button>
+                </div>
+              ) : (
+                <p className={styles.info}>招待リンクはまもなく届きます。</p>
+              )}
+              <div style={{ marginTop: 12 }}>
+                <button onClick={onClose} className={styles.button}>閉じる</button>
+              </div>
+            </div>
+          )}
+
+          {error && <p className={styles.error}>エラー: {error}</p>}
+        </div>
       </div>
     </div>
   );
