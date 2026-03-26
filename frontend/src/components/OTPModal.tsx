@@ -75,7 +75,13 @@ export default function OTPModal({ email, name, formType, onClose }: Props) {
           <div>
             <p style={{ color: "green" }}>認証に成功しました。</p>
             {inviteUrl ? (
-              <p>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer">{inviteUrl}</a></p>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <p style={{ margin: 0 }}>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer">{inviteUrl}</a></p>
+                <button
+                  onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+                  style={{ padding: "6px 10px" }}
+                >コピー</button>
+              </div>
             ) : (
               <p>招待リンクはまもなく届きます。</p>
             )}
