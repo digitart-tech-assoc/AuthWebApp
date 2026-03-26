@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import OTPModal from "../../../../components/OTPModal";
 import styles from "../../../join/join.module.css";
 
 export default function ProspectiveStudentFormPage() {
@@ -14,6 +15,9 @@ export default function ProspectiveStudentFormPage() {
   const [emailExists, setEmailExists] = useState<boolean | null>(null);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [confirmEmailTouched, setConfirmEmailTouched] = useState(false);
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
 
@@ -57,7 +61,6 @@ export default function ProspectiveStudentFormPage() {
     <main className={styles.page}>
       <section className={styles.hero}>
         <h1 className={styles.title}>仮入会フォーム（青山学院大学入学見込み）</h1>
-        <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
       <section className={styles.card} style={{ marginBottom: 16 }}>
@@ -150,11 +153,37 @@ export default function ProspectiveStudentFormPage() {
             <textarea className={styles.textarea} placeholder="質問、連絡事項等あればご記入ください" />
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.primary}>送信（モック）</button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => {
+                console.log("送信ボタン押下", { email, confirmEmail });
+                setFormError(null);
+                setEmailTouched(true);
+                setConfirmEmailTouched(true);
+                if (!email || !confirmEmail) {
+                  setFormError("メールアドレスと確認用欄を入力してください。");
+                  return;
+                }
+                if (email !== confirmEmail) {
+                  setFormError("メールアドレスが一致しません。");
+                  return;
+                }
+                setOtpEmail(email);
+                setShowOtp(true);
+              }}
+            >
+              送信
+            </button>
             <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
           </div>
         </form>
       </section>
+      {showOtp && (
+        <OTPModal email={otpEmail} name="" formType="prospective-student" onClose={() => setShowOtp(false)} />
+      )}
+      {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
     </main>
   );
 }
+

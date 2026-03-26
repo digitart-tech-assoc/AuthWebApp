@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import styles from "../../../join/join.module.css";
+import OTPModal from "../../../../components/OTPModal";
 
 const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
 
@@ -29,6 +30,10 @@ function buildAoyamaEmail(studentId: string): string {
 
 export default function AoyamaStudentFormPage() {
   const [studentId, setStudentId] = useState("");
+  const [name, setName] = useState("");
+  const [showOtp, setShowOtp] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const normalizedStudentId = useMemo(() => studentId.trim(), [studentId]);
   const isStudentIdValid = STUDENT_ID_PATTERN.test(normalizedStudentId.toUpperCase());
@@ -38,7 +43,6 @@ export default function AoyamaStudentFormPage() {
     <main className={styles.page}>
       <section className={styles.hero}>
         <h1 className={styles.title}>仮入会フォーム（青山学院大学の学生）</h1>
-        <p className={styles.lead}>モック画面です。実送信は未接続です。</p>
       </section>
 
       <section className={styles.card} style={{ marginBottom: 16 }}>
@@ -55,7 +59,12 @@ export default function AoyamaStudentFormPage() {
         <form className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label}>氏名<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: 山田 太郎" />
+            <input
+              className={styles.input}
+              placeholder="例: 山田 太郎"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>学生番号<span className={styles.required}>*</span></label>
@@ -93,11 +102,32 @@ export default function AoyamaStudentFormPage() {
             <textarea className={styles.textarea} placeholder="質問、連絡事項等あればご記入ください" />
           </div>
           <div className={styles.actions}>
-            <button type="button" className={styles.primary}>送信（モック）</button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => {
+                console.log("aoyama 送信ボタン押下", { studentId, autoCompletedEmail });
+                setFormError(null);
+                if (!isStudentIdValid) {
+                  setFormError("学生番号が正しくありません。");
+                  return;
+                }
+                if (!autoCompletedEmail) {
+                  setFormError("自動補完されたメールアドレスが生成できません。");
+                  return;
+                }
+                setOtpEmail(autoCompletedEmail);
+                setShowOtp(true);
+              }}
+            >
+              送信
+            </button>
             <Link className={styles.secondary} href="/join/form">区分選択に戻る</Link>
           </div>
         </form>
       </section>
+      {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
+      {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" autoSend onClose={() => setShowOtp(false)} />}
     </main>
   );
 }
