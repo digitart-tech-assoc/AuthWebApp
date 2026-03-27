@@ -39,6 +39,14 @@ app.include_router(internal_router)
 async def on_ready() -> None:
 	logger.info("Discord bot ready: %s", bot.user)
 
+	# Start daily cleanup loop after bot is ready to avoid running network calls
+	# before dependent services (like backend) are reachable.
+	try:
+		if not daily_cleanup.is_running():
+			daily_cleanup.start()
+	except Exception:
+		logger.exception("Failed to start daily_cleanup task")
+
 
 @bot.event
 async def on_member_join(member: discord.Member) -> None:
@@ -102,13 +110,6 @@ async def run_web_api() -> None:
 
 
 async def main() -> None:
-	# Start daily cleanup loop when bot is ready
-	try:
-		daily_cleanup.start()
-	except Exception:
-		# If tasks cannot be started (no bot), ignore
-		pass
-
 	await asyncio.gather(run_web_api(), run_bot_if_configured())
 
 
