@@ -77,10 +77,35 @@ def init_db() -> None:
                     CREATE TABLE IF NOT EXISTS paid_invitations ( 
                         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
                         discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
                         note TEXT,
                         expires_at TIMESTAMPTZ,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
                         created_at TIMESTAMPTZ DEFAULT now()
                     );
+                    """
+                )
+                # Migration: add assigned_by and assigned_at columns if missing
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS user_id TEXT;
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS assigned_by TEXT DEFAULT 'unknown';
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ DEFAULT now();
+                    """
+                )
+                # 既存の NULL 値を 'unknown' に更新
+                cur.execute(
+                    """
+                    UPDATE paid_invitations SET assigned_by = 'unknown' WHERE assigned_by IS NULL;
                     """
                 )
 
@@ -535,26 +560,31 @@ def add_to_member_list(
 def register_paid_invitation(
 	discord_id: str,
 	note: str | None = None,
+	assigned_by: str | None = None,
 ) -> dict[str, Any]:
 	"""入会費支払い済みユーザーを paid_invitations に登録。
 	
 	Args:
 		discord_id: Discord user ID
 		note: Payment method or note
+		assigned_by: admin's discord_id or user_id
 		
 	Returns:
 		{"discord_id": "...", "created": True/False}
 	"""
+	# assigned_by が None の場合はデフォルト値を使用
+	final_assigned_by = assigned_by or "unknown"
+	
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
 				"""
-				INSERT INTO paid_invitations (discord_id, note)
-				VALUES (%s, %s)
-				ON CONFLICT (discord_id) DO UPDATE SET note = EXCLUDED.note, created_at = now()
-				RETURNING id, created_at
+				INSERT INTO paid_invitations (discord_id, note, assigned_by)
+				VALUES (%s, %s, %s)
+				ON CONFLICT (discord_id) DO UPDATE SET note = EXCLUDED.note, assigned_by = EXCLUDED.assigned_by, assigned_at = now()
+				RETURNING id, created_at, assigned_at
 				""",
-				(discord_id, note)
+				(discord_id, note, final_assigned_by)
 			)
 			result = cur.fetchone()
 			conn.commit()
@@ -562,7 +592,8 @@ def register_paid_invitation(
 			return {
 				"discord_id": discord_id,
 				"created": True,
-				"created_at": result[1].isoformat() if result[1] else None
+				"assigned_at": result[2].isoformat() if result[2] else None,
+				"assigned_by": final_assigned_by
 			}
 
 

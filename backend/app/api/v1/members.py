@@ -133,11 +133,28 @@ async def register_paid_invitation_endpoint(
 ) -> dict:
 	"""入会費支払い済みユーザーを paid_invitations に登録（admin のみ）。"""
 	try:
+		# assigned_by を確実に取得（複数の試行方法）
+		assigned_by = (
+			_principal.get("discord_id") 
+			or _principal.get("sub") 
+			or _principal.get("user_id")
+			or "unknown"
+		)
+		
+		# ログ出力（デバッグ用）
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.info(f"register_paid_invitation: principal={_principal}, assigned_by={assigned_by}")
+		
 		result = await asyncio.to_thread(
 			register_paid_invitation,
 			payload.discord_id,
 			payload.note,
+			assigned_by,
 		)
 		return {"ok": True, "data": result}
 	except Exception as e:
+		import logging
+		logger = logging.getLogger(__name__)
+		logger.error(f"Error in register_paid_invitation: {e}")
 		raise HTTPException(status_code=400, detail=str(e))
