@@ -17,7 +17,7 @@ export default function GenderSelect({
         性別
       </label>
       <div style={{ display: "flex", gap: "16px" }}>
-        {["male", "female", "other"].map((option) => (
+        {["male", "female"].map((option) => (
           <label
             key={option}
             style={{
@@ -37,7 +37,7 @@ export default function GenderSelect({
               disabled={disabled}
             />
             <span>
-              {option === "male" ? "男性" : option === "female" ? "女性" : "その他"}
+              {option === "male" ? "男性" : "女性"}
             </span>
           </label>
         ))}
