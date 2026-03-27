@@ -58,32 +58,37 @@ export default function JoinMemberPage() {
         const eligResult = await checkEligibility();
         setEligibility(eligResult);
 
+        // Do not early-return on not-allowed; allow the eligibility component
+        // to show detailed guidance (e.g. redirect to provisional form or contact).
         if (!eligResult.can_register) {
-          setError(eligResult.reason);
           setCurrentStep(1);
           setLoading(false);
-          return;
-        }
-
-        try {
-          const profile = await getStudentProfile();
-          if (profile) {
-            setExistingProfile(profile);
-            setFormData({
-              student_number: profile.student_number,
-              name: profile.name,
-              furigana: profile.furigana,
-              department: profile.department,
-              gender: profile.gender || null,
-              phone: profile.phone,
-            });
+          // keep `eligibility` populated and avoid setting `error` so the
+          // `FormStep1Eligibility` component can render helpful guidance.
+        } else {
+          // allowed to proceed: fetch profile and continue
+          try {
+            const profile = await getStudentProfile();
+            if (profile) {
+              setExistingProfile(profile);
+              setFormData({
+                student_number: profile.student_number,
+                name: profile.name,
+                furigana: profile.furigana,
+                department: profile.department,
+                gender: profile.gender || null,
+                phone: profile.phone,
+              });
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+
+          setCurrentStep(2);
+          setLoading(false);
         }
 
-        setCurrentStep(2);
-        setLoading(false);
+        // (profile fetching and step advancement handled above when allowed)
       } catch (err) {
         setError(err instanceof Error ? err.message : "予期しないエラーが発生しました");
         setLoading(false);
@@ -122,21 +127,7 @@ export default function JoinMemberPage() {
     );
   }
 
-  if (error && currentStep === 1) {
-    return (
-      <main className={styles.page}>
-        <div className={styles.hero}>
-          <h1 className={styles.title}>入会資格確認</h1>
-          <div style={{ color: "#dc2626", marginTop: 16 }}>
-            <p>{error}</p>
-            <button onClick={() => router.push("/join")} style={{ marginTop: 16, padding: "8px 16px", background: "#3b82f6", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>
-              戻る
-            </button>
-          </div>
-        </div>
-      </main>
-    );
-  }
+  // Do not short-circuit on `eligibility` failures; show FormStep1Eligibility instead.
 
   return (
     <main className={styles.page}>
