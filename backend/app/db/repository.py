@@ -421,6 +421,150 @@ def register_pre_member(discord_id: str) -> dict[str, Any]:
 			}
 
 
+def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
+	"""Pre-member list をユーザー情報とともに取得。
+	
+	Args:
+		search: user_id または discord_id で検索（部分一致）
+		
+	Returns:
+		[{"discord_id": "...", "user_id": "...", "assigned_at": "..."}, ...]
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			if search:
+				# user_id または discord_id で部分検索
+				cur.execute(
+					"""
+					SELECT p.discord_id, p.user_id, p.assigned_at, u.user_id as supabase_user_id
+					FROM pre_member_list p
+					LEFT JOIN users u ON p.discord_id = u.discord_id
+					WHERE p.discord_id ILIKE %s OR p.user_id ILIKE %s OR u.user_id ILIKE %s
+					ORDER BY p.assigned_at DESC
+					""",
+					(f"%{search}%", f"%{search}%", f"%{search}%")
+				)
+			else:
+				cur.execute(
+					"""
+					SELECT p.discord_id, p.user_id, p.assigned_at, u.user_id as supabase_user_id
+					FROM pre_member_list p
+					LEFT JOIN users u ON p.discord_id = u.discord_id
+					ORDER BY p.assigned_at DESC
+					"""
+				)
+			
+			results = []
+			for row in cur.fetchall():
+				results.append({
+					"discord_id": row[0],
+					"user_id": row[1],
+					"assigned_at": row[2].isoformat() if row[2] else None,
+					"supabase_user_id": row[3],
+				})
+			return results
+
+
+def add_to_member_list(
+	discord_id: str,
+	assigned_by: str,
+	note: str | None = None,
+) -> dict[str, Any]:
+	"""Pre-member を member_list に追加。
+	同時に paid_invitations にも登録する。
+	
+	Args:
+		discord_id: Discord user ID
+		assigned_by: admin's discord_id or user_id
+		note: Optional note for paid_invitations
+		
+	Returns:
+		{"discord_id": "...", "added_to_member_list": True/False}
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			# Check if already in member_list
+			cur.execute(
+				"SELECT discord_id FROM member_list WHERE discord_id = %s",
+				(discord_id,)
+			)
+			if cur.fetchone() is not None:
+				return {"discord_id": discord_id, "added_to_member_list": False, "message": "Already in member_list"}
+			
+			# Add to member_list
+			cur.execute(
+				"""
+				INSERT INTO member_list (discord_id, assigned_by)
+				VALUES (%s, %s)
+				RETURNING id, created_at
+				""",
+				(discord_id, assigned_by)
+			)
+			result = cur.fetchone()
+			
+			# Also register in paid_invitations if not already there
+			cur.execute(
+				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s",
+				(discord_id,)
+			)
+			if cur.fetchone() is None:
+				cur.execute(
+					"""
+					INSERT INTO paid_invitations (discord_id, note)
+					VALUES (%s, %s)
+					""",
+					(discord_id, note)
+				)
+			
+			# Remove from pre_member_list if present
+			cur.execute(
+				"DELETE FROM pre_member_list WHERE discord_id = %s",
+				(discord_id,)
+			)
+			
+			conn.commit()
+			
+			return {
+				"discord_id": discord_id,
+				"added_to_member_list": True,
+				"created_at": result[1].isoformat() if result[1] else None
+			}
+
+
+def register_paid_invitation(
+	discord_id: str,
+	note: str | None = None,
+) -> dict[str, Any]:
+	"""入会費支払い済みユーザーを paid_invitations に登録。
+	
+	Args:
+		discord_id: Discord user ID
+		note: Payment method or note
+		
+	Returns:
+		{"discord_id": "...", "created": True/False}
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				INSERT INTO paid_invitations (discord_id, note)
+				VALUES (%s, %s)
+				ON CONFLICT (discord_id) DO UPDATE SET note = EXCLUDED.note, created_at = now()
+				RETURNING id, created_at
+				""",
+				(discord_id, note)
+			)
+			result = cur.fetchone()
+			conn.commit()
+			
+			return {
+				"discord_id": discord_id,
+				"created": True,
+				"created_at": result[1].isoformat() if result[1] else None
+			}
+
+
 # ==================== OTP・Join Requests 関連 ====================
 
 def create_join_request(

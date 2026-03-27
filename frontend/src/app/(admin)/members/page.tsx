@@ -1,0 +1,226 @@
+"use client"
+
+import { useState, useCallback } from "react"
+import {
+  getPreMemberList,
+  addMember,
+  registerPaidInvitation,
+  PreMember,
+} from "@/actions/members"
+
+export default function MembersPage() {
+  const [members, setMembers] = useState<PreMember[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedMember, setSelectedMember] = useState<PreMember | null>(null)
+  const [noteInput, setNoteInput] = useState("")
+  const [actionLoading, setActionLoading] = useState(false)
+
+  // Fetch pre-member list
+  const loadMembers = useCallback(async (query?: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await getPreMemberList(query || undefined)
+      setMembers(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load members")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Handle search
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    loadMembers(searchQuery)
+  }
+
+  // Add to member list
+  const handleAddMember = async (member: PreMember) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      const result = await addMember(member.discord_id, noteInput)
+      if (result.ok && result.data.added_to_member_list) {
+        setMembers((prev) =>
+          prev.filter((m) => m.discord_id !== member.discord_id)
+        )
+        setSelectedMember(null)
+        setNoteInput("")
+      } else {
+        setError("Failed to add member")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add member")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  // Register paid invitation
+  const handleRegisterPaid = async (member: PreMember) => {
+    setActionLoading(true)
+    setError(null)
+    try {
+      const result = await registerPaidInvitation(member.discord_id, noteInput)
+      if (result.ok) {
+        setSelectedMember(null)
+        setNoteInput("")
+      } else {
+        setError("Failed to register paid invitation")
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to register paid invitation"
+      )
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      <h1 className="text-3xl font-bold">メンバー管理</h1>
+
+      {/* Search */}
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <input
+          type="text"
+          placeholder="ユーザーID または Discord ID で検索"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 px-4 py-2 border rounded-lg"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {loading ? "検索中..." : "検索"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSearchQuery("")
+            loadMembers()
+          }}
+          className="px-6 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500"
+        >
+          クリア
+        </button>
+      </form>
+
+      {/* Initial load */}
+      {members.length === 0 && !loading && searchQuery === "" && (
+        <button
+          onClick={() => loadMembers()}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+        >
+          初期化: Pre-member list を読み込む
+        </button>
+      )}
+
+      {/* Error message */}
+      {error && (
+        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Members list */}
+      <div className="space-y-3">
+        {members.length > 0 ? (
+          members.map((member) => (
+            <div
+              key={member.discord_id}
+              className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+            >
+              <div>
+                <div className="font-semibold">Discord ID: {member.discord_id}</div>
+                {member.supabase_user_id && (
+                  <div className="text-sm text-gray-600">
+                    Supabase ID: {member.supabase_user_id}
+                  </div>
+                )}
+                {member.user_id && (
+                  <div className="text-sm text-gray-600">User ID: {member.user_id}</div>
+                )}
+                {member.assigned_at && (
+                  <div className="text-xs text-gray-500">
+                    登録日: {new Date(member.assigned_at).toLocaleString("ja-JP")}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedMember(member)}
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  詳細
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-gray-500">
+            {loading ? "読み込み中..." : "Pre-member がいません"}
+          </p>
+        )}
+      </div>
+
+      {/* Modal for member actions */}
+      {selectedMember && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4">
+            <h2 className="text-2xl font-bold">
+              Discord ID: {selectedMember.discord_id}
+            </h2>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                メモ（オプション）
+              </label>
+              <textarea
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+                placeholder="入会費支払い方法など"
+                className="w-full px-3 py-2 border rounded-lg"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRegisterPaid(selectedMember)}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {actionLoading ? "処理中..." : "入会費清算"}
+              </button>
+              <button
+                onClick={() => handleAddMember(selectedMember)}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+              >
+                {actionLoading ? "処理中..." : "Member 追加"}
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setSelectedMember(null)
+                setNoteInput("")
+              }}
+              className="w-full px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
