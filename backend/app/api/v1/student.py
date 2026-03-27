@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
@@ -17,6 +18,8 @@ from app.services.brevo_client import send_otp_email
 
 
 router = APIRouter(prefix="/api/v1/student", tags=["student"])
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -256,6 +259,9 @@ async def send_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
+
+	logger.info("send_otp called: discord_id=%s student_number=%s", discord_id, req.student_number)
+
 	email_aoyama = _generate_student_email(req.student_number)
 	otp_code = _generate_otp_code()
 	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=600)  # 10 minutes
@@ -303,6 +309,7 @@ async def verify_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
+	logger.info("verify_otp called: discord_id=%s", discord_id)
 	# 最新の OTP レコードを取得（検証済みフラグに関わらず）
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -337,6 +344,7 @@ async def verify_otp(
 	# 有効期限確認
 	if otp["expires_at"] < datetime.now(timezone.utc):
 		raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+
 
 	# 試行回数確認（最大3回）
 	if otp["attempt_count"] >= 3:
@@ -384,9 +392,23 @@ async def create_student_profile(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
-	# OTP が検証済みか確認
-	otp = await asyncio.to_thread(_get_latest_otp, discord_id)
-	if otp is None or not otp["verified"]:
+	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
+	# OTP が検証済みか確認（最新レコードを取得して verified フラグを確認）
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT id, verified, verified_at, expires_at
+				FROM otp_records
+				WHERE discord_id = %s
+				ORDER BY created_at DESC
+				LIMIT 1
+				""",
+				(discord_id,),
+			)
+			row = cur.fetchone()
+
+	if row is None or not row[1]:
 		raise HTTPException(status_code=400, detail="OTP verification required")
 
 	email_aoyama = _generate_student_email(req.student_number)
@@ -447,6 +469,25 @@ async def create_student_profile(
 						email_aoyama,
 					),
 				)
+
+			# ロール変更：pre_memberからmemberへ
+			# 1. member_listに追加（まだ登録されていない場合）
+			cur.execute(
+				"""
+				INSERT INTO member_list (discord_id, assigned_at)
+				SELECT %s, now()
+				WHERE NOT EXISTS (SELECT 1 FROM member_list WHERE discord_id = %s)
+				""",
+				(discord_id, discord_id),
+			)
+
+			# 2. pre_member_listから削除
+			cur.execute(
+				"DELETE FROM pre_member_list WHERE discord_id = %s",
+				(discord_id,),
+			)
+
+			logger.info("Role changed: discord_id=%s (pre_member -> member)", discord_id)
 
 			conn.commit()
 
