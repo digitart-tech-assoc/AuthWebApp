@@ -428,7 +428,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 		search: user_id または discord_id で検索（部分一致）
 		
 	Returns:
-		[{"discord_id": "...", "user_id": "...", "assigned_at": "..."}, ...]
+		[{"discord_id": "...", "user_id": "...", "assigned_at": "...", ...}, ...]
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -461,6 +461,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 					"user_id": row[1],
 					"assigned_at": row[2].isoformat() if row[2] else None,
 					"supabase_user_id": row[3],
+					"discord_username": None,  # Will be populated by API with Discord API call
 				})
 			return results
 

@@ -168,6 +168,39 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 	return members
 
 
+async def fetch_guild_member(guild_id: str, user_id: str, token: str) -> dict | None:
+	"""ギルド内の特定メンバーの情報を取得。
+	
+	Args:
+		guild_id: Guild ID
+		user_id: User ID (Discord ID)
+		token: Bot token
+		
+	Returns:
+		{"user_id": "...", "username": "...", "display_name": "...", ...} or None if not found
+	"""
+	headers = {"Authorization": f"Bot {token}"}
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
+	
+	try:
+		async with httpx.AsyncClient(timeout=10.0) as client:
+			response = await client.get(url, headers=headers)
+			if response.status_code == 404:
+				return None
+			response.raise_for_status()
+			member = response.json()
+			return {
+				"user_id": member["user"]["id"],
+				"username": member["user"]["username"],
+				"discriminator": member["user"].get("discriminator", "0"),
+				"display_name": member.get("nick") or member["user"]["username"],
+				"avatar": member["user"].get("avatar"),
+			}
+	except Exception as e:
+		print(f"[ERROR] fetch_guild_member failed for {user_id}: {e}")
+		return None
+
+
 async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, max_age_seconds: int = 604800, unique: bool = True) -> dict:
 	"""Create a Discord invite for a specific channel.
 

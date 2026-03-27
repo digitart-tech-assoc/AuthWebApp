@@ -15,10 +15,13 @@ from app.db.repository import (
 	add_to_member_list,
 	register_paid_invitation,
 )
+from app.services.discord_client import fetch_guild_member
 
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
 SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 
 
 class PreMemberRequest(BaseModel):
@@ -64,9 +67,36 @@ async def get_pre_member_list(
 	
 	クエリパラメータ:
 	- search: user_id または discord_id で検索
+	
+	Discord APIからユーザー名を取得して附属させる。
 	"""
 	try:
 		result = await asyncio.to_thread(get_pre_member_list_with_users, search)
+		
+		# Discord API から各ユーザーの username を取得
+		if DISCORD_TOKEN and DISCORD_GUILD_ID:
+			for member in result:
+				try:
+					discord_member = await fetch_guild_member(
+						DISCORD_GUILD_ID,
+						member["discord_id"],
+						DISCORD_TOKEN
+					)
+					if discord_member:
+						member["discord_username"] = discord_member["username"]
+						member["discord_display_name"] = discord_member["display_name"]
+					else:
+						member["discord_username"] = "(not found)"
+						member["discord_display_name"] = None
+				except Exception as e:
+					print(f"Failed to fetch Discord user {member['discord_id']}: {e}")
+					member["discord_username"] = "(error)"
+					member["discord_display_name"] = None
+		else:
+			for member in result:
+				member["discord_username"] = "(token not configured)"
+				member["discord_display_name"] = None
+		
 		return {"ok": True, "data": result}
 	except Exception as e:
 		raise HTTPException(status_code=400, detail=str(e))

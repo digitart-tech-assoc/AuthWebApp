@@ -138,7 +138,20 @@ export default function MembersPage() {
               className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
             >
               <div>
-                <div className="font-semibold">Discord ID: {member.discord_id}</div>
+                {member.discord_username && (
+                  <div className="font-semibold text-lg">
+                    {member.discord_username}
+                    {member.discord_display_name &&
+                      member.discord_display_name !== member.discord_username && (
+                        <span className="text-sm text-gray-600 ml-2">
+                          ({member.discord_display_name})
+                        </span>
+                      )}
+                  </div>
+                )}
+                <div className="text-sm text-gray-600">
+                  Discord ID: {member.discord_id}
+                </div>
                 {member.supabase_user_id && (
                   <div className="text-sm text-gray-600">
                     Supabase ID: {member.supabase_user_id}
@@ -176,7 +189,20 @@ export default function MembersPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4">
             <h2 className="text-2xl font-bold">
-              Discord ID: {selectedMember.discord_id}
+              {selectedMember.discord_username && (
+                <div className="mb-2">
+                  {selectedMember.discord_username}
+                  {selectedMember.discord_display_name &&
+                    selectedMember.discord_display_name !== selectedMember.discord_username && (
+                      <div className="text-sm text-gray-600">
+                        ({selectedMember.discord_display_name})
+                      </div>
+                    )}
+                </div>
+              )}
+              <div className="text-base font-normal text-gray-600">
+                Discord ID: {selectedMember.discord_id}
+              </div>
             </h2>
 
             <div>
