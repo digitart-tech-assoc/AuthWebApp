@@ -38,9 +38,9 @@ export default function FormStep2Input({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // Allow either 7 digits (e.g. 2312345) or 7-char alphanumeric (must include at least one letter)
-    if (!formData.student_number.match(/^(?:\d{7}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
-      newErrors.student_number = "学生番号は7文字で、数字のみまたは英字を含む組合せが有効です（例: 2312345, A123456）";
+    // Allow either 8 digits (e.g. 2312345) or 7-char alphanumeric (must include at least one letter)
+    if (!formData.student_number.match(/^(?:\d{8}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
+      newErrors.student_number = "学生番号は8文字で、数字のみまたは英字を含む組合せが有効です（例: 23123456, A1234567）";
     }
 
     // 名前は姓と名の間に半角スペースを含み、ミドルネームも許容する正規表現で検証
