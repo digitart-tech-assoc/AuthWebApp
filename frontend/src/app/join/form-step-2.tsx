@@ -93,16 +93,13 @@ export default function FormStep2Input({
         <StudentNumberInput
           value={formData.student_number}
           onChange={(value) => {
-            console.log("[DEBUG] StudentNumber onChange:", value);
             const newData = { ...formData, student_number: value };
             // Auto-assign department(s) based on student ID
             const autoDepts = getDepartmentsFromStudentId(value);
-            console.log("[DEBUG] getDepartmentsFromStudentId returned:", autoDepts);
             if (autoDepts) {
               // If only one department, auto-select it
               // If multiple departments, clear selection so user must choose
               newData.department = autoDepts.length === 1 ? autoDepts[0] : "";
-              console.log("[DEBUG] Setting department to:", newData.department);
             }
             setFormData(newData);
           }}
