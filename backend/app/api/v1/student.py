@@ -32,7 +32,13 @@ class ValidateEligibilityResponse(BaseModel):
 
 
 class SendOTPRequest(BaseModel):
-	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$", description="学生番号 (e.g., A2312345)")
+	# Accept either legacy numeric form (A2312345 / 2312345) or the pre-member style
+	# that starts with 1/2/3/4/S followed by 7 alphanumeric chars (frontend STUDENT_ID_PATTERN).
+	student_number: str = Field(
+		...,
+		pattern=r"^(?:[Aa]?\d{7}|[1234S][A-Za-z0-9]{7})$",
+		description="学生番号 (e.g., A2312345, 2312345, or 1A234567)",
+	)
 	name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -52,7 +58,7 @@ class VerifyOTPResponse(BaseModel):
 
 
 class StudentProfileRequest(BaseModel):
-	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$")
+	student_number: str = Field(..., pattern=r"^(?:[Aa]?\d{7}|[1234S][A-Za-z0-9]{7})$")
 	name: str = Field(..., min_length=1, max_length=100)
 	furigana: str = Field(..., min_length=1, max_length=100)
 	department: str = Field(..., min_length=1, max_length=100)
@@ -86,7 +92,25 @@ def _generate_student_email(student_number: str) -> str:
 	"""学生番号から大学メールアドレスを生成
 	Examples: A2312345 → a2312345@aoyama.ac.jp
 	"""
-	return f"{student_number.lower()}@aoyama.ac.jp"
+	# フロントエンドの buildAoyamaEmail と同じルールを適用します。
+	# - 先頭が 1/2/3/4/S の場合はマップ {1:a,2:b,3:c,4:d,S:s} を使う
+	# - それ以外は従来通り先頭に 'a' を付与して小文字化する
+	s = student_number.strip()
+
+	# pre-member スタイルの先頭マップ
+	head_map = {"1": "a", "2": "b", "3": "c", "4": "d", "S": "s"}
+	if len(s) >= 1:
+		first = s[0].upper()
+		tail = s[1:].lower()
+		prefix = head_map.get(first)
+		if prefix:
+			return f"{prefix}{tail}@aoyama.ac.jp"
+
+	# デフォルトの正規化（例: A2312345 or 2312345 -> a2312345）
+	normalized = s.lower()
+	if not normalized.startswith("a"):
+		normalized = "a" + normalized
+	return f"{normalized}@aoyama.ac.jp"
 
 
 def _generate_otp_code(length: int = 6) -> str:
