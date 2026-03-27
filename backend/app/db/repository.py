@@ -447,35 +447,33 @@ def register_pre_member(discord_id: str) -> dict[str, Any]:
 
 
 def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
-	"""Pre-member list をユーザー情報とともに取得。
+	"""Pre-member list を pre_member_list から直接取得。
 	
 	Args:
-		search: user_id または discord_id で検索（部分一致）
+		search: discord_id で検索（部分一致）
 		
 	Returns:
-		[{"discord_id": "...", "user_id": "...", "assigned_at": "...", ...}, ...]
+		[{"discord_id": "...", "assigned_at": "...", ...}, ...]
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			if search:
-				# user_id または discord_id で部分検索
+				# discord_id で部分検索
 				cur.execute(
 					"""
-					SELECT p.discord_id, p.user_id, p.assigned_at, u.user_id as supabase_user_id
-					FROM pre_member_list p
-					LEFT JOIN users u ON p.discord_id = u.discord_id
-					WHERE p.discord_id ILIKE %s OR p.user_id ILIKE %s OR u.user_id ILIKE %s
-					ORDER BY p.assigned_at DESC
+					SELECT discord_id, assigned_at
+					FROM pre_member_list
+					WHERE discord_id ILIKE %s
+					ORDER BY assigned_at DESC
 					""",
-					(f"%{search}%", f"%{search}%", f"%{search}%")
+					(f"%{search}%",)
 				)
 			else:
 				cur.execute(
 					"""
-					SELECT p.discord_id, p.user_id, p.assigned_at, u.user_id as supabase_user_id
-					FROM pre_member_list p
-					LEFT JOIN users u ON p.discord_id = u.discord_id
-					ORDER BY p.assigned_at DESC
+					SELECT discord_id, assigned_at
+					FROM pre_member_list
+					ORDER BY assigned_at DESC
 					"""
 				)
 			
@@ -483,9 +481,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 			for row in cur.fetchall():
 				results.append({
 					"discord_id": row[0],
-					"user_id": row[1],
-					"assigned_at": row[2].isoformat() if row[2] else None,
-					"supabase_user_id": row[3],
+					"assigned_at": row[1].isoformat() if row[1] else None,
 					"discord_username": None,  # Will be populated by API with Discord API call
 				})
 			return results

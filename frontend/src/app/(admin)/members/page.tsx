@@ -88,7 +88,7 @@ export default function MembersPage() {
       <form onSubmit={handleSearch} className="flex gap-2">
         <input
           type="text"
-          placeholder="ユーザーID または Discord ID で検索"
+          placeholder="Discord ID で検索"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-1 px-4 py-2 border rounded-lg"

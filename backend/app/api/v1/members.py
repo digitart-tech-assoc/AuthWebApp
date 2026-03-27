@@ -66,7 +66,7 @@ async def get_pre_member_list(
 	"""Pre-member一覧を取得（admin のみ）。
 	
 	クエリパラメータ:
-	- search: user_id または discord_id で検索
+	- search: discord_id で検索
 	
 	Discord APIからユーザー名を取得して附属させる。
 	"""
