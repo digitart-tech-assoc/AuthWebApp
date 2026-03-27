@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from "react"
 import {
   getPreMemberList,
-  addMember,
   registerPaidInvitation,
   PreMember,
 } from "@/actions/members"
@@ -41,32 +40,6 @@ export default function MembersPage() {
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     loadMembers(searchQuery)
-  }
-
-  // Add to member list
-  const handleAddMember = async (member: PreMember) => {
-    setActionLoading(true)
-    setError(null)
-    try {
-      const result = await addMember(member.discord_id, noteInput)
-      if (result.ok && result.data.added_to_member_list) {
-        setMembers((prev) =>
-          prev.filter((m) => m.discord_id !== member.discord_id)
-        )
-        setSuccessMessage("Member を追加しました")
-        setTimeout(() => {
-          setSelectedMember(null)
-          setNoteInput("")
-          setSuccessMessage(null)
-        }, 1000)
-      } else {
-        setError("Failed to add member")
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add member")
-    } finally {
-      setActionLoading(false)
-    }
   }
 
   // Register paid invitation
@@ -236,22 +209,13 @@ export default function MembersPage() {
               />
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleRegisterPaid(selectedMember)}
-                disabled={actionLoading}
-                className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
-              >
-                {actionLoading ? "処理中..." : "入会費清算"}
-              </button>
-              <button
-                onClick={() => handleAddMember(selectedMember)}
-                disabled={actionLoading}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-              >
-                {actionLoading ? "処理中..." : "Member 追加"}
-              </button>
-            </div>
+            <button
+              onClick={() => handleRegisterPaid(selectedMember)}
+              disabled={actionLoading}
+              className="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
+            >
+              {actionLoading ? "処理中..." : "入会費清算"}
+            </button>
 
             <button
               onClick={() => {
