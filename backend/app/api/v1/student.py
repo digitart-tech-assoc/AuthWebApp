@@ -32,7 +32,7 @@ class ValidateEligibilityResponse(BaseModel):
 
 
 class SendOTPRequest(BaseModel):
-	student_number: str = Field(..., regex=r"^[Aa]\d{7}$", description="学生番号 (e.g., A2312345)")
+	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$", description="学生番号 (e.g., A2312345)")
 	name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -43,7 +43,7 @@ class SendOTPResponse(BaseModel):
 
 
 class VerifyOTPRequest(BaseModel):
-	code: str = Field(..., regex=r"^\d{6}$", description="OTPコード (6-digit)")
+	code: str = Field(..., pattern=r"^\d{6}$", description="OTPコード (6-digit)")
 
 
 class VerifyOTPResponse(BaseModel):
@@ -52,12 +52,12 @@ class VerifyOTPResponse(BaseModel):
 
 
 class StudentProfileRequest(BaseModel):
-	student_number: str = Field(..., regex=r"^[Aa]\d{7}$")
+	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$")
 	name: str = Field(..., min_length=1, max_length=100)
 	furigana: str = Field(..., min_length=1, max_length=100)
 	department: str = Field(..., min_length=1, max_length=100)
 	gender: str | None = None
-	phone: str = Field(..., regex=r"^\d{10,11}$", description="電話番号 (10-11 digits)")
+	phone: str = Field(..., pattern=r"^\d{10,11}$", description="電話番号 (10-11 digits)")
 
 
 class StudentProfileResponse(BaseModel):
