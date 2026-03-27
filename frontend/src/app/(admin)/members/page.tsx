@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   getPreMemberList,
   addMember,
@@ -30,6 +30,11 @@ export default function MembersPage() {
       setLoading(false)
     }
   }, [])
+
+  // Load members on mount
+  useEffect(() => {
+    loadMembers()
+  }, [loadMembers])
 
   // Handle search
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
@@ -111,16 +116,6 @@ export default function MembersPage() {
           クリア
         </button>
       </form>
-
-      {/* Initial load */}
-      {members.length === 0 && !loading && searchQuery === "" && (
-        <button
-          onClick={() => loadMembers()}
-          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-        >
-          初期化: Pre-member list を読み込む
-        </button>
-      )}
 
       {/* Error message */}
       {error && (
