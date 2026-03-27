@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authwebapp-backend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authwebapp-backend
+  template:
+    metadata:
+      labels:
+        app: authwebapp-backend
+    spec:
+      containers:
+        - name: authwebapp-backend
+          image: authwebapp-backend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8081
+          env:
+            - name: BACKEND_PORT
+              value: "8081"
+          envFrom:
+            - secretRef:
+                name: authwebapp-secret
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "1024Mi"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authwebapp-frontend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authwebapp-frontend
+  template:
+    metadata:
+      labels:
+        app: authwebapp-frontend
+    spec:
+      containers:
+        - name: authwebapp-frontend
+          image: authwebapp-frontend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5173
+          envFrom:
+            - secretRef:
+                name: authwebapp-secret
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authwebapp-discord-bot-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authwebapp-discord-bot
+  template:
+    metadata:
+      labels:
+        app: authwebapp-discord-bot
+    spec:
+      containers:
+        - name: authwebapp-discord-bot
+          image: authwebapp-discord-bot:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8000
+          env:
+            - name: BACKEND_URL
+              value: "http://authwebapp-backend-service:8081"
+          envFrom:
+            - secretRef:
+                name: authwebapp-secret
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"

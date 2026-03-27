@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: authwebapp-backend-service
+spec:
+  selector:
+    app: authwebapp-backend
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authwebapp-discord-bot-service
+spec:
+  selector:
+    app: authwebapp-discord-bot
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: authwebapp-frontend-service
+spec:
+  selector:
+    app: authwebapp-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5173
+  type: ClusterIP
+
+---
+# DNS alias service for frontend nginx upstream 'backend'
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: authwebapp-backend
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8000
+  type: ClusterIP

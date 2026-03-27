@@ -25,23 +25,20 @@ Next.js 15 (App Router) を採用する。フロントは UI と「宣言（Desi
 - UI コンポーネントは再利用可能に設計、README に使用方法を記載する。
 
 ## 実装メモ（2026-03-24）
-- Frontend は Auth.js（`next-auth`）+ Keycloak Provider を利用してサインインを処理する。
-- 保護対象ページ（現状: `/roles`）は未ログイン時に `/api/auth/signin` へリダイレクトする。
-- Backend への API 呼び出しは、Keycloak の access token を `Authorization: Bearer <token>` として転送する。
-- 段階移行のため `AUTH_REQUIRED=false` の場合は shared secret フォールバックを許可する。
+- Frontend は Supabase Auth を用いてサインインを処理します。
+- 保護対象ページ（現状: `/roles`）は未ログイン時に `/api/auth/signin` へリダイレクトします。
+- Backend への API 呼び出しは、Supabase のセッション／JWT を用いて認可します。
 
 ## 必要な環境変数（Frontend）
 - `AUTH_SECRET`
 - `AUTH_REQUIRED` (`true` / `false`)
-- `AUTH_KEYCLOAK_ISSUER`
-- `AUTH_KEYCLOAK_CLIENT_ID`
-- `AUTH_KEYCLOAK_CLIENT_SECRET`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `BACKEND_URL`
 
 ## トラブルシュート
 - 症状: `/api/auth/signin?callbackUrl=%2Froles` が 500 を返す。
-- 主因: Keycloak Provider の設定値不足（`AUTH_KEYCLOAK_ISSUER` / `AUTH_KEYCLOAK_CLIENT_ID` / `AUTH_KEYCLOAK_CLIENT_SECRET` が空）。
+- 主因: 認証プロバイダの設定値不足または `NEXT_PUBLIC_SUPABASE_*` が未設定。
 - 対処:
-	1. 上記 3 変数を設定する。
-	2. Keycloak Client の redirect URI に `http://localhost:5173/api/auth/callback/keycloak` を追加する。
-	3. `AUTH_REQUIRED=true` を使う場合は、Keycloak 設定値がすべて入っていることを確認する。
+	1. `NEXT_PUBLIC_SUPABASE_URL` と `NEXT_PUBLIC_SUPABASE_ANON_KEY` を確認する。
+	2. `AUTH_REQUIRED=true` を使う場合は、バックエンド側で Supabase JWT の検証設定が有効であることを確認する。

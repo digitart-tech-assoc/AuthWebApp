@@ -6,14 +6,16 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-	const { searchParams, origin } = new URL(request.url);
+	const { searchParams } = new URL(request.url);
 	const callbackUrl = searchParams.get("callbackUrl") ?? "/roles";
 	const { supabase, applyCookies } = createSupabaseRouteClient(request);
 
 	const { data, error } = await supabase.auth.signInWithOAuth({
 		provider: "discord",
 		options: {
-			redirectTo: `${origin}/api/auth/callback?next=${encodeURIComponent(callbackUrl)}`,
+			redirectTo: `${getBaseUrl(request)}/api/auth/callback?next=${encodeURIComponent(
+				callbackUrl,
+			)}`,
 		},
 	});
 
