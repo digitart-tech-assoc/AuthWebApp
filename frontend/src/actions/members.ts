@@ -31,6 +31,7 @@ export interface PreMember {
 	user_id: string | null;
 	assigned_at: string | null;
 	supabase_user_id: string | null;
+	is_paid: boolean;
 	discord_username?: string;
 	discord_display_name?: string | null;
 }

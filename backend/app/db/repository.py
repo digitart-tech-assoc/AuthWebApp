@@ -448,12 +448,13 @@ def register_pre_member(discord_id: str) -> dict[str, Any]:
 
 def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
 	"""Pre-member list を pre_member_list から直接取得。
+	paid_invitations に含まれているかどうかも判定。
 	
 	Args:
 		search: discord_id で検索（部分一致）
 		
 	Returns:
-		[{"discord_id": "...", "assigned_at": "...", ...}, ...]
+		[{"discord_id": "...", "assigned_at": "...", "is_paid": bool, ...}, ...]
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -461,19 +462,23 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 				# discord_id で部分検索
 				cur.execute(
 					"""
-					SELECT discord_id, assigned_at
-					FROM pre_member_list
-					WHERE discord_id ILIKE %s
-					ORDER BY assigned_at DESC
+					SELECT p.discord_id, p.assigned_at, 
+						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
+					FROM pre_member_list p
+					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
+					WHERE p.discord_id ILIKE %s
+					ORDER BY p.assigned_at DESC
 					""",
 					(f"%{search}%",)
 				)
 			else:
 				cur.execute(
 					"""
-					SELECT discord_id, assigned_at
-					FROM pre_member_list
-					ORDER BY assigned_at DESC
+					SELECT p.discord_id, p.assigned_at, 
+						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
+					FROM pre_member_list p
+					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
+					ORDER BY p.assigned_at DESC
 					"""
 				)
 			
@@ -482,6 +487,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 				results.append({
 					"discord_id": row[0],
 					"assigned_at": row[1].isoformat() if row[1] else None,
+					"is_paid": row[2],
 					"discord_username": None,  # Will be populated by API with Discord API call
 				})
 			return results

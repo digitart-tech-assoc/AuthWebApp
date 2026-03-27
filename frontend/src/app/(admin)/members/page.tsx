@@ -16,6 +16,7 @@ export default function MembersPage() {
   const [selectedMember, setSelectedMember] = useState<PreMember | null>(null)
   const [noteInput, setNoteInput] = useState("")
   const [actionLoading, setActionLoading] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   // Fetch pre-member list
   const loadMembers = useCallback(async (query?: string) => {
@@ -52,8 +53,12 @@ export default function MembersPage() {
         setMembers((prev) =>
           prev.filter((m) => m.discord_id !== member.discord_id)
         )
-        setSelectedMember(null)
-        setNoteInput("")
+        setSuccessMessage("Member を追加しました")
+        setTimeout(() => {
+          setSelectedMember(null)
+          setNoteInput("")
+          setSuccessMessage(null)
+        }, 1000)
       } else {
         setError("Failed to add member")
       }
@@ -71,8 +76,12 @@ export default function MembersPage() {
     try {
       const result = await registerPaidInvitation(member.discord_id, noteInput)
       if (result.ok) {
-        setSelectedMember(null)
-        setNoteInput("")
+        setSuccessMessage("入会費清算を完了しました")
+        setTimeout(() => {
+          setSelectedMember(null)
+          setNoteInput("")
+          setSuccessMessage(null)
+        }, 1000)
       } else {
         setError("Failed to register paid invitation")
       }
@@ -130,7 +139,11 @@ export default function MembersPage() {
           members.map((member) => (
             <div
               key={member.discord_id}
-              className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+              className={`flex items-center justify-between p-4 border rounded-lg ${
+                member.is_paid
+                  ? "bg-gray-100 opacity-50 cursor-not-allowed"
+                  : "hover:bg-gray-50"
+              }`}
             >
               <div>
                 {member.discord_username && (
@@ -165,9 +178,14 @@ export default function MembersPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setSelectedMember(member)}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  disabled={member.is_paid}
+                  className={`px-4 py-2 rounded ${
+                    member.is_paid
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-500 text-white hover:bg-blue-600"
+                  }`}
                 >
-                  詳細
+                  {member.is_paid ? "支払済み" : "詳細"}
                 </button>
               </div>
             </div>
@@ -183,6 +201,11 @@ export default function MembersPage() {
       {selectedMember && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4">
+            {successMessage && (
+              <div className="p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+                {successMessage}
+              </div>
+            )}
             <h2 className="text-2xl font-bold">
               {selectedMember.discord_username && (
                 <div className="mb-2">
