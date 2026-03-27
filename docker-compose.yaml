@@ -31,6 +31,10 @@ services:
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
       BOT_PORT: ${BOT_PORT:-8000}
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      PRE_MEMBER_ROLE_ID: ${PRE_MEMBER_ROLE_ID:-}
+      MEMBER_ROLE_IDS: ${MEMBER_ROLE_IDS:-}
+      ADMIN_ROLE_IDS: ${ADMIN_ROLE_IDS:-}
     ports:
       - "8001:8000"
     depends_on:

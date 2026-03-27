@@ -59,34 +59,64 @@ export default function FormStep1Eligibility({
             </p>
           </div>
 
-          <div
-            style={{
-              padding: "12px",
-              background: canContinue ? "#dcfce7" : "#fee2e2",
-              color: canContinue ? "#166534" : "#991b1b",
-              borderRadius: "6px",
-              marginBottom: "16px",
-            }}
-          >
-            <p>{eligibility.reason}</p>
-          </div>
+          {eligibility.is_pre_member ? (
+            <>
+              <div
+                style={{
+                  padding: "12px",
+                  background: canContinue ? "#dcfce7" : "#fee2e2",
+                  color: canContinue ? "#166534" : "#991b1b",
+                  borderRadius: "6px",
+                  marginBottom: "16px",
+                }}
+              >
+                <p>{eligibility.reason}</p>
+              </div>
 
-          {canContinue && (
-            <button
-              onClick={onContinue}
-              style={{
-                padding: "12px 24px",
-                background: "#3b82f6",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                fontSize: "16px",
-                fontWeight: "600",
-              }}
-            >
-              続行 →
-            </button>
+              {canContinue && (
+                <button
+                  onClick={onContinue}
+                  style={{
+                    padding: "12px 24px",
+                    background: "#3b82f6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontSize: "16px",
+                    fontWeight: "600",
+                  }}
+                >
+                  続行 →
+                </button>
+              )}
+            </>
+          ) : (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ padding: "12px", background: "#fff7ed", color: "#92400e", borderRadius: 6, marginBottom: 12 }}>
+                <p style={{ margin: 0 }}>
+                  現在、入会予定者リストに登録されていません。
+                </p>
+              </div>
+
+              <div style={{ marginBottom: 8 }}>
+                <p style={{ margin: 0 }}>
+                  - 初めてこのサークルに参加する方は、まず <a href="/join/form" style={{ color: "#0ea5e9" }}>仮入会フォーム</a> からお申込みください。
+                </p>
+              </div>
+
+              <div style={{ marginBottom: 8 }}>
+                <p style={{ margin: 0 }}>
+                  - 本入会（こちらの本入会フォーム）は、<strong>入会費をお支払いのうえ</strong> ご入力いただく必要があります。
+                </p>
+              </div>
+
+              <div>
+                <p style={{ margin: 0 }}>
+                  - すでに入会費をお支払い済みでこの表示が出る場合は、<a href="/contact" style={{ color: "#0ea5e9" }}>幹部会までお問い合わせ</a>ください。
+                </p>
+              </div>
+            </div>
           )}
         </div>
       )}

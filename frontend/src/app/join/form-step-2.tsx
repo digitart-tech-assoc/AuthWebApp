@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import styles from "./join.module.css";
+import StudentNumberInput from "@/components/forms/StudentNumberInput";
+import NameInput from "@/components/forms/NameInput";
+import FuriganaInput from "@/components/forms/FuriganaInput";
+import DepartmentSelect from "@/components/forms/DepartmentSelect";
+import GenderSelect from "@/components/forms/GenderSelect";
+import PhoneInput from "@/components/forms/PhoneInput";
+import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "../../lib/validation";
 
 interface FormData {
   student_number: string;
@@ -19,27 +26,6 @@ interface FormStep2Props {
   onBack: () => void;
 }
 
-const DEPARTMENTS = [
-  "経営学部経営学科",
-  "経営学部組織内情報学科",
-  "文学部日本文学科",
-  "文学部英米文学科",
-  "文学部フランス文学科",
-  "文学部ドイツ文学科",
-  "文学部歴史学科",
-  "文学部世界史学科",
-  "文学部日本史学科",
-  "文学部地理学科",
-  "理工学部電気電子工学科",
-  "理工学部機械創造工学科",
-  "理工学部情報テクノロジー学科",
-  "理工学部システムデザイン工学科",
-  "理工学部化学・生命科学科",
-  "教育学部教育学科",
-  "総合文化政策学部総合文化政策学科",
-  "社会ネットワーク学部社会ネットワーク学科",
-];
-
 export default function FormStep2Input({
   initialData,
   hasExistingProfile,
@@ -52,16 +38,18 @@ export default function FormStep2Input({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.student_number.match(/^[Aa]\d{7}$/)) {
-      newErrors.student_number = "学生番号は A で始まり7桁の数字です (例: A2312345)";
+    // Allow either 8 digits (e.g. 2312345) or 7-char alphanumeric (must include at least one letter)
+    if (!formData.student_number.match(/^(?:\d{8}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
+      newErrors.student_number = "学生番号は8文字で、数字のみまたは英字を含む組合せが有効です（例: 23123456, A1234567）";
     }
 
-    if (formData.name.trim().length === 0) {
-      newErrors.name = "名前を入力してください";
+    // 名前は姓と名の間に半角スペースを含み、ミドルネームも許容する正規表現で検証
+    if (!validateFullName(formData.name)) {
+      newErrors.name = "姓と名の間に半角スペースを入れてください（ミドルネームも許容）";
     }
 
-    if (formData.furigana.trim().length === 0) {
-      newErrors.furigana = "ふりがなを入力してください";
+    if (!validateFurigana(formData.furigana)) {
+      newErrors.furigana = "フリガナはカタカナで、姓と名の間に半角スペースを入れてください";
     }
 
     if (formData.department.trim().length === 0) {
@@ -103,170 +91,51 @@ export default function FormStep2Input({
       )}
 
       <form onSubmit={handleSubmit} style={{ marginTop: "16px" }}>
-        {/* 学生番号 */}
-        <div style={{ marginBottom: "16px" }}>
-          <label htmlFor="student_number" style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-            学生番号 <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
-            id="student_number"
-            type="text"
-            placeholder="A2312345"
-            value={formData.student_number}
-            onChange={(e) =>
-              setFormData({ ...formData, student_number: e.target.value.toUpperCase() })
+        <StudentNumberInput
+          value={formData.student_number}
+          onChange={(value) => {
+            const newData = { ...formData, student_number: value };
+            // Auto-assign department(s) based on student ID
+            const autoDepts = getDepartmentsFromStudentId(value);
+            if (autoDepts) {
+              // If only one department, auto-select it
+              // If multiple departments, clear selection so user must choose
+              newData.department = autoDepts.length === 1 ? autoDepts[0] : "";
             }
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: errors.student_number ? "2px solid #dc2626" : "1px solid #cbd5e1",
-              borderRadius: "6px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
-          {errors.student_number && (
-            <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>
-              {errors.student_number}
-            </p>
-          )}
-        </div>
+            setFormData(newData);
+          }}
+          error={errors.student_number}
+        />
 
-        {/* 名前 */}
-        <div style={{ marginBottom: "16px" }}>
-          <label htmlFor="name" style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-            名前 <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
-            id="name"
-            type="text"
-            placeholder="山田太郎"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: errors.name ? "2px solid #dc2626" : "1px solid #cbd5e1",
-              borderRadius: "6px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
-          {errors.name && (
-            <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>
-              {errors.name}
-            </p>
-          )}
-        </div>
+        <NameInput
+          value={formData.name}
+          onChange={(value) => setFormData({ ...formData, name: value })}
+          error={errors.name}
+        />
 
-        {/* ふりがな */}
-        <div style={{ marginBottom: "16px" }}>
-          <label htmlFor="furigana" style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-            ふりがな <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
-            id="furigana"
-            type="text"
-            placeholder="やまだたろう"
-            value={formData.furigana}
-            onChange={(e) => setFormData({ ...formData, furigana: e.target.value })}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: errors.furigana ? "2px solid #dc2626" : "1px solid #cbd5e1",
-              borderRadius: "6px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
-          {errors.furigana && (
-            <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>
-              {errors.furigana}
-            </p>
-          )}
-        </div>
+        <FuriganaInput
+          value={formData.furigana}
+          onChange={(value) => setFormData({ ...formData, furigana: value })}
+          error={errors.furigana}
+        />
 
-        {/* 学部学科 */}
-        <div style={{ marginBottom: "16px" }}>
-          <label htmlFor="department" style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-            学部学科 <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <select
-            id="department"
-            value={formData.department}
-            onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: errors.department ? "2px solid #dc2626" : "1px solid #cbd5e1",
-              borderRadius: "6px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          >
-            <option value="">選択してください</option>
-            {DEPARTMENTS.map((dept) => (
-              <option key={dept} value={dept}>
-                {dept}
-              </option>
-            ))}
-          </select>
-          {errors.department && (
-            <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>
-              {errors.department}
-            </p>
-          )}
-        </div>
+        <DepartmentSelect
+          value={formData.department}
+          onChange={(value) => setFormData({ ...formData, department: value })}
+          options={getDepartmentsFromStudentId(formData.student_number) || undefined}
+          error={errors.department}
+        />
 
-        {/* 性別 */}
-        <div style={{ marginBottom: "16px" }}>
-          <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>
-            性別
-          </label>
-          <div style={{ display: "flex", gap: "16px" }}>
-            {["male", "female", "other"].map((option) => (
-              <label key={option} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <input
-                  type="radio"
-                  name="gender"
-                  value={option}
-                  checked={formData.gender === option}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                />
-                <span>
-                  {option === "male" ? "男性" : option === "female" ? "女性" : "その他"}
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
+        <GenderSelect
+          value={formData.gender}
+          onChange={(value) => setFormData({ ...formData, gender: value })}
+        />
 
-        {/* 電話番号 */}
-        <div style={{ marginBottom: "24px" }}>
-          <label htmlFor="phone" style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-            電話番号 <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            placeholder="09012345678"
-            value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              border: errors.phone ? "2px solid #dc2626" : "1px solid #cbd5e1",
-              borderRadius: "6px",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
-          {errors.phone && (
-            <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "4px" }}>
-              {errors.phone}
-            </p>
-          )}
-        </div>
+        <PhoneInput
+          value={formData.phone}
+          onChange={(value) => setFormData({ ...formData, phone: value })}
+          error={errors.phone}
+        />
 
         {/* ボタン */}
         <div style={{ display: "flex", gap: "12px", justifyContent: "space-between" }}>

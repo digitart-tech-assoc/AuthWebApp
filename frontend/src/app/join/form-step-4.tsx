@@ -48,31 +48,6 @@ export default function FormStep4Complete({
           </p>
         </div>
 
-        <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "24px" }}>
-          次のステップで、Discord サーバーに参加してください。
-        </p>
-
-        <button
-          onClick={onComplete}
-          style={{
-            padding: "12px 32px",
-            background: "#3b82f6",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontSize: "16px",
-            fontWeight: "600",
-            marginBottom: "12px",
-            width: "100%",
-            maxWidth: "300px",
-            display: "block",
-            margin: "0 auto 12px",
-          }}
-        >
-          メンバーページへ →
-        </button>
-
         <Link
           href="/contact"
           style={{

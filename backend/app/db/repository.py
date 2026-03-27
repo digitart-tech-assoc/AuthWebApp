@@ -77,10 +77,35 @@ def init_db() -> None:
                     CREATE TABLE IF NOT EXISTS paid_invitations ( 
                         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
                         discord_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT,
                         note TEXT,
                         expires_at TIMESTAMPTZ,
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
                         created_at TIMESTAMPTZ DEFAULT now()
                     );
+                    """
+                )
+                # Migration: add assigned_by and assigned_at columns if missing
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS user_id TEXT;
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS assigned_by TEXT DEFAULT 'unknown';
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE paid_invitations ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ DEFAULT now();
+                    """
+                )
+                # 既存の NULL 値を 'unknown' に更新
+                cur.execute(
+                    """
+                    UPDATE paid_invitations SET assigned_by = 'unknown' WHERE assigned_by IS NULL;
                     """
                 )
 
@@ -386,6 +411,285 @@ def get_member_lists() -> dict[str, list[dict[str, Any]]]:
 		"admin_list": admins,
 		"pre_member_list": pre_members,
 	}
+
+
+def register_pre_member(discord_id: str, source: str | None = None) -> dict[str, Any]:
+	"""新しい参加者を pre_member_list に登録.
+	
+	Args:
+		discord_id: Discord user ID
+		
+	Returns:
+		{"discord_id": "...", "created": True/False}
+	"""
+	# If a source is provided, set assigned_by to that value and update assigned_at.
+	# If source is None, keep existing behavior (do nothing on conflict).
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			if source is None:
+				cur.execute(
+					"""
+					INSERT INTO pre_member_list (discord_id)
+					VALUES (%s)
+					ON CONFLICT (discord_id) DO NOTHING
+					RETURNING id, created_at, assigned_at
+					""",
+					(discord_id,)
+				)
+			else:
+				final_source = source
+				cur.execute(
+					"""
+					INSERT INTO pre_member_list (discord_id, assigned_by)
+					VALUES (%s, %s)
+					ON CONFLICT (discord_id) DO UPDATE SET assigned_by = EXCLUDED.assigned_by, assigned_at = now()
+					RETURNING id, created_at, assigned_at
+					""",
+					(discord_id, final_source)
+				)
+
+			result = cur.fetchone()
+			conn.commit()
+
+			if result is None:
+				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member_list"}
+
+			return {
+				"discord_id": discord_id,
+				"created": True,
+				"assigned_at": result[2].isoformat() if result[2] else result[1].isoformat() if result[1] else None,
+				"assigned_by": source,
+			}
+
+
+def expiry_from_assigned_at(assigned_at):
+	"""Calculate expiry (UTC) from an assigned_at datetime using fiscal-year logic (4月開始).
+
+	Returns a timezone-aware UTC datetime corresponding to that fiscal year's April 30 23:59:59 JST.
+	"""
+	from datetime import datetime, timezone
+	from zoneinfo import ZoneInfo
+
+	if assigned_at is None:
+		return None
+	jst = ZoneInfo("Asia/Tokyo")
+	# Ensure assigned_at is timezone-aware (assume UTC if naive)
+	if getattr(assigned_at, "tzinfo", None) is None:
+		assigned_at = assigned_at.replace(tzinfo=timezone.utc)
+	assigned_jst = assigned_at.astimezone(jst)
+	fiscal = assigned_jst.year if assigned_jst.month >= 4 else assigned_jst.year - 1
+	expiry_jst = datetime(fiscal + 1, 4, 30, 23, 59, 59, tzinfo=jst)
+	return expiry_jst.astimezone(timezone.utc)
+
+
+def cleanup_expired_prospective_members() -> dict[str, int]:
+	"""Remove expired prospective pre-members (assigned_by = 'P').
+
+	Returns a dict with counts: {"removed": n}
+	"""
+	from datetime import datetime, timezone
+	from zoneinfo import ZoneInfo
+
+	removed = 0
+	now = datetime.now(timezone.utc)
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT discord_id, assigned_at FROM pre_member_list WHERE assigned_by = %s", ("P",))
+			rows = cur.fetchall()
+			to_remove = []
+			for row in rows:
+				discord_id, assigned_at = row[0], row[1]
+				expiry = expiry_from_assigned_at(assigned_at)
+				if expiry is not None and expiry < now:
+					to_remove.append((discord_id, expiry))
+
+			# Ensure removal log table exists (best-effort)
+			try:
+				cur.execute(
+					"""
+					CREATE TABLE IF NOT EXISTS pre_member_removal_log (
+						id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+						discord_id TEXT NOT NULL,
+						source_flow TEXT,
+						expired_at TIMESTAMPTZ,
+						removed_at TIMESTAMPTZ DEFAULT now(),
+						reason TEXT,
+						created_at TIMESTAMPTZ DEFAULT now()
+					);
+					"""
+				)
+			except Exception:
+				# If creation fails, continue without log
+				pass
+
+			for discord_id, expiry in to_remove:
+				cur.execute("DELETE FROM pre_member_list WHERE discord_id = %s", (discord_id,))
+				try:
+					cur.execute(
+						"INSERT INTO pre_member_removal_log (discord_id, source_flow, expired_at, reason) VALUES (%s, %s, %s, %s)",
+						(discord_id, "P", expiry, "Expired prospective member"),
+					)
+				except Exception:
+					# swallow logging errors
+					pass
+				removed += 1
+
+		conn.commit()
+
+	return {"removed": removed}
+
+
+def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
+	"""Pre-member list を pre_member_list から直接取得。
+	paid_invitations に含まれているかどうかも判定。
+	
+	Args:
+		search: discord_id で検索（部分一致）
+		
+	Returns:
+		[{"discord_id": "...", "assigned_at": "...", "is_paid": bool, ...}, ...]
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			if search:
+				# discord_id で部分検索
+				cur.execute(
+					"""
+					SELECT p.discord_id, p.assigned_at, 
+						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
+					FROM pre_member_list p
+					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
+					WHERE p.discord_id ILIKE %s
+					ORDER BY p.assigned_at DESC
+					""",
+					(f"%{search}%",)
+				)
+			else:
+				cur.execute(
+					"""
+					SELECT p.discord_id, p.assigned_at, 
+						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
+					FROM pre_member_list p
+					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
+					ORDER BY p.assigned_at DESC
+					"""
+				)
+			
+			results = []
+			for row in cur.fetchall():
+				results.append({
+					"discord_id": row[0],
+					"assigned_at": row[1].isoformat() if row[1] else None,
+					"is_paid": row[2],
+					"discord_username": None,  # Will be populated by API with Discord API call
+				})
+			return results
+
+
+def add_to_member_list(
+	discord_id: str,
+	assigned_by: str,
+	note: str | None = None,
+) -> dict[str, Any]:
+	"""Pre-member を member_list に追加。
+	同時に paid_invitations にも登録する。
+	
+	Args:
+		discord_id: Discord user ID
+		assigned_by: admin's discord_id or user_id
+		note: Optional note for paid_invitations
+		
+	Returns:
+		{"discord_id": "...", "added_to_member_list": True/False}
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			# Check if already in member_list
+			cur.execute(
+				"SELECT discord_id FROM member_list WHERE discord_id = %s",
+				(discord_id,)
+			)
+			if cur.fetchone() is not None:
+				return {"discord_id": discord_id, "added_to_member_list": False, "message": "Already in member_list"}
+			
+			# Add to member_list
+			cur.execute(
+				"""
+				INSERT INTO member_list (discord_id, assigned_by)
+				VALUES (%s, %s)
+				RETURNING id, created_at
+				""",
+				(discord_id, assigned_by)
+			)
+			result = cur.fetchone()
+			
+			# Also register in paid_invitations if not already there
+			cur.execute(
+				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s",
+				(discord_id,)
+			)
+			if cur.fetchone() is None:
+				cur.execute(
+					"""
+					INSERT INTO paid_invitations (discord_id, note)
+					VALUES (%s, %s)
+					""",
+					(discord_id, note)
+				)
+			
+			# Remove from pre_member_list if present
+			cur.execute(
+				"DELETE FROM pre_member_list WHERE discord_id = %s",
+				(discord_id,)
+			)
+			
+			conn.commit()
+			
+			return {
+				"discord_id": discord_id,
+				"added_to_member_list": True,
+				"created_at": result[1].isoformat() if result[1] else None
+			}
+
+
+def register_paid_invitation(
+	discord_id: str,
+	note: str | None = None,
+	assigned_by: str | None = None,
+) -> dict[str, Any]:
+	"""入会費支払い済みユーザーを paid_invitations に登録。
+	
+	Args:
+		discord_id: Discord user ID
+		note: Payment method or note
+		assigned_by: admin's discord_id or user_id
+		
+	Returns:
+		{"discord_id": "...", "created": True/False}
+	"""
+	# assigned_by が None の場合はデフォルト値を使用
+	final_assigned_by = assigned_by or "unknown"
+	
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				INSERT INTO paid_invitations (discord_id, note, assigned_by)
+				VALUES (%s, %s, %s)
+				ON CONFLICT (discord_id) DO UPDATE SET note = EXCLUDED.note, assigned_by = EXCLUDED.assigned_by, assigned_at = now()
+				RETURNING id, created_at, assigned_at
+				""",
+				(discord_id, note, final_assigned_by)
+			)
+			result = cur.fetchone()
+			conn.commit()
+			
+			return {
+				"discord_id": discord_id,
+				"created": True,
+				"assigned_at": result[2].isoformat() if result[2] else None,
+				"assigned_by": final_assigned_by
+			}
 
 
 # ==================== OTP・Join Requests 関連 ====================

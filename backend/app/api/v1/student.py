@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
@@ -17,6 +18,8 @@ from app.services.brevo_client import send_otp_email
 
 
 router = APIRouter(prefix="/api/v1/student", tags=["student"])
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -32,7 +35,13 @@ class ValidateEligibilityResponse(BaseModel):
 
 
 class SendOTPRequest(BaseModel):
-	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$", description="学生番号 (e.g., A2312345)")
+	# Accept either legacy numeric form (A2312345 / 2312345) or the pre-member style
+	# that starts with 1/2/3/4/S followed by 7 alphanumeric chars (frontend STUDENT_ID_PATTERN).
+	student_number: str = Field(
+		...,
+		pattern=r"^(?:[Aa]?\d{7}|[1234S][A-Za-z0-9]{7})$",
+		description="学生番号 (e.g., A2312345, 2312345, or 1A234567)",
+	)
 	name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -52,7 +61,7 @@ class VerifyOTPResponse(BaseModel):
 
 
 class StudentProfileRequest(BaseModel):
-	student_number: str = Field(..., pattern=r"^[Aa]\d{7}$")
+	student_number: str = Field(..., pattern=r"^(?:[Aa]?\d{7}|[1234S][A-Za-z0-9]{7})$")
 	name: str = Field(..., min_length=1, max_length=100)
 	furigana: str = Field(..., min_length=1, max_length=100)
 	department: str = Field(..., min_length=1, max_length=100)
@@ -86,7 +95,25 @@ def _generate_student_email(student_number: str) -> str:
 	"""学生番号から大学メールアドレスを生成
 	Examples: A2312345 → a2312345@aoyama.ac.jp
 	"""
-	return f"{student_number.lower()}@aoyama.ac.jp"
+	# フロントエンドの buildAoyamaEmail と同じルールを適用します。
+	# - 先頭が 1/2/3/4/S の場合はマップ {1:a,2:b,3:c,4:d,S:s} を使う
+	# - それ以外は従来通り先頭に 'a' を付与して小文字化する
+	s = student_number.strip()
+
+	# pre-member スタイルの先頭マップ
+	head_map = {"1": "a", "2": "b", "3": "c", "4": "d", "S": "s"}
+	if len(s) >= 1:
+		first = s[0].upper()
+		tail = s[1:].lower()
+		prefix = head_map.get(first)
+		if prefix:
+			return f"{prefix}{tail}@aoyama.ac.jp"
+
+	# デフォルトの正規化（例: A2312345 or 2312345 -> a2312345）
+	normalized = s.lower()
+	if not normalized.startswith("a"):
+		normalized = "a" + normalized
+	return f"{normalized}@aoyama.ac.jp"
 
 
 def _generate_otp_code(length: int = 6) -> str:
@@ -232,6 +259,9 @@ async def send_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
+
+	logger.info("send_otp called: discord_id=%s student_number=%s", discord_id, req.student_number)
+
 	email_aoyama = _generate_student_email(req.student_number)
 	otp_code = _generate_otp_code()
 	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=600)  # 10 minutes
@@ -279,14 +309,42 @@ async def verify_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
-	# 最新の未検証 OTP を取得
-	otp = await asyncio.to_thread(_get_latest_otp, discord_id)
-	if otp is None:
+	logger.info("verify_otp called: discord_id=%s", discord_id)
+	# 最新の OTP レコードを取得（検証済みフラグに関わらず）
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT id, email_aoyama, code, attempt_count, verified, expires_at
+				FROM otp_records
+				WHERE discord_id = %s
+				ORDER BY created_at DESC
+				LIMIT 1
+				""",
+				(discord_id,),
+			)
+			row = cur.fetchone()
+
+	if row is None:
 		raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
+
+	otp = {
+		"id": row[0],
+		"email_aoyama": row[1],
+		"code": row[2],
+		"attempt_count": row[3],
+		"verified": row[4],
+		"expires_at": row[5],
+	}
+
+	# 既に検証済みの場合は成功扱いしてフロントが続行できるようにする
+	if otp["verified"]:
+		return VerifyOTPResponse(verified=True, message="OTP already verified")
 
 	# 有効期限確認
 	if otp["expires_at"] < datetime.now(timezone.utc):
 		raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+
 
 	# 試行回数確認（最大3回）
 	if otp["attempt_count"] >= 3:
@@ -334,9 +392,23 @@ async def create_student_profile(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
-	# OTP が検証済みか確認
-	otp = await asyncio.to_thread(_get_latest_otp, discord_id)
-	if otp is None or not otp["verified"]:
+	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
+	# OTP が検証済みか確認（最新レコードを取得して verified フラグを確認）
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT id, verified, verified_at, expires_at
+				FROM otp_records
+				WHERE discord_id = %s
+				ORDER BY created_at DESC
+				LIMIT 1
+				""",
+				(discord_id,),
+			)
+			row = cur.fetchone()
+
+	if row is None or not row[1]:
 		raise HTTPException(status_code=400, detail="OTP verification required")
 
 	email_aoyama = _generate_student_email(req.student_number)
@@ -397,6 +469,25 @@ async def create_student_profile(
 						email_aoyama,
 					),
 				)
+
+			# ロール変更：pre_memberからmemberへ
+			# 1. member_listに追加（まだ登録されていない場合）
+			cur.execute(
+				"""
+				INSERT INTO member_list (discord_id, assigned_at)
+				SELECT %s, now()
+				WHERE NOT EXISTS (SELECT 1 FROM member_list WHERE discord_id = %s)
+				""",
+				(discord_id, discord_id),
+			)
+
+			# 2. pre_member_listから削除
+			cur.execute(
+				"DELETE FROM pre_member_list WHERE discord_id = %s",
+				(discord_id,),
+			)
+
+			logger.info("Role changed: discord_id=%s (pre_member -> member)", discord_id)
 
 			conn.commit()
 
