@@ -14,6 +14,7 @@ from app.db.repository import (
 	get_pre_member_list_with_users,
 	add_to_member_list,
 	register_paid_invitation,
+    cleanup_expired_prospective_members,
 )
 from app.services.discord_client import fetch_guild_member
 
@@ -26,6 +27,7 @@ DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 
 class PreMemberRequest(BaseModel):
 	discord_id: str
+	source: str | None = None  # 'P' = prospective, 'S' = student
 
 
 class AddMemberRequest(BaseModel):
@@ -52,10 +54,29 @@ async def register_pre_member_endpoint(
 		raise HTTPException(status_code=401, detail="Unauthorized")
 	
 	try:
-		result = await asyncio.to_thread(register_pre_member, payload.discord_id)
+		result = await asyncio.to_thread(register_pre_member, payload.discord_id, payload.source)
 		return {"ok": True, "discord_id": payload.discord_id, "result": result}
 	except Exception as e:
 		raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/pre_member/cleanup")
+async def cleanup_pre_members_endpoint(
+	authorization: str | None = Header(default=None),
+) -> dict:
+	"""Trigger cleanup of expired prospective pre-members.
+
+	Intended to be called by the discord-bot (internal), protected by SHARED_SECRET.
+	"""
+	expected = f"Bearer {SHARED_SECRET}"
+	if authorization != expected:
+		raise HTTPException(status_code=401, detail="Unauthorized")
+
+	try:
+		result = await asyncio.to_thread(cleanup_expired_prospective_members)
+		return {"ok": True, "data": result}
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/pre_member/list")

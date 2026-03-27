@@ -9,7 +9,7 @@ import os
 import discord
 import httpx
 import uvicorn
-from discord.ext import commands
+from discord.ext import commands, tasks
 from fastapi import FastAPI
 
 from app.web.internal_api import router as internal_router
@@ -76,7 +76,7 @@ async def _register_pre_member(discord_id: int) -> None:
 		async with httpx.AsyncClient(timeout=5.0) as client:
 			response = await client.post(
 				f"{BACKEND_URL}/api/v1/members/pre_member/register",
-				json={"discord_id": str(discord_id)},
+				json={"discord_id": str(discord_id), "source": "P"},
 				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
 			)
 			if response.status_code == 200:
@@ -102,7 +102,35 @@ async def run_web_api() -> None:
 
 
 async def main() -> None:
+	# Start daily cleanup loop when bot is ready
+	try:
+		daily_cleanup.start()
+	except Exception:
+		# If tasks cannot be started (no bot), ignore
+		pass
+
 	await asyncio.gather(run_web_api(), run_bot_if_configured())
+
+
+@tasks.loop(hours=24)
+async def daily_cleanup():
+	"""Call backend cleanup endpoint once a day to remove expired prospective pre-members."""
+	import httpx
+	if not BACKEND_URL or not SHARED_SECRET:
+		logger.debug("Skipping daily cleanup: BACKEND_URL or SHARED_SECRET not configured")
+		return
+	try:
+		async with httpx.AsyncClient(timeout=10.0) as client:
+			resp = await client.post(
+				f"{BACKEND_URL}/api/v1/members/pre_member/cleanup",
+				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
+			)
+			if resp.status_code == 200:
+				logger.info("Daily cleanup executed: %s", resp.json())
+			else:
+				logger.error("Daily cleanup failed: %s", resp.status_code)
+	except Exception as e:
+		logger.exception("Error while running daily cleanup: %s", e)
 
 
 if __name__ == "__main__":

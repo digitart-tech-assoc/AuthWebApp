@@ -413,7 +413,7 @@ def get_member_lists() -> dict[str, list[dict[str, Any]]]:
 	}
 
 
-def register_pre_member(discord_id: str) -> dict[str, Any]:
+def register_pre_member(discord_id: str, source: str | None = None) -> dict[str, Any]:
 	"""新しい参加者を pre_member_list に登録.
 	
 	Args:
@@ -422,28 +422,121 @@ def register_pre_member(discord_id: str) -> dict[str, Any]:
 	Returns:
 		{"discord_id": "...", "created": True/False}
 	"""
+	# If a source is provided, set assigned_by to that value and update assigned_at.
+	# If source is None, keep existing behavior (do nothing on conflict).
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				INSERT INTO pre_member_list (discord_id)
-				VALUES (%s)
-				ON CONFLICT (discord_id) DO NOTHING
-				RETURNING id, created_at, assigned_at
-				""",
-				(discord_id,)
-			)
+			if source is None:
+				cur.execute(
+					"""
+					INSERT INTO pre_member_list (discord_id)
+					VALUES (%s)
+					ON CONFLICT (discord_id) DO NOTHING
+					RETURNING id, created_at, assigned_at
+					""",
+					(discord_id,)
+				)
+			else:
+				final_source = source
+				cur.execute(
+					"""
+					INSERT INTO pre_member_list (discord_id, assigned_by)
+					VALUES (%s, %s)
+					ON CONFLICT (discord_id) DO UPDATE SET assigned_by = EXCLUDED.assigned_by, assigned_at = now()
+					RETURNING id, created_at, assigned_at
+					""",
+					(discord_id, final_source)
+				)
+
 			result = cur.fetchone()
 			conn.commit()
-			
+
 			if result is None:
 				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member_list"}
-			
+
 			return {
 				"discord_id": discord_id,
 				"created": True,
-				"assigned_at": result[2].isoformat() if result[2] else result[1].isoformat() if result[1] else None
+				"assigned_at": result[2].isoformat() if result[2] else result[1].isoformat() if result[1] else None,
+				"assigned_by": source,
 			}
+
+
+def expiry_from_assigned_at(assigned_at):
+	"""Calculate expiry (UTC) from an assigned_at datetime using fiscal-year logic (4月開始).
+
+	Returns a timezone-aware UTC datetime corresponding to that fiscal year's April 30 23:59:59 JST.
+	"""
+	from datetime import datetime, timezone
+	from zoneinfo import ZoneInfo
+
+	if assigned_at is None:
+		return None
+	jst = ZoneInfo("Asia/Tokyo")
+	# Ensure assigned_at is timezone-aware (assume UTC if naive)
+	if getattr(assigned_at, "tzinfo", None) is None:
+		assigned_at = assigned_at.replace(tzinfo=timezone.utc)
+	assigned_jst = assigned_at.astimezone(jst)
+	fiscal = assigned_jst.year if assigned_jst.month >= 4 else assigned_jst.year - 1
+	expiry_jst = datetime(fiscal + 1, 4, 30, 23, 59, 59, tzinfo=jst)
+	return expiry_jst.astimezone(timezone.utc)
+
+
+def cleanup_expired_prospective_members() -> dict[str, int]:
+	"""Remove expired prospective pre-members (assigned_by = 'P').
+
+	Returns a dict with counts: {"removed": n}
+	"""
+	from datetime import datetime, timezone
+	from zoneinfo import ZoneInfo
+
+	removed = 0
+	now = datetime.now(timezone.utc)
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT discord_id, assigned_at FROM pre_member_list WHERE assigned_by = %s", ("P",))
+			rows = cur.fetchall()
+			to_remove = []
+			for row in rows:
+				discord_id, assigned_at = row[0], row[1]
+				expiry = expiry_from_assigned_at(assigned_at)
+				if expiry is not None and expiry < now:
+					to_remove.append((discord_id, expiry))
+
+			# Ensure removal log table exists (best-effort)
+			try:
+				cur.execute(
+					"""
+					CREATE TABLE IF NOT EXISTS pre_member_removal_log (
+						id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+						discord_id TEXT NOT NULL,
+						source_flow TEXT,
+						expired_at TIMESTAMPTZ,
+						removed_at TIMESTAMPTZ DEFAULT now(),
+						reason TEXT,
+						created_at TIMESTAMPTZ DEFAULT now()
+					);
+					"""
+				)
+			except Exception:
+				# If creation fails, continue without log
+				pass
+
+			for discord_id, expiry in to_remove:
+				cur.execute("DELETE FROM pre_member_list WHERE discord_id = %s", (discord_id,))
+				try:
+					cur.execute(
+						"INSERT INTO pre_member_removal_log (discord_id, source_flow, expired_at, reason) VALUES (%s, %s, %s, %s)",
+						(discord_id, "P", expiry, "Expired prospective member"),
+					)
+				except Exception:
+					# swallow logging errors
+					pass
+				removed += 1
+
+		conn.commit()
+
+	return {"removed": removed}
 
 
 def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
