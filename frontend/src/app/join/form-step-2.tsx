@@ -8,6 +8,7 @@ import FuriganaInput from "@/components/forms/FuriganaInput";
 import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
 import PhoneInput from "@/components/forms/PhoneInput";
+import { validateFullName } from "../../lib/validation";
 
 interface FormData {
   student_number: string;
@@ -41,8 +42,9 @@ export default function FormStep2Input({
       newErrors.student_number = "学生番号は A で始まり7桁の数字です (例: A2312345)";
     }
 
-    if (formData.name.trim().length === 0) {
-      newErrors.name = "名前を入力してください";
+    // 名前は姓と名の間に半角スペースを含み、ミドルネームも許容する正規表現で検証
+    if (!validateFullName(formData.name)) {
+      newErrors.name = "姓と名の間に半角スペースを入れてください（ミドルネームも許容）";
     }
 
     if (formData.furigana.trim().length === 0) {

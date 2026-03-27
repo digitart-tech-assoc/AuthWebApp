@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import styles from "../../../join/join.module.css";
 import OTPModal from "../../../../components/OTPModal";
+import NameInput from "../../../../components/forms/NameInput";
+import StudentNumberInput from "../../../../components/forms/StudentNumberInput";
 
 const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
 
@@ -59,20 +61,20 @@ export default function AoyamaStudentFormPage() {
         <form className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label}>氏名<span className={styles.required}>*</span></label>
-            <input
+            <NameInput
               className={styles.input}
               placeholder="例: 山田 太郎"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(v) => setName(v)}
             />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>学生番号<span className={styles.required}>*</span></label>
-            <input
+            <StudentNumberInput
               className={styles.input}
               placeholder="例: 1A234567"
               value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
+              onChange={(v) => setStudentId(v)}
               aria-invalid={!isStudentIdValid && normalizedStudentId.length > 0}
             />
             {!isStudentIdValid && normalizedStudentId.length > 0 ? (

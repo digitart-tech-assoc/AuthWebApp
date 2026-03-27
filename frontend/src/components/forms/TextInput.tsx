@@ -1,16 +1,19 @@
 "use client";
 
-interface TextInputProps {
-  id: string;
-  label: string;
+"use client";
+
+import React from "react";
+
+type TextInputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
+  id?: string;
+  label?: string;
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
   error?: string;
   required?: boolean;
   type?: "text" | "tel" | "email";
-  disabled?: boolean;
-}
+};
 
 export default function TextInput({
   id,
@@ -22,20 +25,26 @@ export default function TextInput({
   required = false,
   type = "text",
   disabled = false,
+  className,
+  ...rest
 }: TextInputProps) {
   return (
     <div style={{ marginBottom: "16px" }}>
-      <label htmlFor={id} style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
-        {label}
-        {required && <span style={{ color: "#dc2626" }}>*</span>}
-      </label>
+      {label && (
+        <label htmlFor={id} style={{ display: "block", marginBottom: "4px", fontWeight: "600" }}>
+          {label}
+          {required && <span style={{ color: "#dc2626" }}>*</span>}
+        </label>
+      )}
       <input
         id={id}
+        className={className}
         type={type}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        {...rest}
         style={{
           width: "100%",
           padding: "8px 12px",

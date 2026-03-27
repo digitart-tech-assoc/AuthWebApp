@@ -7,6 +7,8 @@ interface StudentNumberInputProps {
   onChange: (value: string) => void;
   error?: string;
   disabled?: boolean;
+  className?: string;
+  placeholder?: string;
 }
 
 export default function StudentNumberInput({
@@ -14,12 +16,15 @@ export default function StudentNumberInput({
   onChange,
   error,
   disabled = false,
+  className,
+  placeholder,
 }: StudentNumberInputProps) {
   return (
     <TextInput
       id="student_number"
-      label="学生番号"
-      placeholder="A2312345"
+      label={undefined}
+      className={className}
+      placeholder={placeholder ?? "A2312345"}
       value={value}
       onChange={(input) => onChange(input.toUpperCase())}
       error={error}

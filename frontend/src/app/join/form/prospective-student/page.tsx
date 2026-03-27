@@ -3,11 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import OTPModal from "../../../../components/OTPModal";
+import NameInput from "../../../../components/forms/NameInput";
+import TextInput from "../../../../components/forms/TextInput";
 import styles from "../../../join/join.module.css";
 
 export default function ProspectiveStudentFormPage() {
   const [year, setYear] = useState("");
   const [yearTouched, setYearTouched] = useState(false);
+
+  const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
 
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
@@ -77,16 +82,22 @@ export default function ProspectiveStudentFormPage() {
         <form className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label}>氏名<span className={styles.required}>*</span></label>
-            <input className={styles.input} placeholder="例: 山田 花子" />
+            <NameInput
+              className={styles.input}
+              placeholder="例: 山田 花子"
+              value={name}
+              onChange={(v) => setName(v)}
+              onBlur={() => setNameTouched(true)}
+            />
           </div>
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス<span className={styles.required}>*</span></label>
-            <input
+            <TextInput
               className={styles.input}
               type="email"
               placeholder="example@mail.com"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setEmailExists(null); }}
+              onChange={(v) => { setEmail(v); setEmailExists(null); }}
               onBlur={async () => { setEmailTouched(true); await validateEmail(email); }}
               inputMode="email"
               aria-invalid={emailTouched && !emailFormatValid(email)}
@@ -106,12 +117,12 @@ export default function ProspectiveStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>メールアドレス（確認）<span className={styles.required}>*</span></label>
-            <input
+            <TextInput
               className={styles.input}
               type="email"
               placeholder="example@mail.com"
               value={confirmEmail}
-              onChange={(e) => setConfirmEmail(e.target.value)}
+              onChange={(v) => setConfirmEmail(v)}
               onBlur={() => setConfirmEmailTouched(true)}
               inputMode="email"
               aria-invalid={confirmEmailTouched && (confirmEmail !== email || !emailFormatValid(confirmEmail))}
@@ -127,11 +138,11 @@ export default function ProspectiveStudentFormPage() {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>入学予定年度</label>
-            <input
+            <TextInput
               className={styles.input}
               placeholder="例: 2027"
               value={year}
-              onChange={(e) => setYear(e.target.value)}
+              onChange={(v) => setYear(v)}
               onBlur={() => setYearTouched(true)}
               inputMode="numeric"
               pattern="\d*"
@@ -161,12 +172,17 @@ export default function ProspectiveStudentFormPage() {
                 setFormError(null);
                 setEmailTouched(true);
                 setConfirmEmailTouched(true);
+                setNameTouched(true);
                 if (!email || !confirmEmail) {
                   setFormError("メールアドレスと確認用欄を入力してください。");
                   return;
                 }
                 if (email !== confirmEmail) {
                   setFormError("メールアドレスが一致しません。");
+                  return;
+                }
+                if (!name) {
+                  setFormError("氏名を入力してください。");
                   return;
                 }
                 setOtpEmail(email);
@@ -180,7 +196,7 @@ export default function ProspectiveStudentFormPage() {
         </form>
       </section>
       {showOtp && (
-        <OTPModal email={otpEmail} name="" formType="prospective-student" onClose={() => setShowOtp(false)} />
+        <OTPModal email={otpEmail} name={name} formType="prospective-student" onClose={() => setShowOtp(false)} />
       )}
       {formError && <p style={{ color: "#b91c1c", marginTop: 8 }}>{formError}</p>}
     </main>
