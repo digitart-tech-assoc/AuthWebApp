@@ -7,9 +7,9 @@
 - サービス間（Frontend <-> Backend, Backend <-> Bot）: `Authorization: Bearer <SHARED_SECRET>` を利用する。
 
 実装状況（2026-03-24）:
-- Frontend は Keycloak（Auth.js）セッションを使い、Backend API へ access token を転送する。
-- Backend は Keycloak JWT を検証する（issuer / jwks / audience）。
-- 段階移行のため、Backend 公開 API は一時的に `SHARED_SECRET` も受け入れる。
+ - Frontend は Supabase Auth セッションを使い、Backend API へセッション情報／JWT を転送する。
+ - Backend は Supabase の JWT を検証する（issuer / jwks / audience 相当）。
+ - 段階移行のため、Backend 公開 API は一時的に `SHARED_SECRET` も受け入れる。
 
 ## エンドポイント
 
@@ -42,10 +42,10 @@
 - ボディ: `{"action":"sync_roles"}` のような簡潔な JSON を受け付ける。
 
 ### 認証設定用の環境変数（Backend）
-- `KEYCLOAK_ISSUER_URL`
-- `KEYCLOAK_AUDIENCE`
-- `KEYCLOAK_JWKS_URL`（省略時は issuer から自動解決）
-- `SHARED_SECRET`（移行期フォールバックと内部 API 用）
+ - `NEXT_PUBLIC_SUPABASE_URL`
+ - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+ - `SUPABASE_SERVICE_ROLE_KEY`（サーバー側で必要な場合）
+ - `SHARED_SECRET`（移行期フォールバックと内部 API 用）
 
 ### GET /api/v1/events
 - 説明: Bot がポーリングで未処理イベントを取得するために使える（アウトボックスパターン）。

@@ -67,7 +67,7 @@ async def get_role_by_sub(
 	sub: str = Query(..., min_length=1),
 	principal: dict = Depends(get_current_principal),
 ) -> UserMeResponse:
-	"""内部連携向け: keycloak sub から app_role を取得する。"""
+	"""内部連携向け: sub から app_role を取得する。"""
 	if principal.get("auth_type") != "internal":
 		raise HTTPException(status_code=403, detail="Internal access required")
 
