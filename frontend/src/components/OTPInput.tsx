@@ -6,22 +6,36 @@ type Props = {
   length?: number;
   onComplete?: (code: string) => void;
   autoFocus?: boolean;
+  value?: string;
+  onChange?: (code: string) => void;
+  disabled?: boolean;
 };
 
-export default function OTPInput({ length = 6, onComplete, autoFocus = true }: Props) {
-  const [values, setValues] = useState<string[]>(Array(length).fill(""));
+export default function OTPInput({ length = 6, onComplete, autoFocus = true, value, onChange, disabled = false }: Props) {
+  const [values, setValues] = useState<string[]>(Array(length).fill("") );
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     if (autoFocus && inputs.current[0]) inputs.current[0].focus();
   }, [autoFocus]);
 
+  // Notify parent when fully filled
   useEffect(() => {
     const filled = values.every((v) => v !== "");
+    const code = values.join("");
     if (filled) {
-      onComplete?.(values.join(""));
+      onComplete?.(code);
     }
-  }, [values, onComplete]);
+    onChange?.(code);
+  }, [values, onComplete, onChange]);
+
+  // Sync external controlled `value` -> internal values
+  useEffect(() => {
+    if (typeof value === "string") {
+      const arr = value.padEnd(length, "").slice(0, length).split("").map((c) => (/[0-9]/.test(c) ? c : ""));
+      setValues(arr);
+    }
+  }, [value, length]);
 
   const handleChange = (idx: number, v: string) => {
     if (!v) {
@@ -60,6 +74,7 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true }: P
           value={values[i]}
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(e, i)}
+          disabled={disabled}
           style={{
             width: 48,
             height: 56,
@@ -67,6 +82,7 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true }: P
             fontSize: 24,
             borderRadius: 8,
             border: "1px solid #cbd5e1",
+            background: disabled ? "#f1f5f9" : "white",
           }}
         />
       ))}

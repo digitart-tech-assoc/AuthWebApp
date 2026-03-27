@@ -69,8 +69,8 @@ export default function FormStep3OTP({
       // OTP verification
       await verifyOTP(otpCode);
 
-      // Submit profile
-      await submitStudentProfile(formData);
+      // Submit profile (include email_aoyama for type completeness)
+      await submitStudentProfile({ ...formData, email_aoyama: emailAoyama ?? "" });
 
       // Complete
       onComplete();

@@ -1,6 +1,7 @@
 "use server";
 
-import { backendFetch, getBackendAuthorizationHeader } from "@/lib/backendFetch";
+import { backendFetch } from "@/lib/backendFetch";
+import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 
 export interface EligibilityCheckResult {
   is_discord_linked: boolean;

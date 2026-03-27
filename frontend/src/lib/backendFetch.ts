@@ -53,6 +53,3 @@ export async function fetchBackend(path: string, init?: RequestInit): Promise<Re
 
 // Backwards-compatible named export used by actions.
 export const backendFetch = fetchBackend;
-
-// Re-export auth helper so callers can import both from the same module path.
-export { getBackendAuthorizationHeader } from "./backendAuth";
