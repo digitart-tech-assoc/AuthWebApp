@@ -303,10 +303,36 @@ async def verify_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
-	# 最新の未検証 OTP を取得
-	otp = await asyncio.to_thread(_get_latest_otp, discord_id)
-	if otp is None:
+	# 最新の OTP レコードを取得（検証済みフラグに関わらず）
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT id, email_aoyama, code, attempt_count, verified, expires_at
+				FROM otp_records
+				WHERE discord_id = %s
+				ORDER BY created_at DESC
+				LIMIT 1
+				""",
+				(discord_id,),
+			)
+			row = cur.fetchone()
+
+	if row is None:
 		raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
+
+	otp = {
+		"id": row[0],
+		"email_aoyama": row[1],
+		"code": row[2],
+		"attempt_count": row[3],
+		"verified": row[4],
+		"expires_at": row[5],
+	}
+
+	# 既に検証済みの場合は成功扱いしてフロントが続行できるようにする
+	if otp["verified"]:
+		return VerifyOTPResponse(verified=True, message="OTP already verified")
 
 	# 有効期限確認
 	if otp["expires_at"] < datetime.now(timezone.utc):

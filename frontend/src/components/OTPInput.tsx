@@ -32,7 +32,11 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true, val
   // Sync external controlled `value` -> internal values
   useEffect(() => {
     if (typeof value === "string") {
-      const arr = value.padEnd(length, "").slice(0, length).split("").map((c) => (/[0-9]/.test(c) ? c : ""));
+      // Build an array of exact `length`, filling missing slots with empty string
+      const arr = Array.from({ length }).map((_, i) => {
+        const c = value[i] ?? "";
+        return /[0-9]/.test(c) ? c : "";
+      });
       setValues(arr);
     }
   }, [value, length]);
