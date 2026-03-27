@@ -12,6 +12,7 @@ interface NameInputProps {
   disabled?: boolean;
   className?: string;
   placeholder?: string;
+  label?: string;
 }
 
 export default function NameInput({
@@ -22,6 +23,7 @@ export default function NameInput({
   disabled = false,
   className,
   placeholder,
+  label,
 }: NameInputProps) {
   const [internalError, setInternalError] = useState<string | undefined>(undefined);
 
@@ -39,7 +41,7 @@ export default function NameInput({
   return (
     <TextInput
       id="name"
-      label={undefined}
+      label={label ?? "氏名"}
       className={className}
       placeholder={placeholder ?? "山田 太郎"}
       value={value}

@@ -9,6 +9,7 @@ interface StudentNumberInputProps {
   disabled?: boolean;
   className?: string;
   placeholder?: string;
+  label?: string;
 }
 
 export default function StudentNumberInput({
@@ -18,11 +19,12 @@ export default function StudentNumberInput({
   disabled = false,
   className,
   placeholder,
+  label,
 }: StudentNumberInputProps) {
   return (
     <TextInput
       id="student_number"
-      label={undefined}
+      label={label ?? "学生番号"}
       className={className}
       placeholder={placeholder ?? "A2312345"}
       value={value}
