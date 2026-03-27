@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
 import styles from "../join.module.css";
 import {
   checkEligibility,
@@ -28,7 +27,6 @@ interface FormState {
 
 export default function JoinFormPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
   const [currentStep, setCurrentStep] = useState<FormStep>(1);
   const [eligibility, setEligibility] = useState<EligibilityCheckResult | null>(null);
   const [existingProfile, setExistingProfile] = useState<StudentProfile | null>(null);
@@ -47,9 +45,14 @@ export default function JoinFormPage() {
   useEffect(() => {
     async function initialize() {
       try {
-        if (status === "loading") return;
-
-        if (status === "unauthenticated") {
+        // check Supabase session via debug route
+        const res = await fetch("/api/debug/session", { cache: "no-store" });
+        if (!res.ok) {
+          router.push("/login");
+          return;
+        }
+        const payload = await res.json();
+        if (!payload?.session) {
           router.push("/login");
           return;
         }
@@ -92,7 +95,7 @@ export default function JoinFormPage() {
     }
 
     initialize();
-  }, [status, router]);
+  }, [router]);
 
   const handleStep1Continue = () => {
     if (eligibility?.can_register) {
@@ -221,12 +224,4 @@ export default function JoinFormPage() {
     </main>
   );
 }
-          <p className={styles.cardText}>上記に当てはまらない方向けのフォームです。</p>
-          <Link className={styles.primary} href="/join/form/other">
-            このフォームへ進む
-          </Link>
-        </article>
-      </section>
-    </main>
-  );
-}
+

@@ -21,28 +21,39 @@ export interface StudentProfile {
 }
 
 export async function checkEligibility(): Promise<EligibilityCheckResult> {
-  const headerResult = getBackendAuthorizationHeader();
+  const headerResult = await getBackendAuthorizationHeader();
   if (!headerResult) {
     throw new Error("Not authenticated");
   }
 
-  const response = await backendFetch("/api/v1/student/validate-eligibility", {
-    method: "POST",
-    headers: {
-      "Authorization": headerResult,
-      "Content-Type": "application/json",
-    },
-  });
+  try {
+    const response = await backendFetch("/api/v1/student/validate-eligibility", {
+      method: "POST",
+      headers: {
+        "Authorization": headerResult,
+        "Content-Type": "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to check eligibility: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Failed to check eligibility: ${response.statusText}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    // If backend is unreachable, return a safe failure so the UI can render an informative message
+    return {
+      is_discord_linked: false,
+      is_pre_member: false,
+      is_paid: false,
+      can_register: false,
+      reason: "バックエンドに接続できません。管理者に連絡してください。",
+    } as EligibilityCheckResult;
   }
-
-  return response.json();
 }
 
 export async function getStudentProfile(): Promise<StudentProfile | null> {
-  const headerResult = getBackendAuthorizationHeader();
+  const headerResult = await getBackendAuthorizationHeader();
   if (!headerResult) {
     return null;
   }
@@ -69,7 +80,7 @@ export async function sendOTP(
   studentNumber: string,
   name: string
 ): Promise<{ email_aoyama: string; expires_in_seconds: number }> {
-  const headerResult = getBackendAuthorizationHeader();
+  const headerResult = await getBackendAuthorizationHeader();
   if (!headerResult) {
     throw new Error("Not authenticated");
   }
@@ -95,7 +106,7 @@ export async function sendOTP(
 }
 
 export async function verifyOTP(code: string): Promise<{ verified: boolean }> {
-  const headerResult = getBackendAuthorizationHeader();
+  const headerResult = await getBackendAuthorizationHeader();
   if (!headerResult) {
     throw new Error("Not authenticated");
   }
@@ -122,7 +133,7 @@ export async function verifyOTP(code: string): Promise<{ verified: boolean }> {
 export async function submitStudentProfile(
   data: StudentProfile
 ): Promise<{ profile_id: string; message: string }> {
-  const headerResult = getBackendAuthorizationHeader();
+  const headerResult = await getBackendAuthorizationHeader();
   if (!headerResult) {
     throw new Error("Not authenticated");
   }
