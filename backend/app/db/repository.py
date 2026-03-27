@@ -388,6 +388,39 @@ def get_member_lists() -> dict[str, list[dict[str, Any]]]:
 	}
 
 
+def register_pre_member(discord_id: str) -> dict[str, Any]:
+	"""新しい参加者を pre_member_list に登録.
+	
+	Args:
+		discord_id: Discord user ID
+		
+	Returns:
+		{"discord_id": "...", "created": True/False}
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				INSERT INTO pre_member_list (discord_id)
+				VALUES (%s)
+				ON CONFLICT (discord_id) DO NOTHING
+				RETURNING id, created_at, assigned_at
+				""",
+				(discord_id,)
+			)
+			result = cur.fetchone()
+			conn.commit()
+			
+			if result is None:
+				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member_list"}
+			
+			return {
+				"discord_id": discord_id,
+				"created": True,
+				"assigned_at": result[2].isoformat() if result[2] else result[1].isoformat() if result[1] else None
+			}
+
+
 # ==================== OTP・Join Requests 関連 ====================
 
 def create_join_request(

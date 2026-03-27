@@ -14,6 +14,7 @@ from app.api.v1.users import router as users_router
 from app.api.v1.join import router as join_router
 from app.api.v1.contact import router as contact_router
 from app.api.v1.student import router as student_router
+from app.api.v1.members import router as members_router
 from app.db.repository import init_db
 
 
@@ -46,3 +47,4 @@ app.include_router(users_router)
 app.include_router(join_router)
 app.include_router(contact_router)
 app.include_router(student_router)
+app.include_router(members_router)
