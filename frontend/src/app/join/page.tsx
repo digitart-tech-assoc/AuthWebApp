@@ -21,9 +21,10 @@ export default function JoinGuidePage() {
 					<p className={styles.cardText}>
 						在学生・入学見込み・その他の3区分からフォームを選択します。
 					</p>
-					<Link className={styles.primary} href="/join/form">
-						入会フォームへ
-					</Link>
+					<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+						<Link className={styles.primary} href="/join/form">仮入会フォームへ</Link>
+						<Link className={styles.secondary} href="/join/member">本入会フォームへ</Link>
+					</div>
 				</article>
 
 				<article className={styles.card}>
