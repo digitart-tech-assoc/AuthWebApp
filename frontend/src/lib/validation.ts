@@ -9,6 +9,14 @@ export function validateFullName(name: string): boolean {
 
 export default validateFullName;
 
+export function validateFurigana(furigana: string): boolean {
+  if (!furigana || typeof furigana !== "string") return false;
+  const v = furigana.trim();
+  // Katakana range includes prolonged sound mark ー and ヶ
+  const re = /^[\u30A0-\u30FF]+ [\u30A0-\u30FF]+(?: [\u30A0-\u30FF]+)*$/u;
+  return re.test(v);
+}
+
 /**
  * All available departments (for select dropdown, etc.)
  */

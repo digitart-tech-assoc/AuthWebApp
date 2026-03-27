@@ -8,7 +8,7 @@ import FuriganaInput from "@/components/forms/FuriganaInput";
 import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
 import PhoneInput from "@/components/forms/PhoneInput";
-import { validateFullName, getDepartmentsFromStudentId } from "../../lib/validation";
+import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "../../lib/validation";
 
 interface FormData {
   student_number: string;
@@ -38,8 +38,8 @@ export default function FormStep2Input({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.student_number.match(/^[Aa]\d{7}$/)) {
-      newErrors.student_number = "学生番号は A で始まり7桁の数字です (例: A2312345)";
+    if (!formData.student_number.match(/^[A-Z0-9]{7}$/)) {
+      newErrors.student_number = "学生番号は7文字の英大文字と数字の組合せです（例: A123456、1A34567）";
     }
 
     // 名前は姓と名の間に半角スペースを含み、ミドルネームも許容する正規表現で検証
@@ -47,8 +47,8 @@ export default function FormStep2Input({
       newErrors.name = "姓と名の間に半角スペースを入れてください（ミドルネームも許容）";
     }
 
-    if (formData.furigana.trim().length === 0) {
-      newErrors.furigana = "ふりがなを入力してください";
+    if (!validateFurigana(formData.furigana)) {
+      newErrors.furigana = "フリガナはカタカナで、姓と名の間に半角スペースを入れてください";
     }
 
     if (formData.department.trim().length === 0) {
