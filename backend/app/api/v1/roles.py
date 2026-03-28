@@ -10,20 +10,27 @@ from pydantic import BaseModel
 
 from app.core.auth import require_admin, require_member
 from app.db.repository import (
+	fetch_guild_members,
 	fetch_manifest,
+	fetch_role_assignments,
 	get_member_lists,
 	replace_roles_from_discord,
+	save_guild_members,
+	save_role_assignments,
 	sync_member_lists,
 	update_role_id,
 )
 from app.services.discord_client import (
+	add_role_to_member,
 	build_role_create_payload,
 	build_role_edit_payload,
 	create_guild_role,
 	delete_guild_role,
 	edit_guild_role,
+	fetch_all_guild_members,
 	fetch_guild_members_with_role,
 	fetch_guild_roles,
+	remove_role_from_member,
 	reorder_guild_roles,
 )
 
@@ -45,11 +52,34 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 
 	try:
 		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-	except Exception as exc:  # noqa: BLE001
+	except Exception as exc:
 		raise HTTPException(status_code=502, detail=f"Discord fetch failed: {exc}") from exc
 
 	count = await asyncio.to_thread(replace_roles_from_discord, roles)
-	return {"ok": True, "guild_id": DISCORD_GUILD_ID, "roles": count}
+
+	# Also fetch all guild members and their role assignments
+	try:
+		members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
+		await asyncio.to_thread(save_guild_members, [
+			{"user_id": m["user_id"], "username": m["username"],
+			 "display_name": m["display_name"], "avatar": m["avatar"]}
+			for m in members
+		])
+		print(f"[DEBUG] Fetched {len(members)} guild members. Mapping assignments...")
+		# Build role_id -> [user_id] mapping from member data
+		assignments: dict[str, list[str]] = {}
+		for m in members:
+			for role_id in m.get("role_ids", []):
+				assignments.setdefault(role_id, []).append(m["user_id"])
+		print(f"[DEBUG] Found {len(assignments)} roles with assignments. Saving to DB...")
+		await asyncio.to_thread(save_role_assignments, assignments)
+	except Exception as exc:
+		print(f"[ERROR] Failed to fetch or map guild members: {exc}")
+		import traceback
+		traceback.print_exc()
+		members = []
+
+	return {"ok": True, "guild_id": DISCORD_GUILD_ID, "roles": count, "members": len(members)}
 
 
 @router.post("/push")
@@ -151,6 +181,39 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			errors.append(msg)
 			reordered = 0
 
+	# Apply role assignment diffs: compare DB desired assignments vs current Discord member roles
+	assigned_adds = 0
+	assigned_removes = 0
+	try:
+		desired_assignments = await asyncio.to_thread(fetch_role_assignments)
+		current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
+		current_by_role: dict[str, set[str]] = {}
+		for m in current_members:
+			for rid in m.get("role_ids", []):
+				current_by_role.setdefault(rid, set()).add(m["user_id"])
+
+		for role_id, desired_users in desired_assignments.items():
+			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
+				continue
+			if role_id not in actual_by_id and role_id not in created_real_ids:
+				continue
+			desired_set = set(desired_users)
+			current_set = current_by_role.get(role_id, set())
+			for user_id in desired_set - current_set:
+				try:
+					await add_role_to_member(DISCORD_GUILD_ID, user_id, role_id, token)
+					assigned_adds += 1
+				except Exception as exc:
+					errors.append(f"Failed to add role {role_id} to {user_id}: {exc}")
+			for user_id in current_set - desired_set:
+				try:
+					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
+					assigned_removes += 1
+				except Exception as exc:
+					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+	except Exception as exc:
+		errors.append(f"Failed to apply assignment diffs: {exc}")
+
 	return {
 		"ok": len(errors) == 0,
 		"guild_id": DISCORD_GUILD_ID,
@@ -159,8 +222,18 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		"deleted": deleted,
 		"reordered": reordered,
 		"skipped_managed": skipped_managed,
+		"assigned_adds": assigned_adds,
+		"assigned_removes": assigned_removes,
 		"errors": errors,
 	}
+
+
+@router.get("/members")
+async def get_role_members(_principal: dict = Depends(require_member)) -> dict:
+	"""保存済みのギルドメンバー一覧とロール割り当てを取得。"""
+	members = await asyncio.to_thread(fetch_guild_members)
+	assignments = await asyncio.to_thread(fetch_role_assignments)
+	return {"members": members, "assignments": assignments}
 
 
 class PermissionsPayload(BaseModel):

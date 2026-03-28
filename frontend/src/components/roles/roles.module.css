@@ -8,20 +8,37 @@
 
 .pageHeader {
   margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f8fafc;
+  position: relative;
+}
+
+.pageHeader::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #4f46e5, #818cf8);
+  border-radius: 2px;
 }
 
 .pageTitle {
-  font-size: 22px;
-  font-weight: 700;
-  color: #0f1117;
-  letter-spacing: -0.3px;
-  margin: 0 0 4px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+  margin: 0 0 8px;
+  line-height: 1.2;
 }
 
 .pageSubtitle {
-  font-size: 13px;
-  color: #7b8291;
+  font-size: 15px;
+  color: #64748b;
   margin: 0;
+  font-weight: 450;
+  opacity: 0.9;
 }
 
 /* ===== Top action bar ===== */
@@ -632,3 +649,36 @@
   }
 }
 
+/* ===== Members button ===== */
+.membersBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid #e8eaef;
+  background: #fff;
+  color: #4a5568;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.membersBtn:hover {
+  background: #f8fafc;
+  color: #4f46e5;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.membersBtn:active {
+  transform: translateY(0);
+  background: #f1f5f9;
+}
+.membersBtn svg {
+  width: 14px;
+  height: 14px;
+}

@@ -9,6 +9,7 @@ import PushButton from "./PushButton";
 import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
 import NewRoleModal from "./NewRoleModal";
+import RoleMemberModal, { type Member } from "./RoleMemberModal";
 import styles from "./roles.module.css";
 
 type Category = {
@@ -85,6 +86,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // ===== New role modal =====
   const [showNewRole, setShowNewRole] = useState(false);
 
+  // ===== Member management =====
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
+  const [memberModalRole, setMemberModalRole] = useState<Role | null>(null);
+
   const isAdmin = accessRole === "admin";
   const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
   const canManageMembers = isAdmin;
@@ -109,6 +115,23 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setPermTarget(null);
   }, [initRoles, initCategories]);
 
+  const fetchMembers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/roles/members");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.members) setAllMembers(data.members);
+        if (data.assignments) setMembersByRole(data.assignments);
+      }
+    } catch (e) {
+      console.error("Failed to fetch members", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRoles = useMemo(() => {
     if (!normalizedQuery) return allRoles;
@@ -127,7 +150,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       const res = await fetch("/api/manifest", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: nextCats, roles: nextRoles }),
+        body: JSON.stringify({ categories: nextCats, roles: nextRoles, role_assignments: membersByRole }),
       });
       if (!res.ok) {
         setSaveState("error");
@@ -223,6 +246,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== SyncButton / PushButton =====
   function handleSyncSuccess(count: number) {
+    // Rely on page reload to fetch the new member data via useEffect on the fresh mount
     window.location.href = `/roles?synced=1&roles=${count}&t=${Date.now()}`;
   }
   function handleSyncError() {
@@ -315,6 +339,25 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     // Mark as unsaved so the manifest can be persisted with the new role
     setHasUnsaved(true);
     setSaveState("idle");
+  }
+
+  // ===== Member management callbacks =====
+  const handleOpenMemberModal = useCallback((role: Role) => {
+    setMemberModalRole(role);
+  }, []);
+
+  function handleMemberCommit(roleId: string, add: string[], remove: string[]) {
+    setMembersByRole((prev) => {
+      const current = new Set(prev[roleId] ?? []);
+      add.forEach((id) => current.add(id));
+      remove.forEach((id) => current.delete(id));
+      return { ...prev, [roleId]: [...current] };
+    });
+    setMemberModalRole(null);
+    setHasUnsaved(true);
+    setSaveState("idle");
+    const detail = `付与 ${add.length}名 / 削除 ${remove.length}名`;
+    showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）（保存ボタンで確定）` });
   }
 
   const categoryIds = new Set(localCategories.map((c) => c.id));
@@ -459,6 +502,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
                   onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
                   onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
+                  onMembers={!isSelectMode && isAdmin ? handleOpenMemberModal : undefined}
                   botPosition={botPosition}
                 />
               )}
@@ -466,35 +510,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           );
         })}
 
-        {/* ===== Uncategorized group ===== */}
-        {(uncategorizedRoles.length > 0 || isSelectMode) && (
-          <div className={styles.group}>
-            <div
-              className={styles.groupHeader}
-              onClick={() => toggleCollapse("__uncategorized__")}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__uncategorized__"); }}
-            >
-              <ChevronIcon open={!collapsedIds.has("__uncategorized__")} />
-              <span className={styles.groupName}>未分類</span>
-              <span className={styles.groupCount}>{uncategorizedRoles.length}</span>
-            </div>
 
-            {!collapsedIds.has("__uncategorized__") && (
-              <RoleList
-                roles={uncategorizedRoles}
-                showHeader={false}
-                selectedIds={isSelectMode ? selectedRoleIds : undefined}
-                onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-                onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
-                onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
-                onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
-                botPosition={botPosition}
-              />
-            )}
-          </div>
-        )}
 
         {/* ===== Master All Roles ===== */}
         <div className={styles.group}>
@@ -518,6 +534,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
               onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
               onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
+              onMembers={!isSelectMode && isAdmin ? handleOpenMemberModal : undefined}
               botPosition={botPosition}
             />
           )}
@@ -560,6 +577,19 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           botPermissions={botPermissions}
           onCreated={handleRoleCreated}
           onClose={() => setShowNewRole(false)}
+        />
+      )}
+
+      {/* Member management modal */}
+      {memberModalRole && (
+        <RoleMemberModal
+          roleName={memberModalRole.name}
+          roleId={memberModalRole.role_id}
+          allMembers={allMembers}
+          currentMemberIds={membersByRole[memberModalRole.role_id] ?? []}
+          onCommit={(add, remove) => handleMemberCommit(memberModalRole.role_id, add, remove)}
+          onClose={() => setMemberModalRole(null)}
+          isLocked={botPosition !== undefined && memberModalRole.position >= botPosition}
         />
       )}
 
