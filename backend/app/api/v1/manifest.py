@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_admin, require_member
-from app.db.repository import fetch_manifest, save_manifest
+from app.db.repository import fetch_manifest, save_manifest, save_role_assignments
 
 
 router = APIRouter(prefix="/api/v1", tags=["manifest"])
@@ -37,6 +37,7 @@ class Role(BaseModel):
 class Manifest(BaseModel):
 	categories: list[Category] = Field(default_factory=list)
 	roles: list[Role] = Field(default_factory=list)
+	role_assignments: dict[str, list[str]] = Field(default_factory=dict)
 
 
 @router.get("/manifest", response_model=Manifest)
@@ -54,4 +55,6 @@ async def put_manifest(payload: Manifest, _principal: dict = Depends(require_adm
 		[c.model_dump() for c in payload.categories],
 		[r.model_dump() for r in payload.roles],
 	)
+	if payload.role_assignments:
+		await asyncio.to_thread(save_role_assignments, payload.role_assignments)
 	return payload

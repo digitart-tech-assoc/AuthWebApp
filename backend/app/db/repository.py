@@ -148,10 +148,29 @@ def init_db() -> None:
                     );
                     """
                 )
+                # guild members (for role assignment UI)
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS guild_members (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        display_name TEXT,
+                        avatar TEXT,
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS role_member_assignments (
+                        role_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        PRIMARY KEY (role_id, user_id)
+                    );
+                    """
+                )
                 conn.commit()
     except Exception as e:
-        # If DB is unreachable during development, log and continue without exiting
-        # This allows the backend to start in degraded mode for local frontend debugging.
         print(f"WARNING: init_db failed: {e}", file=sys.stderr)
         return
 
@@ -285,6 +304,65 @@ def update_role_id(old_id: str, new_id: str) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
+			cur.execute("UPDATE role_member_assignments SET role_id = %s WHERE role_id = %s", (new_id, old_id))
+
+
+def save_guild_members(members: list[dict[str, Any]]) -> None:
+	"""Discordから取得したギルドメンバーを保存/更新する。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("DELETE FROM guild_members")
+			for m in members:
+				cur.execute(
+					"""
+					INSERT INTO guild_members (user_id, username, display_name, avatar)
+					VALUES (%s, %s, %s, %s)
+					ON CONFLICT (user_id) DO UPDATE SET
+						username = EXCLUDED.username,
+						display_name = EXCLUDED.display_name,
+						avatar = EXCLUDED.avatar,
+						updated_at = now()
+					""",
+					(m["user_id"], m["username"], m.get("display_name"), m.get("avatar")),
+				)
+
+
+def save_role_assignments(assignments: dict[str, list[str]]) -> None:
+	"""
+	role_id -> [user_id, ...] のマッピングでロール割り当てを全置き換え保存。
+	assignments に含まれる role_id の割り当てのみ上書き。含まれない role_id は触らない。
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			for role_id, user_ids in assignments.items():
+				cur.execute("DELETE FROM role_member_assignments WHERE role_id = %s", (role_id,))
+				for user_id in user_ids:
+					cur.execute(
+						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+						(role_id, user_id),
+					)
+
+
+def fetch_guild_members() -> list[dict[str, Any]]:
+	"""保存済みのギルドメンバー一覧を取得。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT user_id, username, display_name, avatar FROM guild_members ORDER BY username ASC")
+			return [
+				{"user_id": row[0], "username": row[1], "display_name": row[2], "avatar": row[3]}
+				for row in cur.fetchall()
+			]
+
+
+def fetch_role_assignments() -> dict[str, list[str]]:
+	"""全ロール割り当てを {role_id: [user_id, ...]} 形式で取得。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT role_id, user_id FROM role_member_assignments")
+			result: dict[str, list[str]] = {}
+			for role_id, user_id in cur.fetchall():
+				result.setdefault(role_id, []).append(user_id)
+			return result
 
 
 def sync_member_lists(

@@ -119,6 +119,56 @@ def build_role_create_payload(desired: dict) -> dict:
 	}
 
 
+async def fetch_all_guild_members(guild_id: str, token: str) -> list[dict]:
+	"""ギルドの全メンバーをページネーションで取得し、各メンバーのロールIDリストも返す。"""
+	headers = {"Authorization": f"Bot {token}"}
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members"
+	members = []
+	after = "0"
+	async with httpx.AsyncClient(timeout=30.0) as client:
+		while True:
+			params = {"limit": 1000, "after": after}
+			resp = await client.get(url, headers=headers, params=params)
+			if resp.status_code == 403:
+				print("[ERROR] Discord members fetch returned 403 Forbidden. Is 'Server Members Intent' enabled in the Discord Developer Portal?")
+				resp.raise_for_status()
+			resp.raise_for_status()
+			batch = resp.json()
+			if not batch:
+				if after == "0":
+					print("[WARNING] fetch_all_guild_members returned 0 members. Check intents and guild ID.")
+				break
+			for m in batch:
+				user = m.get("user", {})
+				members.append({
+					"user_id": user["id"],
+					"username": user.get("username", ""),
+					"display_name": m.get("nick") or user.get("global_name") or user.get("username", ""),
+					"avatar": user.get("avatar"),
+					"role_ids": m.get("roles", []),
+				})
+			after = batch[-1]["user"]["id"]
+			if len(batch) < 1000:
+				break
+	return members
+
+
+async def add_role_to_member(guild_id: str, user_id: str, role_id: str, token: str) -> None:
+	"""メンバーにロールを付与する。"""
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
+	async with httpx.AsyncClient(timeout=10.0) as client:
+		resp = await client.put(url, headers=_headers(token))
+	resp.raise_for_status()
+
+
+async def remove_role_from_member(guild_id: str, user_id: str, role_id: str, token: str) -> None:
+	"""メンバーからロールを剥奪する。"""
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
+	async with httpx.AsyncClient(timeout=10.0) as client:
+		resp = await client.delete(url, headers=_headers(token))
+	resp.raise_for_status()
+
+
 async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str) -> list[dict]:
 	"""ギルド内の特定のロールを持つメンバーを取得"""
 	headers = {"Authorization": f"Bot {token}"}

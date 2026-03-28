@@ -135,7 +135,6 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
         <div className={styles.panelHeader}>
           <div className={styles.panelTitleWrap}>
             <p className={styles.panelTitle}>
-              {target.kind === "category" ? "📁 " : "🏷 "}
               {target.name}
             </p>
             {target.kind === "role" && target.categoryPermissions !== undefined && (

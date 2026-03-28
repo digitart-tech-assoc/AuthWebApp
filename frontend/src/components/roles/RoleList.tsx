@@ -38,6 +38,7 @@ type RoleListProps = {
   onReorder?: (orderedRoleIds: string[]) => void;
   onPermissions?: (role: RoleItem) => void;
   onDelete?: (roleId: string) => void;
+  onMembers?: (role: RoleItem) => void;
   botPosition?: number;
 };
 
@@ -49,6 +50,7 @@ type SortableRoleRowProps = {
   onToggle?: () => void;
   onPermissions?: () => void;
   onDelete?: () => void;
+  onMembers?: () => void;
 };
 
 function DragIcon() {
@@ -80,6 +82,7 @@ function SortableRoleRow({
   onToggle,
   onPermissions,
   onDelete,
+  onMembers,
 }: SortableRoleRowProps) {
   const {
     attributes,
@@ -142,8 +145,19 @@ function SortableRoleRow({
         <span className={styles.roleName}>{role.name}</span>
       </div>
 
-      {/* Col 3: action buttons — hidden for disabled roles */}
-      <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '100px' }}>
+      {/* Col 3: action buttons */}
+      <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '160px' }}>
+        {onMembers && !onToggle && (
+          <button
+            type="button"
+            className={styles.membersBtn}
+            onClick={onMembers}
+            aria-label={`${role.name} のメンバー編集`}
+            title="メンバーを編集"
+          >
+            メンバー
+          </button>
+        )}
         {onPermissions && !onToggle && !isDisabled && (
           <button
             type="button"
@@ -182,6 +196,7 @@ export default function RoleList({
   onReorder,
   onPermissions,
   onDelete,
+  onMembers,
   botPosition,
 }: RoleListProps) {
   if (roles.length === 0) {
@@ -244,6 +259,9 @@ export default function RoleList({
                 }
                 onDelete={
                   onDelete ? () => onDelete(role.role_id) : undefined
+                }
+                onMembers={
+                  onMembers ? () => onMembers(role) : undefined
                 }
               />
             );
