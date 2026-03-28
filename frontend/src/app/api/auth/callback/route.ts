@@ -85,7 +85,7 @@ async function resolvePostSignInPath(accessToken: string, discordId: string | nu
 }
 
 export async function GET(request: NextRequest) {
-	const { searchParams, origin } = new URL(request.url);
+	const { searchParams } = new URL(request.url);
 	const code = searchParams.get("code");
 	const requestedNext = searchParams.get("next") ?? "/roles";
 	const next = requestedNext.startsWith("/") ? requestedNext : "/roles";
@@ -115,5 +115,7 @@ export async function GET(request: NextRequest) {
 		}
 	}
 
-	return NextResponse.redirect(`${origin}/login?error=auth_callback_error`);
+	// Use configured base URL (env or normalized) instead of request origin
+	// to avoid returning 0.0.0.0 when the dev server binds to that host.
+	return NextResponse.redirect(`${getBaseUrl(request)}/login?error=auth_callback_error`);
 }
