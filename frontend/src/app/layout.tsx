@@ -62,7 +62,7 @@ export default async function RootLayout({
                     </span>
                   )}
                   <a
-                    href="/api/auth/signout?callbackUrl=%2F"
+                    href="/auth/signout?callbackUrl=%2F"
                     className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
                   >
                     Logout

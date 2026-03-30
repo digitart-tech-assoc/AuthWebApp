@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 			)}
 			<p style={{ marginBottom: 12 }}>Discord アカウントでログインしてください。</p>
 			<a
-				href={`/api/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+				href={`/auth/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`}
 				style={{
 					display: "inline-block",
 					padding: "10px 20px",
