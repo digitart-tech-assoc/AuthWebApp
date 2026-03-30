@@ -17,10 +17,10 @@ spec:
           image: authwebapp-backend:latest
           imagePullPolicy: Never
           ports:
-            - containerPort: 8081
+            - containerPort: 5174
           env:
             - name: BACKEND_PORT
-              value: "8081"
+              value: "5174"
           envFrom:
             - secretRef:
                 name: authwebapp-secret
@@ -89,7 +89,7 @@ spec:
             - containerPort: 8000
           env:
             - name: BACKEND_URL
-              value: "http://authwebapp-backend-service:8081"
+              value: "http://authwebapp-backend-service:5174"
           envFrom:
             - secretRef:
                 name: authwebapp-secret

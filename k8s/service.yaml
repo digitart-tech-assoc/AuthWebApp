@@ -7,8 +7,8 @@ spec:
     app: authwebapp-backend
   ports:
     - protocol: TCP
-      port: 8081
-      targetPort: 8000
+      port: 5174
+      targetPort: 5174
   type: ClusterIP
 
 ---
@@ -51,6 +51,6 @@ spec:
     app: authwebapp-backend
   ports:
     - protocol: TCP
-      port: 8081
-      targetPort: 8000
+      port: 5174
+      targetPort: 5174
   type: ClusterIP

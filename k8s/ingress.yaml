@@ -30,10 +30,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                # Route API-prefixed requests to frontend (dev server on 5173)
-                name: authwebapp-frontend-service
+                # Route API-prefixed requests to backend service
+                name: authwebapp-backend-service
                 port:
-                  number: 80
+                  number: 5174
           - path: /admin
             pathType: Prefix
             backend:
