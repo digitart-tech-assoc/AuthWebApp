@@ -15,6 +15,7 @@ from app.db.repository import (
 	add_to_member_list,
 	register_paid_invitation,
     cleanup_expired_prospective_members,
+    get_member_lists,
 )
 from app.services.discord_client import fetch_guild_member
 
@@ -58,6 +59,23 @@ async def register_pre_member_endpoint(
 		return {"ok": True, "discord_id": payload.discord_id, "result": result}
 	except Exception as e:
 		raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/internal/lists")
+async def internal_get_lists(authorization: str | None = Header(default=None)) -> dict:
+	"""内部用: member_list/admin_list/pre_member_list を取得（Discord ボット専用）。
+
+	認証: SHARED_SECRET によるベアラートークン
+	"""
+	expected = f"Bearer {SHARED_SECRET}"
+	if authorization != expected:
+		raise HTTPException(status_code=401, detail="Unauthorized")
+
+	try:
+		result = await asyncio.to_thread(get_member_lists)
+		return {"ok": True, "data": result}
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/pre_member/cleanup")

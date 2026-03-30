@@ -491,6 +491,27 @@ async def create_student_profile(
 
 			conn.commit()
 
+	# 非同期で Discord ボットへ同期要求を送信（失敗しても本処理は成功扱い）
+	async def _notify_discord_bot() -> None:
+		import os
+		import httpx
+		try:
+			discord_bot_url = os.getenv("DISCORD_BOT_URL", "http://authwebapp-discord-bot-service:8000")
+			shared = os.getenv("SHARED_SECRET", "dev-secret")
+			async with httpx.AsyncClient(timeout=5.0) as client:
+				await client.post(
+					f"{discord_bot_url}/internal/sync",
+					json={"action": "sync_roles"},
+					headers={"Authorization": f"Bearer {shared}"},
+				)
+		except Exception:
+			logger.exception("Failed to notify discord-bot for sync")
+
+	try:
+		asyncio.create_task(_notify_discord_bot())
+	except Exception:
+		logger.exception("Failed to schedule discord-bot sync task")
+
 	return StudentProfileResponse(
 		profile_id=profile_id,
 		student_number=req.student_number,

@@ -26,11 +26,20 @@ spec:
                 name: authwebapp-frontend-service
                 port:
                   number: 80
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                # Route versioned backend API requests to backend service
+                name: authwebapp-backend-service
+                port:
+                  number: 5174
           - path: /api
             pathType: Prefix
             backend:
               service:
-                # Route API-prefixed requests to frontend (dev server on 5173)
+                # Route non-versioned /api/* to frontend so Next.js server API
+                # routes (e.g. /api/roles/*) can run and proxy to the backend
                 name: authwebapp-frontend-service
                 port:
                   number: 80

@@ -96,8 +96,8 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	return (
 		<main style={{ padding: 24 }}>
 			<p style={{ marginBottom: 12, color: "#6b7280", fontSize: 14 }}>
-				サインイン中: {displayName}（ロール: {role}）{" "}
-				<a href="/api/auth/signout?callbackUrl=%2F">ログアウト</a>
+				サインイン中: {displayName}（ロール: {role}） {" "}
+				<a href="/auth/signout?callbackUrl=%2F">ログアウト</a>
 			</p>
 
 			{synced && !hasError ? (

@@ -13,7 +13,7 @@ export default async function Home({ searchParams }: HomePageProps) {
   if (code) {
     const requestedNext = params?.next ?? "/roles";
     const next = requestedNext.startsWith("/") ? requestedNext : "/roles";
-    redirect(`/api/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`);
+    redirect(`/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`);
   }
 
   return (

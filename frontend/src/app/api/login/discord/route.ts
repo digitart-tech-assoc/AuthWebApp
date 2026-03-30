@@ -15,12 +15,12 @@ export async function GET(request: NextRequest) {
 	let redirectBase: string;
 	if (envRedirect && envRedirect.trim().length > 0) {
 		redirectBase = envRedirect.replace(/\/+$/g, "");
-		// 環境変数がベース URL のみ（/api/auth/callback を含まない）だった場合は付与
-		if (!redirectBase.includes("/api/auth/callback")) {
-			redirectBase = `${redirectBase}/api/auth/callback`;
+		// 環境変数がベース URL のみ（/auth/callback を含まない）だった場合は付与
+		if (!redirectBase.includes("/auth/callback")) {
+			redirectBase = `${redirectBase}/auth/callback`;
 		}
 	} else {
-		redirectBase = `${getBaseUrl(request)}/api/auth/callback`;
+		redirectBase = `${getBaseUrl(request)}/auth/callback`;
 	}
 
 	const { data, error } = await supabase.auth.signInWithOAuth({
