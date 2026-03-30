@@ -7,6 +7,9 @@ resources:
   - ingress.yaml
   - secrets/authwebapp-secret.yaml
 
+generatorOptions:
+  disableNameSuffixHash: true
+
 secretGenerator:
   - name: authwebapp-tls
     type: kubernetes.io/tls
