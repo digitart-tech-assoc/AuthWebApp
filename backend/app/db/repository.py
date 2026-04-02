@@ -13,7 +13,22 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localho
 
 
 def _connect():
-    return psycopg2.connect(DATABASE_URL)
+    from urllib.parse import urlparse
+
+    parsed = urlparse(DATABASE_URL)
+    connect_kwargs: dict = {"connect_timeout": 5}
+    # Use SSL when connecting to Supabase-hosted DBs / pooler
+    hostname = (parsed.hostname or "").lower()
+    if "supabase.co" in hostname or "pooler.supabase.com" in hostname or "supabase" in hostname:
+        connect_kwargs["sslmode"] = "require"
+    try:
+        return psycopg2.connect(DATABASE_URL, **connect_kwargs)
+    except Exception as e:
+        host = parsed.hostname or "<unknown>"
+        port = parsed.port or "<unknown>"
+        user = parsed.username or "<unknown>"
+        print(f"ERROR: DB connection failed to host={host} port={port} user={user}: {e}", file=sys.stderr)
+        raise
 
 
 def init_db() -> None:
@@ -21,6 +36,12 @@ def init_db() -> None:
     try:
         with _connect() as conn:
             with conn.cursor() as cur:
+                # Ensure pgcrypto extension is available for gen_random_uuid().
+                # Ignore failures (hosted providers may restrict extension creation).
+                try:
+                    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                except Exception:
+                    pass
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS role_categories (
@@ -110,7 +131,6 @@ def init_db() -> None:
                 )
 
 
-
                 # member / admin / pre_member リスト（Discord IDベース）
                 cur.execute(
                     """
@@ -169,54 +189,104 @@ def init_db() -> None:
                     );
                     """
                 )
+                # join_requests table for OTP-based join flow
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS join_requests (
+                        id TEXT PRIMARY KEY,
+                        email TEXT NOT NULL UNIQUE,
+                        name TEXT NOT NULL,
+                        form_type TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        metadata JSONB,
+                        created_at TIMESTAMPTZ DEFAULT now(),
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_join_requests_email ON join_requests (email);
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_join_requests_status ON join_requests (status);
+                    """
+                )
+                # otp_codes table
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS otp_codes (
+                        id TEXT PRIMARY KEY,
+                        join_request_id TEXT NOT NULL REFERENCES join_requests(id) ON DELETE CASCADE,
+                        code_hash TEXT NOT NULL,
+                        expires_at TIMESTAMPTZ NOT NULL,
+                        verified_at TIMESTAMPTZ,
+                        attempt_count INTEGER DEFAULT 0,
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_otp_codes_join_request_id ON otp_codes (join_request_id);
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_otp_codes_expires_at ON otp_codes (expires_at);
+                    """
+                )
                 conn.commit()
     except Exception as e:
         print(f"WARNING: init_db failed: {e}", file=sys.stderr)
         return
 
-def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
-				FROM role_categories
-				ORDER BY display_order ASC, name ASC
-				"""
-			)
-			categories = [
-				{
-					"id": row[0],
-					"name": row[1],
-					"display_order": row[2],
-					"is_collapsed": row[3],
-					"permissions": int(row[4]),
-				}
-				for row in cur.fetchall()
-			]
 
-			cur.execute(
-				"""
-				SELECT role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot
-				FROM role_manifests
-				ORDER BY position DESC, name ASC
-				"""
-			)
-			roles = [
-				{
-					"role_id": row[0],
-					"name": row[1],
-					"color": row[2],
-					"hoist": row[3],
-					"mentionable": row[4],
-					"permissions": int(row[5]),
-					"position": row[6],
-					"category_id": row[7],
-					"is_our_bot": bool(row[8]),
-				}
-				for row in cur.fetchall()
-			]
-	return {"categories": categories, "roles": roles}
+def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
+                FROM role_categories
+                ORDER BY display_order ASC, name ASC
+                """
+            )
+            categories = [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "display_order": row[2],
+                    "is_collapsed": row[3],
+                    "permissions": int(row[4]),
+                }
+                for row in cur.fetchall()
+            ]
+
+            cur.execute(
+                """
+                SELECT role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot
+                FROM role_manifests
+                ORDER BY position DESC, name ASC
+                """
+            )
+            roles = [
+                {
+                    "role_id": row[0],
+                    "name": row[1],
+                    "color": row[2],
+                    "hoist": row[3],
+                    "mentionable": row[4],
+                    "permissions": int(row[5]),
+                    "position": row[6],
+                    "category_id": row[7],
+                    "is_our_bot": bool(row[8]),
+                }
+                for row in cur.fetchall()
+            ]
+    return {"categories": categories, "roles": roles}
 
 
 def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]]) -> None:
