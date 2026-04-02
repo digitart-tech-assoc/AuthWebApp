@@ -48,12 +48,6 @@ export default async function RootLayout({
               AuthWebApp
             </Link>
             <div className="flex items-center gap-2">
-              <Link
-                href="/roles"
-                className="rounded-md px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-              >
-                Roles
-              </Link>
               {user ? (
                 <>
                   {displayName && (
