@@ -59,6 +59,12 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
     ports:
       - "5173:5173"
+    # Development: mount source and run next dev for hot-reload
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+    working_dir: /app
+    command: sh -c "npm run dev -- -H 0.0.0.0 -p 5173"
     depends_on:
       backend:
         condition: service_started
