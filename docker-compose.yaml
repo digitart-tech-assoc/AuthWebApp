@@ -18,7 +18,7 @@ services:
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME}
     ports:
-      - "8000:8000"
+      - "5174:5174"
     extra_hosts:
       - "localhost:host-gateway"
       - "host.docker.internal:host-gateway"
@@ -28,7 +28,7 @@ services:
       context: ./discord-bot
     environment:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
-      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:5174}
       BOT_PORT: ${BOT_PORT:-8000}
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
@@ -46,10 +46,10 @@ services:
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://backend:8000}
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:5174}
     environment:
-      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
-      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://backend:8000}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:5174}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:5174}
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
