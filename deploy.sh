@@ -25,8 +25,8 @@ else
 fi
 
 # Frontend ビルドに必要な環境変数を確認
-if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
-  echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required"
+if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ] || [ -z "$NEXT_PUBLIC_BACKEND_URL" ] || [ -z "$NEXT_PUBLIC_SITE_URL" ]; then
+  echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_BACKEND_URL, and NEXT_PUBLIC_SITE_URL are required"
   exit 1
 fi
 
@@ -34,17 +34,19 @@ fi
 echo ""
 echo "[1/6] Building Docker images..."
 echo "  - Building frontend with NEXT_PUBLIC_* build args..."
-docker build -t authwebapp-frontend:$VERSION \
+docker build -t authwebapp-frontend:$VERSION -t authwebapp-frontend:latest \
   -f frontend/Dockerfile \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+  --build-arg NEXT_PUBLIC_BACKEND_URL="$NEXT_PUBLIC_BACKEND_URL" \
+  --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
   frontend/
 
 echo "  - Building backend..."
-docker build -t authwebapp-backend:$VERSION -f backend/Dockerfile backend/
+docker build -t authwebapp-backend:$VERSION -t authwebapp-backend:latest -f backend/Dockerfile backend/
 
 echo "  - Building discord-bot..."
-docker build -t authwebapp-discord-bot:$VERSION -f discord-bot/Dockerfile discord-bot/
+docker build -t authwebapp-discord-bot:$VERSION -t authwebapp-discord-bot:latest -f discord-bot/Dockerfile discord-bot/
 
 # 2. ディスク容量チェック
 echo ""
@@ -63,13 +65,13 @@ fi
 echo ""
 echo "[3/6] Importing images to MicroK8s..."
 echo "  - Loading frontend image..."
-docker save authwebapp-frontend:$VERSION | microk8s ctr images import -
+docker save authwebapp-frontend:$VERSION authwebapp-frontend:latest | microk8s ctr images import -
 
 echo "  - Loading backend image..."
-docker save authwebapp-backend:$VERSION | microk8s ctr images import -
+docker save authwebapp-backend:$VERSION authwebapp-backend:latest | microk8s ctr images import -
 
 echo "  - Loading discord-bot image..."
-docker save authwebapp-discord-bot:$VERSION | microk8s ctr images import -
+docker save authwebapp-discord-bot:$VERSION authwebapp-discord-bot:latest | microk8s ctr images import -
 
 # 4. TLS Secret を確認・再作成
 echo ""
