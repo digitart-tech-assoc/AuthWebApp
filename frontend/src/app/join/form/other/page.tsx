@@ -12,7 +12,7 @@ export default function OtherApplicantFormPage() {
         <p className={styles.cardText}>
           digitartテクノロジー愛好会に興味を持ってくださりありがとうございます。
           当団体は青山学院大学の学生のみ入会できます。質問等ございましたら
-          <Link href="/join/contact">お問合せフォーム</Link>
+          <Link href="/contact">お問合せフォーム</Link>
           よりご質問ください。
         </p>
         <div className={styles.actions} style={{ marginTop: 12 }}>

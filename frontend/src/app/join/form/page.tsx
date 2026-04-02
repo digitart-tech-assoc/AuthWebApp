@@ -9,6 +9,19 @@ export default function JoinFormSelectionPage() {
         <p className={styles.lead}>在学生・入学見込み・その他の3区分から該当するフォームを選択してください。</p>
       </section>
 
+      <section className={styles.actions} style={{ marginTop: 24 }}>
+        <p className={styles.cardText}>
+          ご不明点/バグ報告があれば、
+          <Link className={styles.secondary} href="/contact">お問い合わせページ</Link>
+          をご利用ください。
+        </p>
+        <p className={styles.cardText}>
+          お問い合わせフォームも動作しない場合は、お手数をおかけしますが団体メールアドレス
+            (aoyama.tech.exe@gmail.com)
+          までご連絡ください。
+        </p>
+      </section>
+
       <section className={styles.grid}>
         <article className={styles.card}>
           <h2 className={styles.cardTitle}>在学生（青山学院大学）</h2>
