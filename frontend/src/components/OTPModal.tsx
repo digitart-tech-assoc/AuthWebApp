@@ -22,6 +22,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const autoSendRef = useRef(false);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const isBusy = status === "sending" || status === "verifying";
 
   async function sendOtp() {
     setError(null);
@@ -104,7 +105,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
         <div className={styles.body}>
           {status === null && (
             <div className={styles.row}>
-              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`} disabled={status === "sending" || status === "verifying"}>送信</button>
+              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`} disabled={isBusy}>送信</button>
               <button onClick={onClose} className={styles.button}>キャンセル</button>
             </div>
           )}
@@ -116,7 +117,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
               <p className={styles.info}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
               <OTPInput onComplete={handleComplete} />
               <div className={styles.row} style={{ marginTop: 12 }}>
-                <button onClick={sendOtp} className={styles.button} disabled={resendSeconds > 0 || status === "sending" || status === "verifying"}>
+                <button onClick={sendOtp} className={styles.button} disabled={resendSeconds > 0 || isBusy}>
                   {resendSeconds > 0 ? `再送 (${resendSeconds}s)` : "再送"}
                 </button>
                 <button onClick={onClose} className={styles.button}>閉じる</button>
