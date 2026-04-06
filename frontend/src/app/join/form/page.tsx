@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { School, UserCheck, MoreHorizontal, Info } from "lucide-react";
+import { School, UserCheck, MoreHorizontal, Info, ChevronRight, ArrowLeft } from "lucide-react";
 
 export default function JoinFormSelectionPage() {
   return (
@@ -27,9 +27,7 @@ export default function JoinFormSelectionPage() {
                   <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                     <School className="w-6 h-6 text-emerald-600" />
                   </div>
-                  <svg className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">在学生</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
@@ -46,9 +44,7 @@ export default function JoinFormSelectionPage() {
                   <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                     <UserCheck className="w-6 h-6 text-blue-600" />
                   </div>
-                  <svg className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">入学見込み</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
@@ -65,9 +61,7 @@ export default function JoinFormSelectionPage() {
                   <div className="flex-shrink-0 w-12 h-12 bg-gradient-to-br from-slate-100 to-gray-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                     <MoreHorizontal className="w-6 h-6 text-slate-600" />
                   </div>
-                  <svg className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-400 transition-colors" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">その他</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
@@ -81,9 +75,7 @@ export default function JoinFormSelectionPage() {
           {/* 戻るボタン */}
           <div className="mt-12 text-center">
             <Link href="/join" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-100 border border-slate-300 text-slate-900 font-semibold hover:bg-slate-50 hover:border-slate-400 transition-all">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
-              </svg>
+              <ArrowLeft className="w-4 h-4" />
               入会・案内ページに戻る
             </Link>
           </div>
