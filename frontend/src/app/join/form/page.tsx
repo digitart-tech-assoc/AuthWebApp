@@ -40,7 +40,7 @@ export default function JoinFormSelectionPage({ searchParams }: { searchParams?:
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">在学生</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  青山学院大学に現在在学中の方向けです。学生番号から学内メールを自動補完します。
+                  青山学院大学に現在在学中の方向けです。学内メールで承認を行います。
                 </p>
                 <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">青山学院大学</div>
               </div>
@@ -57,7 +57,7 @@ export default function JoinFormSelectionPage({ searchParams }: { searchParams?:
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">入学見込み</h3>
                 <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-                  青山学院大学への入学が決定されている方向けです。メール認証で仮入会できます。
+                  青山学院大学への入学が決定されている方向けです。メール認証で仮入会できます(期限付き招待)。
                 </p>
                 <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">入学予定者</div>
               </div>
