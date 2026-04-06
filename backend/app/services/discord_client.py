@@ -26,12 +26,23 @@ async def fetch_guild_roles(guild_id: str, token: str) -> list[dict]:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
 	async with httpx.AsyncClient(timeout=10.0) as client:
 		# Get the bot's own user ID to identify our bot role
-		me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
-		me_resp.raise_for_status()
-		bot_id = me_resp.json()["id"]
+		try:
+			me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
+			me_resp.raise_for_status()
+			bot_id = me_resp.json()["id"]
+		except httpx.HTTPStatusError as e:
+			raise Exception(f"Failed to get bot user info: {e.response.status_code} {e}") from e
 
-		response = await client.get(url, headers=headers)
-		response.raise_for_status()
+		try:
+			response = await client.get(url, headers=headers)
+			response.raise_for_status()
+		except httpx.HTTPStatusError as e:
+			error_msg = f"Discord API error {e.response.status_code}: {e}"
+			if e.response.status_code == 404:
+				error_msg = f"Guild {guild_id} not found or bot not in guild (404). Check DISCORD_GUILD_ID and bot permissions."
+			elif e.response.status_code == 403:
+				error_msg = f"Bot lacks permission to read roles in guild {guild_id} (403). Check bot scopes/permissions."
+			raise Exception(error_msg) from e
 
 	roles = response.json()
 	return [
@@ -128,11 +139,16 @@ async def fetch_all_guild_members(guild_id: str, token: str) -> list[dict]:
 	async with httpx.AsyncClient(timeout=30.0) as client:
 		while True:
 			params = {"limit": 1000, "after": after}
-			resp = await client.get(url, headers=headers, params=params)
-			if resp.status_code == 403:
-				print("[ERROR] Discord members fetch returned 403 Forbidden. Is 'Server Members Intent' enabled in the Discord Developer Portal?")
+			try:
+				resp = await client.get(url, headers=headers, params=params)
 				resp.raise_for_status()
-			resp.raise_for_status()
+			except httpx.HTTPStatusError as e:
+				if e.response.status_code == 404:
+					raise Exception(f"Guild {guild_id} not found or bot not in guild (404). Check DISCORD_GUILD_ID and bot permissions.") from e
+				elif e.response.status_code == 403:
+					raise Exception(f"Bot lacks permission to read members in guild {guild_id} (403). Is 'Server Members Intent' enabled in Discord Developer Portal?") from e
+				raise Exception(f"Discord API error {e.response.status_code}: {e}") from e
+			
 			batch = resp.json()
 			if not batch:
 				if after == "0":
@@ -305,3 +321,25 @@ async def send_message_to_channel(channel_id: str, token: str, content: str | No
 		response = await client.post(url, headers=_headers(token), json=payload)
 		response.raise_for_status()
 		return response.json()
+
+
+async def fetch_bot_guilds(token: str) -> list[dict]:
+	"""Bot が参加しているギルド一覧を取得"""
+	headers = {"Authorization": f"Bot {token}"}
+	url = f"{DISCORD_API_BASE}/users/@me/guilds"
+	async with httpx.AsyncClient(timeout=10.0) as client:
+		try:
+			response = await client.get(url, headers=headers)
+			response.raise_for_status()
+			guilds = response.json()
+			return [
+				{
+					"guild_id": g["id"],
+					"name": g["name"],
+					"owner": g.get("owner", False),
+					"permissions": g.get("permissions"),
+				}
+				for g in guilds
+			]
+		except httpx.HTTPStatusError as e:
+			raise Exception(f"Failed to fetch bot guilds: {e.response.status_code} {e}") from e
