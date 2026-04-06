@@ -25,8 +25,21 @@ export async function POST() {
 			cache: "no-store",
 		});
 		const body = (await res.json()) as { ok?: boolean; guild_id?: string; roles?: number; detail?: string };
+		
+		// ステータスコードが非2xxの場合はログ出力
+		if (!res.ok) {
+			console.error(
+				`[Roles Refresh Error] Backend returned ${res.status}: ${body.detail || "No detail provided"}`
+			);
+		}
+		
 		return NextResponse.json(body, { status: res.status });
-	} catch {
-		return NextResponse.json({ ok: false, detail: "frontend proxy failed" }, { status: 502 });
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`[Roles Refresh Error] Proxy failed: ${errorMessage}`);
+		return NextResponse.json(
+			{ ok: false, detail: `Frontend proxy failed: ${errorMessage}` },
+			{ status: 502 }
+		);
 	}
 }
