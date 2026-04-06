@@ -25,16 +25,26 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const authRequired = process.env.AUTH_REQUIRED !== "false";
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  let displayName = null;
 
-  const displayName =
-    user?.user_metadata?.full_name ??
-    user?.user_metadata?.name ??
-    user?.email ??
-    null;
+  try {
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser();
+    user = supabaseUser;
+    displayName =
+      user?.user_metadata?.full_name ??
+      user?.user_metadata?.name ??
+      user?.email ??
+      null;
+  } catch (error) {
+    // Supabase 接続エラーは無視（ユーザーなしで続行）
+    if (error instanceof Error) {
+      console.error("Error fetching user in RootLayout:", error.message);
+    }
+  }
 
   return (
     <html

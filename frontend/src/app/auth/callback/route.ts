@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
     const code = searchParams.get("code");
     const requestedNext = searchParams.get("next") ?? "/roles";
     const next = requestedNext.startsWith("/") ? requestedNext : "/roles";
+    const base = getBaseUrl(request);
 
     if (code) {
         const { supabase, applyCookies } = createSupabaseRouteClient(request);
@@ -109,11 +110,11 @@ export async function GET(request: NextRequest) {
                 : "/login?error=auth_callback_error";
 
             const needsAccessGate = next === "/roles" || next.startsWith("/roles/") || next === "/admin" || next.startsWith("/admin/");
-            const destination = needsAccessGate ? postSignInPath : next;
-            const base = getBaseUrl(request);
-            return applyCookies(NextResponse.redirect(`${base}${destination}`));
+            const relativePath = needsAccessGate ? postSignInPath : next;
+            const absoluteUrl = new URL(relativePath, base).toString();
+            return applyCookies(NextResponse.redirect(absoluteUrl));
         }
     }
 
-    return NextResponse.redirect(`${getBaseUrl(request)}/login?error=auth_callback_error`);
+    return NextResponse.redirect(`${base}/login?error=auth_callback_error`);
 }

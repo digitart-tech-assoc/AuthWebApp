@@ -28,6 +28,7 @@ from app.services.discord_client import (
 	delete_guild_role,
 	edit_guild_role,
 	fetch_all_guild_members,
+	fetch_bot_guilds,
 	fetch_guild_members_with_role,
 	fetch_guild_roles,
 	remove_role_from_member,
@@ -51,21 +52,37 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
 	try:
+		print("[DEBUG] Starting Discord roles refresh...")
 		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
+		print(f"[DEBUG] Fetched {len(roles)} roles from Discord")
 	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord fetch failed: {exc}") from exc
+		error_detail = str(exc)
+		print(f"[ERROR] Discord roles fetch failed: {error_detail}")
+		import traceback
+		traceback.print_exc()
+		raise HTTPException(status_code=502, detail=f"Discord API error: {error_detail}") from exc
 
-	count = await asyncio.to_thread(replace_roles_from_discord, roles)
+	try:
+		count = await asyncio.to_thread(replace_roles_from_discord, roles)
+		print(f"[DEBUG] Replaced {count} roles in database")
+	except Exception as exc:
+		error_detail = str(exc)
+		print(f"[ERROR] Database replace_roles failed: {error_detail}")
+		import traceback
+		traceback.print_exc()
+		raise HTTPException(status_code=502, detail=f"Database error: {error_detail}") from exc
 
 	# Also fetch all guild members and their role assignments
+	members = []
 	try:
 		members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
+		print(f"[DEBUG] Fetched {len(members)} guild members")
 		await asyncio.to_thread(save_guild_members, [
 			{"user_id": m["user_id"], "username": m["username"],
 			 "display_name": m["display_name"], "avatar": m["avatar"]}
 			for m in members
 		])
-		print(f"[DEBUG] Fetched {len(members)} guild members. Mapping assignments...")
+		print(f"[DEBUG] Saved {len(members)} guild members to database")
 		# Build role_id -> [user_id] mapping from member data
 		assignments: dict[str, list[str]] = {}
 		for m in members:
@@ -73,11 +90,14 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 				assignments.setdefault(role_id, []).append(m["user_id"])
 		print(f"[DEBUG] Found {len(assignments)} roles with assignments. Saving to DB...")
 		await asyncio.to_thread(save_role_assignments, assignments)
+		print(f"[DEBUG] Saved role assignments to DB")
 	except Exception as exc:
-		print(f"[ERROR] Failed to fetch or map guild members: {exc}")
+		error_detail = str(exc)
+		print(f"[ERROR] Failed to fetch or map guild members: {error_detail}")
 		import traceback
 		traceback.print_exc()
-		members = []
+		# Don't fail the entire request if member sync fails
+		print(f"[WARNING] Continuing without member sync")
 
 	return {"ok": True, "guild_id": DISCORD_GUILD_ID, "roles": count, "members": len(members)}
 
@@ -337,3 +357,28 @@ async def get_lists(_principal: dict = Depends(require_member)) -> dict:
 	"""member_list / admin_list / pre_member_list を取得."""
 	result = await asyncio.to_thread(get_member_lists)
 	return result
+
+
+@router.get("/debug/guilds")
+async def debug_bot_guilds() -> dict:
+	"""[DEBUG] Bot が参加しているギルド一覧を取得. ギルドID設定確認用."""
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+	
+	try:
+		guilds = await fetch_bot_guilds(token)
+		current_guild_id = DISCORD_GUILD_ID or "NOT_SET"
+		current_guild = next((g for g in guilds if g["guild_id"] == current_guild_id), None)
+		
+		return {
+			"ok": True,
+			"current_guild_id": current_guild_id,
+			"current_guild": current_guild,
+			"all_guilds": guilds,
+			"note": "current_guild が null の場合、DISCORD_GUILD_ID 環境変数が正しくないか bot がギルドに参加していません",
+		}
+	except Exception as exc:
+		error_detail = str(exc)
+		print(f"[ERROR] Debug guilds fetch failed: {error_detail}")
+		raise HTTPException(status_code=502, detail=f"Failed to fetch guilds: {error_detail}") from exc
