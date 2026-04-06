@@ -18,7 +18,10 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState<number>(0);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const autoSendRef = useRef(false);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
   async function sendOtp() {
     setError(null);
@@ -27,6 +30,8 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
       const res = await requestOtp({ email, confirm_email: email, name, form_type: formType });
       setJoinId(res.id);
       setStatus("sent");
+      // start resend cooldown
+      setResendSeconds(30);
     } catch (e: any) {
       setError(e?.message ?? String(e));
       setStatus(null);
@@ -55,9 +60,42 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
     }
   }
 
+  // countdown for resend button
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const t = setInterval(() => setResendSeconds((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendSeconds]);
+
+  // focus modal and handle Esc to close
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    modalRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose?.();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      prev?.focus();
+    };
+  }, [onClose]);
+
+  // copy feedback
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus("コピーしました");
+      setTimeout(() => setCopyStatus(null), 2000);
+    } catch (_) {
+      setCopyStatus("コピーに失敗しました");
+      setTimeout(() => setCopyStatus(null), 2000);
+    }
+  };
+
   return (
     <div className={styles.backdrop} role="dialog" aria-modal="true">
-      <div className={styles.modal}>
+      <div className={styles.modal} ref={modalRef} tabIndex={-1} aria-label="メール認証ダイアログ">
         <div className={styles.header}>
           <h3 className={styles.title}>メール認証コードの送信</h3>
           <p className={styles.subtitle}>送信先: {email}</p>
@@ -66,25 +104,27 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
         <div className={styles.body}>
           {status === null && (
             <div className={styles.row}>
-              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`}>送信</button>
+              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`} disabled={status === "sending" || status === "verifying"}>送信</button>
               <button onClick={onClose} className={styles.button}>キャンセル</button>
             </div>
           )}
 
-          {status === "sending" && <p className={styles.info}>送信中…</p>}
+          {status === "sending" && <p className={styles.info}><span className={styles.spinner} aria-hidden></span> 送信中…</p>}
 
           {status === "sent" && (
             <div>
               <p className={styles.info}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
               <OTPInput onComplete={handleComplete} />
               <div className={styles.row} style={{ marginTop: 12 }}>
-                <button onClick={sendOtp} className={styles.button}>再送</button>
+                <button onClick={sendOtp} className={styles.button} disabled={resendSeconds > 0 || status === "sending" || status === "verifying"}>
+                  {resendSeconds > 0 ? `再送 (${resendSeconds}s)` : "再送"}
+                </button>
                 <button onClick={onClose} className={styles.button}>閉じる</button>
               </div>
             </div>
           )}
 
-          {status === "verifying" && <p className={styles.info}>確認中…</p>}
+          {status === "verifying" && <p className={styles.info}><span className={styles.spinner} aria-hidden></span> 確認中…</p>}
 
           {status === "verified" && (
             <div>
@@ -92,10 +132,13 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
               {inviteUrl ? (
                 <div className={styles.inviteRow}>
                   <p className={styles.inviteText}>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer" className={styles.inviteLink}>{inviteUrl}</a></p>
-                  <button
-                    onClick={() => void navigator.clipboard.writeText(inviteUrl)}
-                    className={`${styles.button} ${styles.copyButton}`}
-                  >コピー</button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      onClick={() => void handleCopy(inviteUrl)}
+                      className={`${styles.button} ${styles.copyButton}`}
+                    >コピー</button>
+                    {copyStatus ? <span style={{ fontSize: 13, color: '#374151' }}>{copyStatus}</span> : null}
+                  </div>
                 </div>
               ) : (
                 <p className={styles.info}>招待リンクはまもなく届きます。</p>
