@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { School, UserCheck, MoreHorizontal, Info, ChevronRight, ArrowLeft } from "lucide-react";
 
-export default function JoinFormSelectionPage() {
+export default function JoinFormSelectionPage({ searchParams }: { searchParams?: { mode?: string } }) {
+  const mode = searchParams?.mode ?? null;
   return (
     <main className="bg-slate-50 text-slate-900 font-sans min-h-screen">
       {/* メインコンテンツ */}
       <section className="py-16 px-6">
         <div className="max-w-5xl mx-auto">
           {/* 説明文 */}
-          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 md:p-8 mb-12 space-y-3">
+          <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 md:p-8 mb-6 space-y-3">
             <p className="text-slate-700 leading-relaxed">
               ご不明点やバグ報告がございましたら、<Link href="/contact" className="font-bold text-emerald-600 hover:text-emerald-700 underline">お問い合わせページ</Link>をご利用ください。
             </p>
@@ -17,6 +18,14 @@ export default function JoinFormSelectionPage() {
               お問い合わせフォームが動作しない場合は、aoyama.tech.exe@gmail.com までご連絡ください。
             </p>
           </div>
+
+          {mode ? (
+            <div className="mb-8">
+              <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold">
+                {mode === 'temporary' ? '仮入会モードで表示しています（メール認証）' : mode === 'full' ? '本入会モードで表示しています（詳細フォーム）' : ''}
+              </div>
+            </div>
+          ) : null}
 
           {/* カードグリッド */}
           <div className="grid gap-6 md:grid-cols-3">
