@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { School, UserCheck, MoreHorizontal, Info, ChevronRight, ArrowLeft } from "lucide-react";
 
-export default function JoinFormSelectionPage({ searchParams }: { searchParams?: { mode?: string } }) {
-  const mode = searchParams?.mode ?? null;
+export default async function JoinFormSelectionPage({ searchParams }: { searchParams?: { mode?: string } | Promise<{ mode?: string }> }) {
+  const resolved = searchParams ? await searchParams : undefined;
+  const mode = resolved?.mode ?? null;
   return (
     <main className="bg-slate-50 text-slate-900 font-sans min-h-screen">
       {/* メインコンテンツ */}
