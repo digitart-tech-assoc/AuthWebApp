@@ -63,38 +63,10 @@ export default function AoyamaStudentFormPage() {
       </section>
 
       {/* メインコンテンツ */}
-      <section className="py-16 px-4">
+      <section className="py-12 px-4">
         <div className="max-w-3xl mx-auto">
-          {/* ステップ説明 */}
-          <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-8 md:p-10 mb-12">
-            <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
-              入会の流れ
-            </h2>
-            <ol className="space-y-3 ml-4 text-slate-700 leading-relaxed">
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">1</span>
-                <span>必要事項（氏名、学生番号 等）を入力して「送信」をクリックしてください。</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">2</span>
-                <span>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">3</span>
-                <span>メールに届いた認証パスワードをこのページの確認欄に入力して検証してください。</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">4</span>
-                <span>検証成功後、Discord招待リンクが発行されます。リンクからサーバーに参加してください。</span>
-              </li>
-            </ol>
-          </div>
-
           {/* フォームカード */}
-          <div className="bg-white rounded-2xl border border-slate-100 p-8 md:p-10 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-100 p-6 md:p-8 shadow-sm mb-8">
             <form className="space-y-6">
               {/* 氏名 */}
               <div className="space-y-2">
@@ -198,6 +170,35 @@ export default function AoyamaStudentFormPage() {
             </form>
           </div>
         </div>
+
+        {/* ステップ説明 */}
+          <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-6 md:p-8 mt-6 mb-8">
+            <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-3">
+              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+              入会の流れ
+            </h2>
+            <ol className="space-y-3 ml-4 text-slate-700 leading-relaxed">
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">1</span>
+                <span>必要事項（氏名、学生番号 等）を入力して「送信」をクリックしてください。</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">2</span>
+                <span>入力したメールアドレス宛に認証パスワード（ワンタイムコード）を送信します。</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">3</span>
+                <span>メールに届いた認証パスワードをこのページの確認欄に入力して検証してください。</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-sm font-bold">4</span>
+                <span>検証成功後、Discord招待リンクが発行されます。リンクからサーバーに参加してください。</span>
+              </li>
+            </ol>
+          </div>
+          
       </section>
 
       {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" autoSend onClose={() => setShowOtp(false)} />}
