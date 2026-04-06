@@ -6,6 +6,7 @@ import { Info, CheckCircle, FileText, AlertCircle } from "lucide-react";
 import OTPModal from "../../../../components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
 import StudentNumberInput from "../../../../components/forms/StudentNumberInput";
+import { validateFullName } from "../../../../lib/validation";
 
 const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
 
@@ -40,6 +41,7 @@ export default function AoyamaStudentFormPage() {
   const normalizedStudentId = useMemo(() => studentId.trim(), [studentId]);
   const isStudentIdValid = STUDENT_ID_PATTERN.test(normalizedStudentId.toUpperCase());
   const autoCompletedEmail = isStudentIdValid ? buildAoyamaEmail(normalizedStudentId) : "";
+  const isNameValid = validateFullName(name);
 
   return (
     <main className="bg-slate-50 text-slate-900 font-sans min-h-screen">
@@ -138,8 +140,13 @@ export default function AoyamaStudentFormPage() {
                 <button
                   type="button"
                   className="w-full px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all hover:shadow-lg active:scale-95"
+                  disabled={!isNameValid || !isStudentIdValid || !autoCompletedEmail}
                   onClick={() => {
                     setFormError(null);
+                    if (!isNameValid) {
+                      setFormError("氏名は「姓<半角スペース>名」の形式で入力してください。");
+                      return;
+                    }
                     if (!isStudentIdValid) {
                       setFormError("学生番号が正しくありません。");
                       return;

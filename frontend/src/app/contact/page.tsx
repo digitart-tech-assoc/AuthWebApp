@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Mail, Info } from "lucide-react";
 import { submitContact } from "@/actions/contact";
 import NameInput from "@/components/forms/NameInput";
+import { validateFullName } from "@/lib/validation";
 import TextInput from "@/components/forms/TextInput";
 
 export default function ContactPage() {
@@ -24,6 +25,8 @@ export default function ContactPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const emailFormatValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  const isNameValid = validateFullName(name);
 
   async function checkEmailMx(domain: string) {
     try {
@@ -74,8 +77,8 @@ export default function ContactPage() {
       setFormError("メールアドレスの形式が正しくありません。");
       return;
     }
-    if (!name.trim()) {
-      setFormError("氏名を入力してください。");
+    if (!isNameValid) {
+      setFormError("氏名は「姓<半角スペース>名」の形式で入力してください。");
       return;
     }
     
@@ -237,7 +240,7 @@ export default function ContactPage() {
                   type="button"
                   className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-cyan-700 transition-all hover:shadow-lg active:scale-95"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isNameValid}
                 >
                   {isSubmitting ? "送信中…" : "送信"}
                 </button>

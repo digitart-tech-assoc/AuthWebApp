@@ -6,6 +6,7 @@ import { Info, CheckCircle, FileText, AlertCircle, Loader } from "lucide-react";
 import OTPModal from "../../../../components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
 import TextInput from "../../../../components/forms/TextInput";
+import { validateFullName } from "../../../../lib/validation";
 
 export default function ProspectiveStudentFormPage() {
   const [year, setYear] = useState("");
@@ -25,6 +26,7 @@ export default function ProspectiveStudentFormPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
+  const isNameValid = validateFullName(name);
 
   const emailFormatValid = (value: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -229,12 +231,17 @@ export default function ProspectiveStudentFormPage() {
                 <button
                   type="button"
                   className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-cyan-700 transition-all hover:shadow-lg active:scale-95"
+                  disabled={!isNameValid || !email || !confirmEmail}
                   onClick={() => {
                     console.log("送信ボタン押下", { email, confirmEmail });
                     setFormError(null);
                     setEmailTouched(true);
                     setConfirmEmailTouched(true);
                     setNameTouched(true);
+                    if (!isNameValid) {
+                      setFormError("氏名は「姓<半角スペース>名」の形式で入力してください。");
+                      return;
+                    }
                     if (!email || !confirmEmail) {
                       setFormError("メールアドレスと確認用欄を入力してください。");
                       return;
