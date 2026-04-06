@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, CheckCircle, FileText, AlertCircle } from "lucide-react";
 import OTPModal from "../../../../components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
 import StudentNumberInput from "../../../../components/forms/StudentNumberInput";
@@ -48,9 +48,7 @@ export default function AoyamaStudentFormPage() {
         <div className="max-w-4xl mx-auto text-center space-y-6 md:space-y-8">
           <div className="inline-block">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-200/50 bg-emerald-50/50">
-              <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-              </svg>
+              <CheckCircle className="w-4 h-4 text-emerald-600" />
               <span className="text-sm font-semibold text-emerald-700">在学生向け</span>
             </div>
           </div>
@@ -89,9 +87,7 @@ export default function AoyamaStudentFormPage() {
                 />
                 {!isStudentIdValid && normalizedStudentId.length > 0 ? (
                   <p className="text-sm text-red-600 flex items-start gap-2">
-                    <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     先頭が 1 / 2 / 3 / 4 / S で、全8文字の英数字で入力してください。
                   </p>
                 ) : (
@@ -130,11 +126,9 @@ export default function AoyamaStudentFormPage() {
               </div>
 
               {/* エラーメッセージ */}
-              {formError && (
+                {formError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
-                  <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                   <p className="text-red-700 font-medium">{formError}</p>
                 </div>
               )}
@@ -169,14 +163,11 @@ export default function AoyamaStudentFormPage() {
               </div>
             </form>
           </div>
-        </div>
 
-        {/* ステップ説明 */}
+          {/* ステップ説明 */}
           <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-6 md:p-8 mt-6 mb-8">
             <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-3">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-              </svg>
+              <FileText className="w-6 h-6 text-emerald-600" />
               入会の流れ
             </h2>
             <ol className="space-y-3 ml-4 text-slate-700 leading-relaxed">
@@ -198,7 +189,7 @@ export default function AoyamaStudentFormPage() {
               </li>
             </ol>
           </div>
-          
+        </div>
       </section>
 
       {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" autoSend onClose={() => setShowOtp(false)} />}
