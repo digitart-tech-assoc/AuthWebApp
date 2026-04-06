@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Check, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import styles from "../join.module.css";
 import {
   checkEligibility,
   getStudentProfile,
@@ -118,43 +118,81 @@ export default function JoinMemberPage() {
 
   if (loading) {
     return (
-      <main className={styles.page}>
-        <div className={styles.hero}>
-          <h1 className={styles.title}>本入会フォーム</h1>
-          <p>読み込み中...</p>
-        </div>
+      <main className="bg-slate-50 text-slate-900 font-sans min-h-screen">
+        <section className="bg-gradient-to-br from-slate-50 via-white to-emerald-50 pt-20 pb-16 px-6">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">本入会フォーム</h1>
+            <p className="text-lg text-slate-600">読み込み中...</p>
+          </div>
+        </section>
       </main>
     );
   }
 
-  // Do not short-circuit on `eligibility` failures; show FormStep1Eligibility instead.
-
   return (
-    <main className={styles.page}>
-      <div className={styles.hero}>
-        <h1 className={styles.title}>本入会フォーム</h1>
-        <p className={styles.lead}>ステップ {currentStep} / 4</p>
-      </div>
+    <main className="bg-slate-50 text-slate-900 font-sans min-h-screen">
+      {/* ヒーロー部分 */}
+      <section className="bg-gradient-to-br from-slate-50 via-white to-emerald-50 pt-20 pb-16 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2">本入会フォーム</h1>
+              <p className="text-lg text-slate-600">ステップ <span className="font-bold text-emerald-600">{currentStep}</span> / 4</p>
+            </div>
+            {/* プログレスバー */}
+            <div className="hidden md:block">
+              <div className="flex gap-2">
+                {[1, 2, 3, 4].map((step) => (
+                  <div
+                    key={step}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
+                      step < currentStep
+                        ? "bg-emerald-600 text-white"
+                        : step === currentStep
+                        ? "bg-emerald-100 text-emerald-700 ring-2 ring-emerald-500"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                      {step < currentStep ? (
+                      <Check className="w-6 h-6" />
+                    ) : (
+                      step
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {currentStep === 1 && (
-        <FormStep1Eligibility eligibility={eligibility} onContinue={handleStep1Continue} />
-      )}
+      {/* メインコンテンツ */}
+      <section className="py-12 md:py-16 px-6">
+        <div className="max-w-4xl mx-auto">
+          {currentStep === 1 && (
+            <FormStep1Eligibility eligibility={eligibility} onContinue={handleStep1Continue} />
+          )}
 
-      {currentStep === 2 && (
-        <FormStep2Input initialData={formData} hasExistingProfile={!!existingProfile} onContinue={handleStep2Continue} onBack={handleStep2Back} />
-      )}
+          {currentStep === 2 && (
+            <FormStep2Input initialData={formData} hasExistingProfile={!!existingProfile} onContinue={handleStep2Continue} onBack={handleStep2Back} />
+          )}
 
-      {currentStep === 3 && (
-        <FormStep3OTP studentNumber={formData.student_number} name={formData.name} onComplete={handleStep3Complete} onBack={handleStep3Back} formData={formData} />
-      )}
+          {currentStep === 3 && (
+            <FormStep3OTP studentNumber={formData.student_number} name={formData.name} onComplete={handleStep3Complete} onBack={handleStep3Back} formData={formData} />
+          )}
 
-      {currentStep === 4 && (
-        <FormStep4Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep4Complete} />
-      )}
+          {currentStep === 4 && (
+            <FormStep4Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep4Complete} />
+          )}
 
-      {error && currentStep > 1 && (
-        <div style={{ marginTop: 20, padding: 16, background: "#fee2e2", color: "#dc2626", borderRadius: 8 }}>{error}</div>
-      )}
+          {error && currentStep > 1 && (
+            <div className="mt-8 bg-red-50 border border-red-200 rounded-lg p-6 flex gap-3">
+              <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+              <p className="text-red-700 font-medium">{error}</p>
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }

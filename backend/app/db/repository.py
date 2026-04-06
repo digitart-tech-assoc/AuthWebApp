@@ -7,6 +7,9 @@ import sys
 from typing import Any
 
 import psycopg2
+from urllib.parse import urlparse
+import json
+from datetime import datetime
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
@@ -29,6 +32,35 @@ def _connect():
         user = parsed.username or "<unknown>"
         print(f"ERROR: DB connection failed to host={host} port={port} user={user}: {e}", file=sys.stderr)
         raise
+
+
+def _should_log_to_stdout() -> bool:
+	"""Return True when the DATABASE_URL appears to target Supabase (so container logs should record requests)."""
+	try:
+		parsed = urlparse(DATABASE_URL)
+		host = (parsed.hostname or "").lower()
+		return "supabase" in host or "pooler.supabase.com" in host
+	except Exception:
+		return False
+
+
+def _log_db_access(access_point: str, payload: dict | None = None) -> None:
+	"""Print a concise log line to stdout containing timestamp, access point, payload and a short preview.
+
+	Example format (single line):
+	[DB_LOG] 2026-04-06T12:00:00+00:00 access=create_join_request payload={...} preview="..."
+	"""
+	if not _should_log_to_stdout():
+		return
+	try:
+		ts = datetime.now().astimezone().isoformat()
+		payload_json = json.dumps(payload or {}, ensure_ascii=False)
+		preview = (payload_json[:200] + "...") if len(payload_json) > 200 else payload_json
+		# Use stdout so docker logs capture it
+		print(f"[DB_LOG] {ts} access={access_point} payload={payload_json} preview={preview}")
+	except Exception:
+		# Never raise from logging
+		pass
 
 
 def init_db() -> None:
@@ -817,7 +849,8 @@ def register_paid_invitation(
 	"""
 	# assigned_by が None の場合はデフォルト値を使用
 	final_assigned_by = assigned_by or "unknown"
-	
+	_log_db_access("register_paid_invitation", {"discord_id": discord_id, "note": note, "assigned_by": final_assigned_by})
+
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
@@ -866,6 +899,8 @@ def create_join_request(
 	import json
 
 	request_id = str(uuid4())
+
+	_log_db_access("create_join_request", {"email": email, "name": name, "form_type": form_type, "metadata": metadata})
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			try:
@@ -959,6 +994,7 @@ def create_otp_code(
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			_log_db_access("create_otp_code", {"join_request_id": join_request_id, "otp_id": otp_id, "expires_in_minutes": expires_in_minutes})
 			cur.execute(
 				"""
 				INSERT INTO otp_codes (id, join_request_id, code_hash, expires_at)
@@ -995,6 +1031,7 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			_log_db_access("verify_otp_attempt", {"join_request_id": join_request_id, "code_preview": (code_plain[:2] + "****") if code_plain else ""})
 			# Get latest unverified OTP for this join request
 			cur.execute(
 				"""
