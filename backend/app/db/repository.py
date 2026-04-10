@@ -1111,3 +1111,53 @@ def get_join_request(join_request_id: str) -> dict[str, Any] | None:
 				"created_at": row[6].isoformat() if row[6] else None,
 				"updated_at": row[7].isoformat() if row[7] else None,
 			}
+
+
+def save_member_survey_response(
+	profile_id: str | None,
+	student_number: str,
+	join_request_id: str | None,
+	payload: dict[str, Any],
+) -> dict[str, Any]:
+	"""Save a member survey response into member_survey_responses.
+
+	Returns the newly created record metadata.
+	"""
+	from datetime import datetime
+
+	_log_db_access("save_member_survey_response", {"student_number": student_number})
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				INSERT INTO member_survey_responses (
+					profile_id, student_number, join_request_id,
+					digitart_channels, digitart_channels_other,
+					circle_search_channels, circle_search_other,
+					discord_invite_source, discord_invite_other,
+					interested_fields, interested_fields_other,
+					motivations, motivations_other,
+					raw_payload, created_at, updated_at
+				) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
+				RETURNING id, created_at
+				""",
+				(
+					profile_id,
+					student_number,
+					join_request_id,
+					json.dumps(payload.get("digitart_channels", []), ensure_ascii=False),
+					payload.get("digitart_channels_other"),
+					json.dumps(payload.get("circle_search_channels", []), ensure_ascii=False),
+					payload.get("circle_search_other"),
+					payload.get("discord_invite_source"),
+					payload.get("discord_invite_other"),
+					json.dumps(payload.get("interested_fields", []), ensure_ascii=False),
+					payload.get("interested_fields_other"),
+					json.dumps(payload.get("motivations", []), ensure_ascii=False),
+					payload.get("motivations_other"),
+					json.dumps(payload.get("raw_payload", payload), ensure_ascii=False),
+				),
+			)
+			row = cur.fetchone()
+			conn.commit()
+			return {"id": row[0], "created_at": row[1].isoformat() if row[1] else None}
