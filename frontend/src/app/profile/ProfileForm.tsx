@@ -17,21 +17,6 @@ export default function ProfileForm({ initial }: Props) {
     <div className={styles.card}>
       <h2 className={styles.cardTitle}>個人情報入力</h2>
 
-      {initial && (
-        <div
-          style={{
-            padding: "12px",
-            background: "#dbeafe",
-            color: "#1e40af",
-            borderRadius: "6px",
-            marginBottom: "16px",
-            fontSize: "14px",
-          }}
-        >
-          💡 Pre-member として登録済みの情報を自動入力しました。変更があれば編集してください。
-        </div>
-      )}
-
       <StudentProfileForm initialData={initial ?? null} hasExistingProfile={!!initial} onSubmit={handleSubmit} />
     </div>
   );
