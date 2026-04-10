@@ -33,6 +33,13 @@ function isRetryableNetworkError(error: unknown): boolean {
 }
 
 export async function fetchBackend(path: string, init?: RequestInit): Promise<Response> {
+	// Ensure browser requests send cookies (Supabase session) by default.
+	if (typeof window !== "undefined") {
+		init = Object.assign({}, init);
+		if (init.credentials === undefined) {
+			init.credentials = "include";
+		}
+	}
 	const errors: string[] = [];
 
 	for (const baseUrl of buildBackendCandidates()) {

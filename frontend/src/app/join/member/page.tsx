@@ -14,6 +14,7 @@ import FormStep2Input from "../form-step-2";
 import FormStep3Survey from "../form-step-3";
 import FormStep4OTP from "../form-step-4";
 import FormStep5Complete from "../form-step-5";
+import { fetchBackend } from "@/lib/backendFetch";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;
 
@@ -114,7 +115,33 @@ export default function JoinMemberPage() {
 
   const handleStep2Back = () => setCurrentStep(1);
   const handleStep3Back = () => setCurrentStep(2);
-  const handleStep3Complete = (answers?: any) => { setCurrentStep(4); /* TODO: persist survey answers */ setError(null); };
+  const persistSurvey = async (answers?: any) => {
+    try {
+      const res = await fetch('/api/survey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(answers || {}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || res.statusText || 'Failed to save survey');
+      }
+      return await res.json();
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  const handleStep3Complete = async (answers?: any) => {
+    setError(null);
+    try {
+      await persistSurvey(answers);
+      setCurrentStep(4);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save survey');
+    }
+  };
   const handleStep4Back = () => setCurrentStep(3);
   const handleStep4Complete = () => { setCurrentStep(5); setError(null); };
   const handleStep5Complete = () => router.push("/roles");

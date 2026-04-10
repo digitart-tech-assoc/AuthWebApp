@@ -501,11 +501,19 @@ async def create_student_profile(
 		import os
 		import httpx
 		try:
-			discord_bot_url = os.getenv("DISCORD_BOT_URL", "http://authwebapp-discord-bot-service:8000")
+			# Prefer BOT_INTERNAL_URL (set in docker-compose) for internal service address.
+			# Fallback to DISCORD_BOT_URL for compatibility, then to the docker service name.
+			discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
 			shared = os.getenv("SHARED_SECRET", "dev-secret")
 			async with httpx.AsyncClient(timeout=5.0) as client:
+				# If BOT_INTERNAL_URL already includes the path, avoid duplicating it
+				if discord_bot_url.rstrip("/").endswith("/internal/sync"):
+					endpoint = discord_bot_url
+				else:
+					endpoint = f"{discord_bot_url.rstrip('/')}/internal/sync"
+
 				await client.post(
-					f"{discord_bot_url}/internal/sync",
+					endpoint,
 					json={"action": "sync_roles"},
 					headers={"Authorization": f"Bearer {shared}"},
 				)

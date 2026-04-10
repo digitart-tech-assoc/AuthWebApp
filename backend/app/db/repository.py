@@ -1138,7 +1138,7 @@ def save_member_survey_response(
 					interested_fields, interested_fields_other,
 					motivations, motivations_other,
 					raw_payload, created_at, updated_at
-				) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
+				) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
 				RETURNING id, created_at
 				""",
 				(
