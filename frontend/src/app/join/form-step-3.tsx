@@ -1,208 +1,278 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/student-registration";
-import OTPInput from "@/components/OTPInput";
+import { useState } from "react";
 import styles from "./join.module.css";
 
-interface FormData {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
+interface SurveyAnswers {
+  digitart_channels: string[];
+  digitart_channels_other: string;
+  circle_search_channels: string[];
+  circle_search_other: string;
+  discord_invite_other: string;
+  discord_invite_source: string | null;
+  interested_fields: string[];
+  interested_fields_other: string;
+  motivations: string[];
+  motivations_other: string;
 }
 
-interface FormStep3Props {
-  studentNumber: string;
-  name: string;
-  onComplete: () => void;
+interface Props {
   onBack: () => void;
-  formData: FormData;
+  onComplete: (answers?: SurveyAnswers) => void;
 }
 
-export default function FormStep3OTP({
-  studentNumber,
-  name,
-  onComplete,
-  onBack,
-  formData,
-}: FormStep3Props) {
-  const [emailAoyama, setEmailAoyama] = useState<string | null>(null);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resendCountdown, setResendCountdown] = useState(0);
-  const [expiresIn, setExpiresIn] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+const OPTIONS_A = [
+  "新歓イベント(対面説明会)",
+  "公式SNS(X/Instagram)",
+  "公式ウェブサイト",
+  "非公式SNS/ウェブサイト",
+  "大学アプリ・掲示板",
+  "先輩・友人からの紹介",
+  "その他",
+];
 
-  useEffect(() => {
-    if (resendCountdown > 0) {
-      const timer = setTimeout(() => setResendCountdown(resendCountdown - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [resendCountdown]);
+const OPTIONS_DISCORD = [
+  "新歓イベント(QRコード)",
+  "新歓イベント(SNSにDM)",
+  "公式SNSでのDM",
+  "仮入会フォーム(ウェブサイト)",
+  "その他",
+];
 
-  const handleSendOTP = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await sendOTP(studentNumber, name);
-      setEmailAoyama(result.email_aoyama);
-      setOtpSent(true);
-      setResendCountdown(60);
-      setExpiresIn(result.expires_in_seconds);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "OTP 送信に失敗しました");
-    } finally {
-      setLoading(false);
-    }
+const OPTIONS_FIELDS = [
+  "Web アプリ開発",
+  "ゲーム開発",
+  "AI/ML",
+  "グラフィックス/3Dモデリング",
+  "デザイン/イラスト",
+  "サウンド",
+  "特に決めていない",
+  "その他",
+];
+
+const OPTIONS_MOTIVATION = [
+  "スキルアップ・学習",
+  "同じ興味を持つメンバーとの交流",
+  "プロジェクト・作品制作",
+  "将来のキャリアに活かしたい",
+  "趣味として楽しみたい",
+  "その他",
+];
+
+export default function FormStep3Survey({ onBack, onComplete }: Props) {
+  const [answers, setAnswers] = useState<SurveyAnswers>({
+    digitart_channels: [],
+    digitart_channels_other: "",
+    circle_search_channels: [],
+    circle_search_other: "",
+    discord_invite_other: "",
+    discord_invite_source: null,
+    interested_fields: [],
+    interested_fields_other: "",
+    motivations: [],
+    motivations_other: "",
+  });
+
+  const toggleMulti = (key: keyof SurveyAnswers, value: string) => {
+    setAnswers((prev) => {
+      const arr = (prev[key] as unknown as string[]) || [];
+      const exists = arr.includes(value);
+      const next = exists ? arr.filter((v) => v !== value) : [...arr, value];
+      return { ...prev, [key]: next } as SurveyAnswers;
+    });
   };
 
-  const handleVerifyOTP = async () => {
-    try {
-      setSubmitting(true);
-      setError(null);
+  const digitartOtherMissing = answers.digitart_channels.includes("その他") && answers.digitart_channels_other.trim() === "";
+  const circleOtherMissing = answers.circle_search_channels.includes("その他") && answers.circle_search_other.trim() === "";
+  const discordOtherMissing = answers.discord_invite_source === "その他" && answers.discord_invite_other.trim() === "";
+  const fieldsOtherMissing = answers.interested_fields.includes("その他") && answers.interested_fields_other.trim() === "";
+  const motivationsOtherMissing = answers.motivations.includes("その他") && answers.motivations_other.trim() === "";
 
-      // OTP verification
-      await verifyOTP(otpCode);
+  const hasOtherErrors = digitartOtherMissing || circleOtherMissing || discordOtherMissing || fieldsOtherMissing || motivationsOtherMissing;
 
-      // Submit profile (include email_aoyama for type completeness)
-      await submitStudentProfile({ ...formData, email_aoyama: emailAoyama ?? "" });
-
-      // Complete
-      onComplete();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "認証に失敗しました");
-    } finally {
-      setSubmitting(false);
-    }
+  const handleNext = () => {
+    if (hasOtherErrors) return;
+    onComplete(answers);
   };
 
   return (
     <div className={styles.card}>
-      <h2 className={styles.cardTitle}>メール認証（OTP）</h2>
+      <h2 className={styles.cardTitle}>アンケート</h2>
 
-      <div style={{ marginTop: "16px" }}>
-        {!otpSent ? (
-          <div>
-            <p style={{ marginBottom: "16px", color: "#64748b" }}>
-              登録した青山学院大学のメールアドレスに確認コードを送信します。
-            </p>
-
-            <button
-              onClick={handleSendOTP}
-              disabled={loading}
-              style={{
-                padding: "12px 24px",
-                background: loading ? "#cbd5e1" : "#3b82f6",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontSize: "16px",
-                fontWeight: "600",
-              }}
-            >
-              {loading ? "送信中..." : "確認コードを送信"}
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p style={{ marginBottom: "8px", fontWeight: "600" }}>
-              確認コードを {emailAoyama} に送信しました
-            </p>
-            <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>
-              有効期限: {expiresIn ? `${Math.floor(expiresIn / 60)} 分` : "10 分"}
-            </p>
-
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>
-                確認コード (6桁)
+      <div style={{ marginTop: 12 }}>
+        {/* 1. Digitartの認知経路 */}
+        <section style={{ marginBottom: 20 }}>
+          <h3 className={styles.qTitle}>1. Digitartの認知経路</h3>
+          <p className={styles.qDesc}>Digitartをどのようにして知りましたか？(複数選択可)</p>
+          <div className={styles.optionList}>
+            {OPTIONS_A.map((opt) => (
+              <label key={opt} className={styles.optionLabel}>
+                <input
+                  type="checkbox"
+                  checked={answers.digitart_channels.includes(opt)}
+                  onChange={() => toggleMulti("digitart_channels", opt)}
+                />
+                <span className={styles.optionText}>{opt}</span>
+                {opt === "その他" && (
+                  <>
+                    <input
+                      placeholder="その他を記入"
+                      value={answers.digitart_channels_other}
+                      onChange={(e) => setAnswers({ ...answers, digitart_channels_other: e.target.value })}
+                      className={styles.optionOtherInline}
+                      aria-invalid={digitartOtherMissing}
+                    />
+                    {digitartOtherMissing && (
+                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                    )}
+                  </>
+                )}
               </label>
-              <OTPInput
-                value={otpCode}
-                onChange={setOtpCode}
-                disabled={submitting}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: "12px", justifyContent: "space-between" }}>
-              <button
-                onClick={() => {
-                  setOtpCode("");
-                  setOtpSent(false);
-                }}
-                disabled={submitting || resendCountdown > 0}
-                style={{
-                  padding: "12px 24px",
-                  background: submitting || resendCountdown > 0 ? "#cbd5e1" : "#e5e7eb",
-                  color: "#1f2937",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: submitting || resendCountdown > 0 ? "not-allowed" : "pointer",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                }}
-              >
-                {resendCountdown > 0 ? `再送信 (${resendCountdown}s)` : "コードを再送信"}
-              </button>
-
-              <button
-                onClick={handleVerifyOTP}
-                disabled={submitting || otpCode.length !== 6}
-                style={{
-                  padding: "12px 24px",
-                  background: submitting || otpCode.length !== 6 ? "#cbd5e1" : "#3b82f6",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: submitting || otpCode.length !== 6 ? "not-allowed" : "pointer",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                }}
-              >
-                {submitting ? "検証中..." : "認証 →"}
-              </button>
-            </div>
+            ))}
           </div>
-        )}
+        </section>
 
-        {error && (
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px",
-              background: "#fee2e2",
-              color: "#dc2626",
-              borderRadius: "6px",
-              fontSize: "14px",
-            }}
+        {/* 2. サークルの認知経路 */}
+        <section style={{ marginBottom: 20 }}>
+          <h3 className={styles.qTitle}>2. サークルの認知経路</h3>
+          <p className={styles.qDesc}>サークルを探す際になにを使いましたか？(複数選択可)</p>
+          <div className={styles.optionList}>
+            {OPTIONS_A.map((opt) => (
+              <label key={opt + "2"} className={styles.optionLabel}>
+                <input
+                  type="checkbox"
+                  checked={answers.circle_search_channels.includes(opt)}
+                  onChange={() => toggleMulti("circle_search_channels", opt)}
+                />
+                <span className={styles.optionText}>{opt}</span>
+                {opt === "その他" && (
+                  <>
+                    <input
+                      placeholder="その他を記入"
+                      value={answers.circle_search_other}
+                      onChange={(e) => setAnswers({ ...answers, circle_search_other: e.target.value })}
+                      className={styles.optionOtherInline}
+                      aria-invalid={circleOtherMissing}
+                    />
+                    {circleOtherMissing && (
+                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                    )}
+                  </>
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+
+        {/* 3. Discordへの参加経路 */}
+        <section style={{ marginBottom: 20 }}>
+          <h3 className={styles.qTitle}>3. Discordへの参加経路</h3>
+          <p className={styles.qDesc}>Discordサーバーの招待はどこでもらいましたか？</p>
+          <div className={styles.optionList}>
+            {OPTIONS_DISCORD.map((opt) => (
+              <label key={opt} className={styles.optionLabel}>
+                <input
+                  type="radio"
+                  name="discord_source"
+                  checked={answers.discord_invite_source === opt}
+                  onChange={() => setAnswers({ ...answers, discord_invite_source: opt })}
+                />
+                <span className={styles.optionText}>{opt}</span>
+                {opt === "その他" && (
+                  <>
+                    <input
+                      placeholder="その他を記入"
+                      value={answers.discord_invite_other}
+                      onChange={(e) => setAnswers({ ...answers, discord_invite_other: e.target.value })}
+                      className={styles.optionOtherInline}
+                      aria-invalid={discordOtherMissing}
+                    />
+                    {discordOtherMissing && (
+                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                    )}
+                  </>
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+
+        {/* 4. 希望する活動分野 */}
+        <section style={{ marginBottom: 20 }}>
+          <h3 className={styles.qTitle}>4. 希望する活動分野</h3>
+          <p className={styles.qDesc}>主に興味のある活動分野はなんですか？(複数選択可)</p>
+          <div className={styles.optionList}>
+            {OPTIONS_FIELDS.map((opt) => (
+              <label key={opt} className={styles.optionLabel}>
+                <input
+                  type="checkbox"
+                  checked={answers.interested_fields.includes(opt)}
+                  onChange={() => toggleMulti("interested_fields", opt)}
+                />
+                <span className={styles.optionText}>{opt}</span>
+                {opt === "その他" && (
+                  <>
+                    <input
+                      placeholder="その他を記入"
+                      value={answers.interested_fields_other}
+                      onChange={(e) => setAnswers({ ...answers, interested_fields_other: e.target.value })}
+                      className={styles.optionOtherInline}
+                      aria-invalid={fieldsOtherMissing}
+                    />
+                    {fieldsOtherMissing && (
+                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                    )}
+                  </>
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+
+        {/* 5. 活動目的 */}
+        <section style={{ marginBottom: 20 }}>
+          <h3 className={styles.qTitle}>5. 活動目的</h3>
+          <p className={styles.qDesc}>当サークルに参加する主な目的は何ですか？(複数選択可)</p>
+          <div className={styles.optionList}>
+            {OPTIONS_MOTIVATION.map((opt) => (
+              <label key={opt} className={styles.optionLabel}>
+                <input
+                  type="checkbox"
+                  checked={answers.motivations.includes(opt)}
+                  onChange={() => toggleMulti("motivations", opt)}
+                />
+                <span className={styles.optionText}>{opt}</span>
+                {opt === "その他" && (
+                  <>
+                    <input
+                      placeholder="その他を記入"
+                      value={answers.motivations_other}
+                      onChange={(e) => setAnswers({ ...answers, motivations_other: e.target.value })}
+                      className={styles.optionOtherInline}
+                      aria-invalid={motivationsOtherMissing}
+                    />
+                    {motivationsOtherMissing && (
+                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                    )}
+                  </>
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <div className={styles.surveyFooter}>
+          <button onClick={onBack} className={styles.secondary} style={{ padding: "10px 18px" }}>← 戻る</button>
+
+          <button
+            onClick={handleNext}
+            className={styles.primary}
+            style={{ padding: "10px 18px" }}
+            disabled={hasOtherErrors}
           >
-            {error}
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: "24px", borderTop: "1px solid #e5e7eb", paddingTop: "16px" }}>
-        <button
-          onClick={onBack}
-          disabled={submitting}
-          style={{
-            padding: "12px 24px",
-            background: submitting ? "#cbd5e1" : "#e5e7eb",
-            color: "#1f2937",
-            border: "none",
-            borderRadius: "6px",
-            cursor: submitting ? "not-allowed" : "pointer",
-            fontSize: "16px",
-            fontWeight: "600",
-          }}
-        >
-          ← 戻る
-        </button>
+            次へ
+          </button>
+        </div>
       </div>
     </div>
   );

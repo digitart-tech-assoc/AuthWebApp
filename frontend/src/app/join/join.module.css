@@ -238,6 +238,66 @@
   user-select: none;
 }
 
+/* Survey / question styles */
+.qTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0f172a;
+}
+
+.qDesc {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.optionList {
+  padding-left: 14px; /* indent for options */
+  margin-bottom: 8px;
+}
+
+.optionLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background .12s ease;
+}
+
+.optionLabel:hover {
+  background: rgba(15,23,42,0.02);
+}
+
+.optionText {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.optionOther {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(15,23,42,0.06);
+}
+
+.optionOtherInline {
+  margin-left: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(15,23,42,0.06);
+  font-size: 13px;
+  min-width: 160px;
+}
+
+.surveyFooter {
+  margin-top: 28px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 /* small responsive tweak for very narrow screens */
 @media (max-width: 520px) {
   .title { font-size: 20px; }
@@ -249,4 +309,51 @@
   .grid {
     grid-template-columns: 1fr;
   }
+}
+
+.qTitle {
+  font-weight: 600;
+  margin: 0 0 6px 0;
+}
+
+.qDesc {
+  color: #555;
+  margin: 0 0 10px 0;
+  font-size: 0.95rem;
+}
+
+.optionList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optionLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.optionText {
+  flex: 0 0 auto;
+}
+
+.optionOtherInline {
+  margin-left: 8px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.surveyFooter {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+
+.errorText {
+  color: #b00020;
+  font-size: 0.9rem;
 }
