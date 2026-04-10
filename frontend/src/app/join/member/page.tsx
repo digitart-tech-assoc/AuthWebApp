@@ -11,10 +11,11 @@ import {
 } from "@/actions/student-registration";
 import FormStep1Eligibility from "../form-step-1";
 import FormStep2Input from "../form-step-2";
-import FormStep3OTP from "../form-step-3";
-import FormStep4Complete from "../form-step-4";
+import FormStep3Survey from "../form-step-3";
+import FormStep4OTP from "../form-step-4";
+import FormStep5Complete from "../form-step-5";
 
-type FormStep = 1 | 2 | 3 | 4;
+type FormStep = 1 | 2 | 3 | 4 | 5;
 
 interface FormState {
   student_number: string;
@@ -113,8 +114,10 @@ export default function JoinMemberPage() {
 
   const handleStep2Back = () => setCurrentStep(1);
   const handleStep3Back = () => setCurrentStep(2);
-  const handleStep3Complete = () => { setCurrentStep(4); setError(null); };
-  const handleStep4Complete = () => router.push("/roles");
+  const handleStep3Complete = (answers?: any) => { setCurrentStep(4); /* TODO: persist survey answers */ setError(null); };
+  const handleStep4Back = () => setCurrentStep(3);
+  const handleStep4Complete = () => { setCurrentStep(5); setError(null); };
+  const handleStep5Complete = () => router.push("/roles");
 
   if (loading) {
     return (
@@ -137,12 +140,12 @@ export default function JoinMemberPage() {
           <div className="flex items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-2">本入会フォーム</h1>
-              <p className="text-lg text-slate-600">ステップ <span className="font-bold text-emerald-600">{currentStep}</span> / 4</p>
+              <p className="text-lg text-slate-600">ステップ <span className="font-bold text-emerald-600">{currentStep}</span> / 5</p>
             </div>
             {/* プログレスバー */}
             <div className="hidden md:block">
               <div className="flex gap-2">
-                {[1, 2, 3, 4].map((step) => (
+                {[1, 2, 3, 4, 5].map((step) => (
                   <div
                     key={step}
                     className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
@@ -178,11 +181,15 @@ export default function JoinMemberPage() {
           )}
 
           {currentStep === 3 && (
-            <FormStep3OTP studentNumber={formData.student_number} name={formData.name} onComplete={handleStep3Complete} onBack={handleStep3Back} formData={formData} />
+            <FormStep3Survey onComplete={handleStep3Complete} onBack={handleStep3Back} />
           )}
 
           {currentStep === 4 && (
-            <FormStep4Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep4Complete} />
+            <FormStep4OTP studentNumber={formData.student_number} name={formData.name} onComplete={handleStep4Complete} onBack={handleStep4Back} formData={formData} />
+          )}
+
+          {currentStep === 5 && (
+            <FormStep5Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep5Complete} />
           )}
 
           {error && currentStep > 1 && (
