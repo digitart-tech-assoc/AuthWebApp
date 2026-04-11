@@ -147,7 +147,7 @@ function SortableRoleRow({
 
       {/* Col 3: action buttons */}
       <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '160px' }}>
-        {onMembers && !onToggle && (
+        {onMembers && !onToggle && !isDisabled && (
           <button
             type="button"
             className={styles.membersBtn}

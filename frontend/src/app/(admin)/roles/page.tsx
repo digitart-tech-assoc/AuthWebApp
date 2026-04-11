@@ -8,20 +8,20 @@ import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-async function resolveRoleFromBackend(authorization: string): Promise<string> {
+async function resolveUserInfoFromBackend(authorization: string): Promise<{ app_role: string; discord_id: string | null }> {
 	try {
 		const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
 			headers: { Authorization: authorization },
 			cache: "no-store",
 		});
 		if (res.ok) {
-			const data = (await res.json()) as { app_role?: string };
-			return data.app_role ?? "none";
+			const data = (await res.json()) as { app_role?: string; discord_id?: string };
+			return { app_role: data.app_role ?? "none", discord_id: data.discord_id ?? null };
 		}
 	} catch {
 		// フォールバック
 	}
-	return "none";
+	return { app_role: "none", discord_id: null };
 }
 
 type SearchParamsType = {
@@ -56,7 +56,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 		redirect("/login?callbackUrl=%2Froles");
 	}
 
-	const role = await resolveRoleFromBackend(authorization);
+	const { app_role: role, discord_id: myDiscordId } = await resolveUserInfoFromBackend(authorization);
 	const isAdmin = role === "admin";
 
 	const displayName =
@@ -129,6 +129,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 				categories={manifest.categories}
 				roles={manifest.roles}
 				accessRole={role}
+				myDiscordId={myDiscordId}
 			/>
 		</main>
 	);
