@@ -933,7 +933,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               <p className={styles.title}>変更内容の確認</p>
               <p className={styles.subtitle}>以下の変更を保存します</p>
             </div>
-            <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '20px', fontSize: '14px' }}>
+            <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '20px', fontSize: '14px', borderBottom: '1px solid #e5e7eb' }}>
               {(diffData.roleAdded.length > 0 || diffData.memberAssigned.length > 0 || diffData.permissionEdited.length > 0 || diffData.orderChanged.length > 0 || diffData.roleDeleted.length > 0 || diffData.categoriesAdded.length > 0 || diffData.categoriesDeleted.length > 0) ? (
                 <>
                   {diffData.roleAdded.length > 0 && (
@@ -1042,35 +1042,17 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                 <p style={{ color: '#6b7280' }}>変更がありません</p>
               )}
             </div>
-            <div style={{ display: 'flex', gap: '12px', padding: '20px', borderTop: '1px solid #e5e7eb' }}>
+            <div className={styles.footer}>
               <button
                 type="button"
-                style={{
-                  flex: 1,
-                  padding: '8px 16px',
-                  border: '1px solid #d1d5db',
-                  background: 'white',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
+                className={styles.cancelBtn}
                 onClick={() => setShowDiffModal(false)}
               >
                 キャンセル
               </button>
               <button
                 type="button"
-                style={{
-                  flex: 1,
-                  padding: '8px 16px',
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                }}
+                className={styles.confirmBtn}
                 onClick={executeSave}
               >
                 保存する
