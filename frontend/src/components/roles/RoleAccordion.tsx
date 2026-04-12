@@ -390,6 +390,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   }
 
   function deleteRole(roleId: string) {
+    // member がロール削除する場合、割り当てられたメンバーがいないか確認
+    if (isMember) {
+      const assignedMembers = membersByRole[roleId] || [];
+      if (assignedMembers.length > 0) {
+        showStatus({ kind: "error", msg: `ロール削除失敗: このロールに${assignedMembers.length}人のメンバーが割り当てられています。先にメンバーを解除してください。` });
+        return;
+      }
+    }
+    
     setAllRoles((prev) => prev.filter((r) => r.role_id !== roleId));
     setHasUnsaved(true);
     setSaveState("idle");
