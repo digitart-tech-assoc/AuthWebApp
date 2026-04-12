@@ -48,8 +48,8 @@ async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
 
 
 @router.put("/manifest", response_model=Manifest)
-async def put_manifest(payload: Manifest, _principal: dict = Depends(require_member)) -> Manifest:
-	"""マニフェスト保存。member / admin のみ許可。"""
+async def put_manifest(payload: Manifest, _principal: dict = Depends(require_admin)) -> Manifest:
+	"""マニフェスト保存。admin のみ許可。"""
 	await asyncio.to_thread(
 		save_manifest,
 		[c.model_dump() for c in payload.categories],
