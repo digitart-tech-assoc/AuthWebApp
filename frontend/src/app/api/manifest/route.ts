@@ -31,3 +31,32 @@ export async function PUT(request: Request) {
 		return NextResponse.json({ ok: false, detail: "manifest proxy failed" }, { status: 502 });
 	}
 }
+
+export async function PATCH(request: Request) {
+	try {
+		const role = await getSessionRole();
+		if (role !== "admin" && role !== "member") {
+			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+		}
+
+		const authorization = await getBackendAuthorizationHeader();
+		if (!authorization) {
+			return NextResponse.json({ ok: false, detail: "Unauthorized" }, { status: 401 });
+		}
+
+		const payload = await request.json();
+		const res = await fetchBackend("/api/v1/manifest", {
+			method: "PATCH",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: authorization,
+			},
+			body: JSON.stringify(payload),
+			cache: "no-store",
+		});
+		const body = await res.json();
+		return NextResponse.json(body, { status: res.status });
+	} catch {
+		return NextResponse.json({ ok: false, detail: "manifest proxy failed" }, { status: 502 });
+	}
+}

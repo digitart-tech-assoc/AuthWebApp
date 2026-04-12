@@ -421,18 +421,18 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
     setSaveState("saving");
     try {
-      // Calculate Diff
-      const upsertCategories = pendingCats.filter(c => {
+      // 1. Calculate Diff
+      const upsertCategories = nextCats.filter(c => {
         const init = initCategories.find(i => i.id === c.id);
         return !init || JSON.stringify(init) !== JSON.stringify(c);
       });
-      const deleteCatIds = initCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
+      const deleteCatIds = initCategories.filter(c => !nextCats.find(n => n.id === c.id)).map(c => c.id);
 
-      const upsertRoles = pendingRoles.filter(r => {
+      const upsertRoles = nextRoles.filter(r => {
         const init = initRoles.find(i => i.role_id === r.role_id);
         return !init || JSON.stringify(init) !== JSON.stringify(r);
       });
-      const deleteRoleIds = initRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
+      const deleteRoleIds = initRoles.filter(r => !nextRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
 
       const upsertRoleAssignments: Record<string, string[]> = {};
       const initAssignments = initialAssignmentsRef.current;
@@ -443,6 +443,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           upsertRoleAssignments[roleId] = membersByRole[roleId];
         }
       }
+      // また、初期状態で存在していたが、UI上ですべて消された（キー自体が空の配列として必要、またはキーが消えた）場合への対応として
+      // 実際には membersByRole の更新で空配列 [] として残るので上書きされるため上記でOK。
 
       const payload = {
         upsert_categories: upsertCategories,
@@ -452,6 +454,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         upsert_role_assignments: upsertRoleAssignments,
       };
 
+      // デバッグ: 送信する差分をコンソールで確認できるようにする
       console.log("Sending payload (diff) to backend:", payload);
 
       // 差分が全く無い場合は早期リターン
@@ -885,7 +888,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
                   onOpenRolePermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
                   onDeleteRole={!isSelectMode && (isAdmin || memberCanManageCat) ? deleteRole : undefined}
-                  onOpenMemberModal={!isSelectMode && (isAdmin || memberCanManageCat) ? handleOpenMemberModal : undefined}
+                  onOpenMemberModal={
+                    !isSelectMode
+                      ? isAdmin || memberCanManageCat
+                        ? handleOpenMemberModal
+                        : isMember
+                        ? handleOpenMemberModalReadOnly
+                        : undefined
+                      : undefined
+                  }
                   styles={styles}
                 />
               );
