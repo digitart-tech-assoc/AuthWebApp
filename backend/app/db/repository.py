@@ -429,6 +429,77 @@ def save_guild_members(members: list[dict[str, Any]]) -> None:
 				)
 
 
+def patch_manifest_db(
+	upsert_categories: list[dict[str, Any]],
+	delete_category_ids: list[str],
+	upsert_roles: list[dict[str, Any]],
+	delete_role_ids: list[str],
+	upsert_role_assignments: dict[str, list[str]]
+) -> None:
+	"""差分更新（PATCH）を使ってマニフェストを更新する"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			# 1. 削除処理
+			if delete_role_ids:
+				cur.execute("DELETE FROM role_manifests WHERE role_id = ANY(%s)", (delete_role_ids,))
+			if delete_category_ids:
+				cur.execute("DELETE FROM role_categories WHERE id = ANY(%s)", (delete_category_ids,))
+
+			# 2. カテゴリのUPSERT
+			for c in upsert_categories:
+				cur.execute(
+					"""
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions)
+					VALUES (%s, %s, %s, %s, %s)
+					ON CONFLICT (id) DO UPDATE SET
+						name = EXCLUDED.name,
+						display_order = EXCLUDED.display_order,
+						is_collapsed = EXCLUDED.is_collapsed,
+						permissions = EXCLUDED.permissions
+					""",
+					(
+						c["id"], c["name"], c.get("display_order", 0), 
+						c.get("is_collapsed", False), int(c.get("permissions", 0))
+					),
+				)
+
+			# 3. ロールのUPSERT
+			for r in upsert_roles:
+				cur.execute(
+					"""
+					INSERT INTO role_manifests
+					(role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot)
+					VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+					ON CONFLICT (role_id) DO UPDATE SET
+						name = EXCLUDED.name,
+						color = EXCLUDED.color,
+						hoist = EXCLUDED.hoist,
+						mentionable = EXCLUDED.mentionable,
+						permissions = EXCLUDED.permissions,
+						position = EXCLUDED.position,
+						category_id = EXCLUDED.category_id,
+						is_our_bot = EXCLUDED.is_our_bot,
+						updated_at = now()
+					""",
+					(
+						r["role_id"], r["name"], r.get("color", "#000000"),
+						r.get("hoist", False), r.get("mentionable", False),
+						int(r.get("permissions", 0)), r["position"],
+						r.get("category_id"), r.get("is_our_bot", False)
+					),
+				)
+
+			# 4. メンバー割り当ての適用（指定された role_id のみ）
+			for role_id, user_ids in upsert_role_assignments.items():
+				cur.execute("DELETE FROM role_member_assignments WHERE role_id = %s", (role_id,))
+				for user_id in user_ids:
+					cur.execute(
+						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+						(role_id, user_id),
+					)
+
+
+
 def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 	"""
 	role_id -> [user_id, ...] のマッピングでロール割り当てを全置き換え保存。
