@@ -234,6 +234,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // ===== Member management =====
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
+  const initialAssignmentsRef = useRef<Record<string, string[]>>({});
   const [memberModalRole, setMemberModalRole] = useState<Role | null>(null);
   const [memberModalReadOnly, setMemberModalReadOnly] = useState(false);
   const [baseMembersByRole, setBaseMembersByRole] = useState<Record<string, string[]>>({});
@@ -290,7 +291,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         if (data.members) setAllMembers(data.members);
         if (data.assignments) {
           setMembersByRole(data.assignments);
-          setBaseMembersByRole(JSON.parse(JSON.stringify(data.assignments))); // Deep copy
+          setBaseMembersByRole(JSON.parse(JSON.stringify(data.assignments))); // Deep copy for diff calculation
+          initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments)); // Deep copy for payload creation
         }
       }
     } catch (e) {
@@ -412,25 +414,86 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     if (!pendingRoles || !pendingCats) return;
     
     setShowDiffModal(false);
+    if (!canEditManifest) {
+      showStatus({ kind: "error", msg: "アクセス権限がありません。" });
+      return;
+    }
+
     setSaveState("saving");
     try {
+      // Calculate Diff
+      const upsertCategories = pendingCats.filter(c => {
+        const init = initCategories.find(i => i.id === c.id);
+        return !init || JSON.stringify(init) !== JSON.stringify(c);
+      });
+      const deleteCatIds = initCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
+
+      const upsertRoles = pendingRoles.filter(r => {
+        const init = initRoles.find(i => i.role_id === r.role_id);
+        return !init || JSON.stringify(init) !== JSON.stringify(r);
+      });
+      const deleteRoleIds = initRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
+
+      const upsertRoleAssignments: Record<string, string[]> = {};
+      const initAssignments = initialAssignmentsRef.current;
+      for (const roleId of Object.keys(membersByRole)) {
+        const curr = [...membersByRole[roleId]].sort();
+        const init = [...(initAssignments[roleId] || [])].sort();
+        if (JSON.stringify(curr) !== JSON.stringify(init)) {
+          upsertRoleAssignments[roleId] = membersByRole[roleId];
+        }
+      }
+
+      const payload = {
+        upsert_categories: upsertCategories,
+        delete_category_ids: deleteCatIds,
+        upsert_roles: upsertRoles,
+        delete_role_ids: deleteRoleIds,
+        upsert_role_assignments: upsertRoleAssignments,
+      };
+
+      console.log("Sending payload (diff) to backend:", payload);
+
+      // 差分が全く無い場合は早期リターン
+      const hasDiff =
+        upsertCategories.length > 0 ||
+        deleteCatIds.length > 0 ||
+        upsertRoles.length > 0 ||
+        deleteRoleIds.length > 0 ||
+        Object.keys(upsertRoleAssignments).length > 0;
+
+      if (!hasDiff) {
+        setHasUnsaved(false);
+        setSaveState("idle");
+        showStatus({ kind: "info", msg: "変更点はありませんでした" });
+        setPendingRoles(null);
+        setPendingCats(null);
+        return;
+      }
+
       const res = await fetch("/api/manifest", {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categories: pendingCats, roles: pendingRoles, role_assignments: membersByRole }),
       });
+
       if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
         setSaveState("error");
         showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
         setPendingRoles(null);
         setPendingCats(null);
         return;
       }
+
       setHasUnsaved(false);
       setSaveState("saved");
       showStatus({ kind: "success", msg: "変更を保存しました" });
       setPendingRoles(null);
       setPendingCats(null);
+      
+      // Update our init references to match current
+      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
