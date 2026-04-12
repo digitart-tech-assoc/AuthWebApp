@@ -53,18 +53,26 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
   const [color, setColor] = useState("#99AAB5");
   const [hexInput, setHexInput] = useState("#99AAB5");
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [hoist, setHoist] = useState(false);
-  const [mentionable, setMentionable] = useState(false);
   const [perms, setPerms] = useState<bigint>(0n);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"basic" | "permissions">("basic");
 
-  // When category changes, inherit its permissions
+  // 固定値: Hoist=false, Mentionable=true
+  const hoist = false;
+  const mentionable = true;
+
+  // When category changes, inherit its permissions (but member can't set permissions except for 会員情報)
   useEffect(() => {
     const cat = categories.find((c) => c.id === categoryId);
-    setPerms(BigInt(cat?.permissions ?? 0));
-  }, [categoryId, categories]);
+    const canSetPermissions = !isMember || cat?.name === "会員情報";
+    if (canSetPermissions) {
+      setPerms(BigInt(cat?.permissions ?? 0));
+    } else {
+      // member: 会員情報以外は権限を常に 0 に固定
+      setPerms(0n);
+    }
+  }, [categoryId, categories, isMember]);
 
   // memberモード: 最初の利用可能なカテゴリを自動選択
   useEffect(() => {
@@ -93,6 +101,10 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
 
   const isAdminActive = hasBitExact(perms, 3n);
   const botHasAdmin = hasBitExact(botPermissions, 3n);
+  
+  // member が権限を設定できるかどうか判定
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const canSetPermissions = !isMember || selectedCategory?.name === "会員情報";
 
   async function handleCreate() {
     if (!name.trim()) {
@@ -140,13 +152,15 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
           >
             基本設定
           </button>
-          <button
-            type="button"
-            className={`${styles.tab} ${step === "permissions" ? styles.activeTab : ""}`}
-            onClick={() => setStep("permissions")}
-          >
-            権限設定
-          </button>
+          {canSetPermissions && (
+            <button
+              type="button"
+              className={`${styles.tab} ${step === "permissions" ? styles.activeTab : ""}`}
+              onClick={() => setStep("permissions")}
+            >
+              権限設定
+            </button>
+          )}
         </div>
 
         {/* Body */}
@@ -226,20 +240,20 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
               <div className={styles.toggleRow}>
                 <div>
                   <div className={styles.toggleLabel}>メンバーをオンライン一覧で分けて表示</div>
-                  <div className={styles.toggleDesc}>（Hoist）</div>
+                  <div className={styles.toggleDesc}>（Hoist）- 固定: オフ</div>
                 </div>
                 <label className={styles.switch}>
-                  <input type="checkbox" checked={hoist} onChange={(e) => setHoist(e.target.checked)} />
+                  <input type="checkbox" checked={hoist} disabled />
                   <span className={styles.switchSlider} />
                 </label>
               </div>
               <div className={styles.toggleRow}>
                 <div>
                   <div className={styles.toggleLabel}>このロールを誰でもメンションできるようにする</div>
-                  <div className={styles.toggleDesc}>（Mentionable）</div>
+                  <div className={styles.toggleDesc}>（Mentionable）- 固定: オン</div>
                 </div>
                 <label className={styles.switch}>
-                  <input type="checkbox" checked={mentionable} onChange={(e) => setMentionable(e.target.checked)} />
+                  <input type="checkbox" checked={mentionable} disabled />
                   <span className={styles.switchSlider} />
                 </label>
               </div>

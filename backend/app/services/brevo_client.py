@@ -150,7 +150,7 @@ Digitart Technology Association
 			<div style="background-color: #f8fafc; padding: 16px; border-radius: 8px;">
 				<p style="margin:0;"><a href=\"{invite_url}\" target=\"_blank\" rel=\"noreferrer\">{invite_url}</a></p>
 			</div>
-			<p style="color: #64748b;">問題がある場合はこのメールに返信してください。</p>
+			<p style="color: #64748b;">このメールに心当たりがない場合は、このメッセージを無視してください。</p>
 			<hr style="border: none; border-top: 1px solid #e5e7eb;">
 			<p style="font-size: 12px; color: #94a3b8;">
 				Digitart Technology Association<br>
