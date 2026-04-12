@@ -234,6 +234,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // ===== Member management =====
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
+  const initialAssignmentsRef = useRef<Record<string, string[]>>({});
   const [memberModalRole, setMemberModalRole] = useState<Role | null>(null);
   const [memberModalReadOnly, setMemberModalReadOnly] = useState(false);
 
@@ -272,7 +273,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       if (res.ok) {
         const data = await res.json();
         if (data.members) setAllMembers(data.members);
-        if (data.assignments) setMembersByRole(data.assignments);
+        if (data.assignments) {
+          setMembersByRole(data.assignments);
+          initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments));
+        }
       }
     } catch (e) {
       console.error("Failed to fetch members", e);
@@ -297,21 +301,86 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== Persist =====
   async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
+    if (!canEditManifest) {
+      showStatus({ kind: "error", msg: "アクセス権限がありません。" });
+      return;
+    }
+
     setSaveState("saving");
     try {
-      const res = await fetch("/api/manifest", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: nextCats, roles: nextRoles, role_assignments: membersByRole }),
+      // 1. Calculate Diff
+      const upsertCategories = nextCats.filter(c => {
+        const init = initCategories.find(i => i.id === c.id);
+        return !init || JSON.stringify(init) !== JSON.stringify(c);
       });
-      if (!res.ok) {
-        setSaveState("error");
-        showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
+      const deleteCatIds = initCategories.filter(c => !nextCats.find(n => n.id === c.id)).map(c => c.id);
+
+      const upsertRoles = nextRoles.filter(r => {
+        const init = initRoles.find(i => i.role_id === r.role_id);
+        return !init || JSON.stringify(init) !== JSON.stringify(r);
+      });
+      const deleteRoleIds = initRoles.filter(r => !nextRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
+
+      const upsertRoleAssignments: Record<string, string[]> = {};
+      const initAssignments = initialAssignmentsRef.current;
+      for (const roleId of Object.keys(membersByRole)) {
+        const curr = [...membersByRole[roleId]].sort();
+        const init = [...(initAssignments[roleId] || [])].sort();
+        if (JSON.stringify(curr) !== JSON.stringify(init)) {
+          upsertRoleAssignments[roleId] = membersByRole[roleId];
+        }
+      }
+      // また、初期状態で存在していたが、UI上ですべて消された（キー自体が空の配列として必要、またはキーが消えた）場合への対応として
+      // 実際には membersByRole の更新で空配列 [] として残るので上書きされるため上記でOK。
+
+      const payload = {
+        upsert_categories: upsertCategories,
+        delete_category_ids: deleteCatIds,
+        upsert_roles: upsertRoles,
+        delete_role_ids: deleteRoleIds,
+        upsert_role_assignments: upsertRoleAssignments,
+      };
+
+      // デバッグ: 送信する差分をコンソールで確認できるようにする
+      console.log("Sending payload (diff) to backend:", payload);
+
+      // 差分が全く無い場合は早期リターン
+      const hasDiff =
+        upsertCategories.length > 0 ||
+        deleteCatIds.length > 0 ||
+        upsertRoles.length > 0 ||
+        deleteRoleIds.length > 0 ||
+        Object.keys(upsertRoleAssignments).length > 0;
+
+      if (!hasDiff) {
+        setHasUnsaved(false);
+        setSaveState("idle");
+        showStatus({ kind: "info", msg: "変更点はありませんでした" });
         return;
       }
+
+      const res = await fetch("/api/manifest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setSaveState("error");
+        showStatus({ kind: "error", msg: `保存に失敗: ${errorData.detail || '権限不足等のエラー'}` });
+        return;
+      }
+
       setHasUnsaved(false);
       setSaveState("saved");
       showStatus({ kind: "success", msg: "変更を保存しました" });
+      
+      // Update our init references to match current
+      // (a real reload might be safer, but this allows continued editing)
+      // Actually because the system relies on Discord source of truth for full sync,
+      // it's better to force a reload from server by returning gracefully, or just leave it.
+      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
@@ -680,7 +749,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
                   onOpenRolePermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
                   onDeleteRole={!isSelectMode && (isAdmin || memberCanManageCat) ? deleteRole : undefined}
-                  onOpenMemberModal={!isSelectMode && (isAdmin || memberCanManageCat) ? handleOpenMemberModal : undefined}
+                  onOpenMemberModal={
+                    !isSelectMode
+                      ? isAdmin || memberCanManageCat
+                        ? handleOpenMemberModal
+                        : isMember
+                        ? handleOpenMemberModalReadOnly
+                        : undefined
+                      : undefined
+                  }
                   styles={styles}
                 />
               );
