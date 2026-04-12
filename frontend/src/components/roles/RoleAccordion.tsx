@@ -380,6 +380,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   }
 
   function deleteCategory(catId: string) {
+    // 削除確認ダイアログ
+    const category = localCategories.find(c => c.id === catId);
+    if (!confirm(`カテゴリ「${category?.name}」を削除してもよろしいですか？`)) {
+      return;
+    }
+    
     const nextCats = localCategories.filter((c) => c.id !== catId);
     setLocalCategories(nextCats);
     // Uncategorize roles (don't delete them)
@@ -390,6 +396,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   }
 
   function deleteRole(roleId: string) {
+    // 削除確認ダイアログ
+    const role = allRoles.find(r => r.role_id === roleId);
+    if (!confirm(`ロール「${role?.name}」を削除してもよろしいですか？`)) {
+      return;
+    }
+    
     // member がロール削除する場合、割り当てられたメンバーがいないか確認
     if (isMember) {
       const assignedMembers = membersByRole[roleId] || [];
