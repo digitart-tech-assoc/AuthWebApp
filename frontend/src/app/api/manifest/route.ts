@@ -6,7 +6,7 @@ import { fetchBackend } from "@/lib/backendFetch";
 export async function PUT(request: Request) {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin") {
+		if (role !== "admin" && role !== "member") {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 
