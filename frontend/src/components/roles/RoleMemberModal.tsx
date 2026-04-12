@@ -19,8 +19,12 @@ type Props = {
   /** 現在このロールを持つメンバーのuser_idセット */
   currentMemberIds: string[];
   isLocked?: boolean;
+  /** trueの場合：閉覧のみ（付与・削除ボタン非表示） */
+  readOnly?: boolean;
   onCommit: (add: string[], remove: string[]) => void;
   onClose: () => void;
+  /** 設定時: このユーザーのみ操作可（memberモード用） */
+  selfDiscordId?: string | null;
 };
 
 type Screen = "list" | "grant" | "revoke";
@@ -46,8 +50,10 @@ export default function RoleMemberModal({
   allMembers,
   currentMemberIds,
   isLocked,
+  readOnly = false,
   onCommit,
   onClose,
+  selfDiscordId = null,
 }: Props) {
   const [screen, setScreen] = useState<Screen>("list");
   // ローカルの付与済みセット（コミットするまで反映しない）
@@ -127,17 +133,18 @@ export default function RoleMemberModal({
             {filteredAll.map((m) => {
               const alreadyHas = localMemberIds.has(m.user_id);
               const checked = selectedForGrant.has(m.user_id);
+              const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
               return (
                 <label
                   key={m.user_id}
-                  className={`${styles.memberRow} ${alreadyHas ? styles.disabled : ""}`}
+                  className={`${styles.memberRow} ${alreadyHas || isSelfOnly ? styles.disabled : ""}`}
                 >
                   <input
                     type="checkbox"
-                    disabled={alreadyHas}
+                    disabled={alreadyHas || isSelfOnly}
                     checked={checked}
                     onChange={() => {
-                      if (alreadyHas) return;
+                      if (alreadyHas || isSelfOnly) return;
                       setSelectedForGrant((prev) => {
                         const next = new Set(prev);
                         if (next.has(m.user_id)) next.delete(m.user_id);
@@ -149,6 +156,7 @@ export default function RoleMemberModal({
                   <MemberAvatar member={m} />
                   <span className={styles.memberName}>{m.display_name || m.username}</span>
                   {alreadyHas && <span className={styles.badge}>付与済</span>}
+                  {!alreadyHas && isSelfOnly && <span className={styles.badge} style={{ background: '#6b7280' }}>操作不可</span>}
                 </label>
               );
             })}
@@ -200,12 +208,15 @@ export default function RoleMemberModal({
             )}
             {filteredCurrent.map((m) => {
               const checked = selectedForRevoke.has(m.user_id);
+              const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
               return (
-                <label key={m.user_id} className={styles.memberRow}>
+                <label key={m.user_id} className={`${styles.memberRow} ${isSelfOnly ? styles.disabled : ""}`}>
                   <input
                     type="checkbox"
                     checked={checked}
+                    disabled={isSelfOnly}
                     onChange={() => {
+                      if (isSelfOnly) return;
                       setSelectedForRevoke((prev) => {
                         const next = new Set(prev);
                         if (next.has(m.user_id)) next.delete(m.user_id);
@@ -216,6 +227,7 @@ export default function RoleMemberModal({
                   />
                   <MemberAvatar member={m} />
                   <span className={styles.memberName}>{m.display_name || m.username}</span>
+                  {isSelfOnly && <span className={styles.badge} style={{ background: '#6b7280' }}>操作不可</span>}
                 </label>
               );
             })}
@@ -265,7 +277,7 @@ export default function RoleMemberModal({
         </div>
 
         <div className={styles.footer}>
-          {!isLocked && (
+          {!readOnly && !isLocked && (
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
@@ -287,18 +299,23 @@ export default function RoleMemberModal({
           {isLocked && (
             <span className={styles.lockedMsg}>Botより上位のロールは編集できません</span>
           )}
+          {readOnly && (
+            <span className={styles.lockedMsg}>閲覧のみ（付与・削除は各カテゴリから行えます）</span>
+          )}
           <div style={{ display: "flex", gap: "8px" }}>
             <button type="button" className={styles.cancelBtn} onClick={onClose}>
               戻る
             </button>
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${!hasChanges ? styles.dimmed : ""}`}
-              onClick={handleCommit}
-              disabled={!hasChanges}
-            >
-              変更を確定
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${!hasChanges ? styles.dimmed : ""}`}
+                onClick={handleCommit}
+                disabled={!hasChanges}
+              >
+                変更を確定
+              </button>
+            )}
           </div>
         </div>
       </div>

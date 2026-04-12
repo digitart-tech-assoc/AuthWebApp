@@ -3,6 +3,23 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import RoleList from "./RoleList";
 import SyncButton from "./SyncButton";
 import PushButton from "./PushButton";
@@ -36,6 +53,7 @@ type Props = {
   categories: Category[];
   roles: Role[];
   accessRole: string;
+  myDiscordId?: string | null;
 };
 
 type Status = {
@@ -61,9 +79,136 @@ function ShieldIcon() {
   );
 }
 
+// ===== SortableCategoryItem (DnD per category) =====
+
+type SortableCategoryItemProps = {
+  cat: Category;
+  catRoles: Role[];
+  isOpen: boolean;
+  isRestrictedCat: boolean;
+  memberCanManageCat: boolean;
+  isAdmin: boolean;
+  isMember: boolean;
+  isSelectMode: boolean;
+  selectedRoleIds: Set<string>;
+  botPosition: number | undefined;
+  onToggleCollapse: (id: string) => void;
+  onOpenCategoryPermissions: (cat: Category) => void;
+  onDeleteCategory: (id: string) => void;
+  onToggleSelect: (id: string) => void;
+  onReorder: ((ids: string[]) => void) | undefined;
+  onOpenRolePermissions: ((role: Role) => void) | undefined;
+  onDeleteRole: ((id: string) => void) | undefined;
+  onOpenMemberModal: ((role: Role) => void) | undefined;
+  styles: Record<string, string>;
+};
+
+function SortableCategoryItem({
+  cat, catRoles, isOpen, isRestrictedCat, memberCanManageCat,
+  isAdmin, isMember, isSelectMode, selectedRoleIds, botPosition,
+  onToggleCollapse, onOpenCategoryPermissions, onDeleteCategory,
+  onToggleSelect, onReorder, onOpenRolePermissions, onDeleteRole,
+  onOpenMemberModal, styles,
+}: SortableCategoryItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
+  const catStyle = {
+    // scaleX/scaleYを1に固定してドラッグ時の引き伸ばしを防ぐ
+    transform: CSS.Transform.toString(transform ? { ...transform, scaleX: 1, scaleY: 1 } : null),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={catStyle} className={styles.group}>
+      <div
+        className={styles.groupHeader}
+        onClick={() => onToggleCollapse(cat.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggleCollapse(cat.id); }}
+      >
+        <ChevronIcon open={isOpen} />
+        {/* Drag handle */}
+        {(isAdmin || isMember) && (
+          <span
+            {...attributes}
+            {...listeners}
+            className={styles.dragHandle}
+            title="ドラッグでカテゴリを並び替え"
+            onClick={(e) => e.stopPropagation()}
+            style={{ cursor: isDragging ? "grabbing" : "grab", padding: "0 4px", lineHeight: 1 }}
+          >
+            ⠿
+          </span>
+        )}
+        <span className={styles.groupName}>{cat.name}</span>
+        <span className={styles.groupCount}>{catRoles.length}</span>
+
+        {isAdmin ? (
+          <button
+            type="button"
+            className={styles.catPermBtn}
+            onClick={(e) => { e.stopPropagation(); onOpenCategoryPermissions(cat); }}
+            title="カテゴリ権限設定"
+            aria-label={`${cat.name} の権限設定`}
+          >
+            <ShieldIcon />
+            権限
+          </button>
+        ) : null}
+
+        {/* member: ロールが残っている場合は削除不可。admin: 制限なし */}
+        {isAdmin ? (
+          <button
+            type="button"
+            className={styles.groupDeleteBtn}
+            onClick={(e) => { e.stopPropagation(); onDeleteCategory(cat.id); }}
+            aria-label={`${cat.name} を削除`}
+            title="カテゴリを削除"
+          >
+            ✕
+          </button>
+        ) : memberCanManageCat ? (
+          <button
+            type="button"
+            className={`${styles.groupDeleteBtn} ${catRoles.length > 0 ? styles.btnDisabled ?? "" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (catRoles.length > 0) return;
+              onDeleteCategory(cat.id);
+            }}
+            disabled={catRoles.length > 0}
+            aria-label={`${cat.name} を削除`}
+            title={catRoles.length > 0
+              ? `カテゴリ内のロール（${catRoles.length}件）をすべて削除してからカテゴリを削除できます`
+              : "カテゴリを削除"
+            }
+          >
+            ✕
+          </button>
+        ) : null}
+      </div>
+
+      {isOpen && (
+        <RoleList
+          roles={catRoles}
+          showHeader={false}
+          selectedIds={isSelectMode ? selectedRoleIds : undefined}
+          onToggleSelect={isSelectMode ? onToggleSelect : undefined}
+          onReorder={!isSelectMode && isAdmin ? onReorder : undefined}
+          onPermissions={!isSelectMode && isAdmin ? onOpenRolePermissions : undefined}
+          onDelete={!isSelectMode && (isAdmin || memberCanManageCat) ? onDeleteRole : undefined}
+          onMembers={!isSelectMode && (isAdmin || memberCanManageCat) ? onOpenMemberModal : undefined}
+          botPosition={botPosition}
+        />
+      )}
+    </div>
+  );
+}
+
 // ===== Component =====
 
-export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole }: Props) {
+export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole, myDiscordId = null }: Props) {
   const [query, setQuery] = useState("");
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
@@ -90,11 +235,17 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
   const [memberModalRole, setMemberModalRole] = useState<Role | null>(null);
+  const [memberModalReadOnly, setMemberModalReadOnly] = useState(false);
 
   const isAdmin = accessRole === "admin";
+  const isMember = accessRole === "member";
   const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
+  const canCreateCategory = isAdmin || isMember;
   const canManageMembers = isAdmin;
-  const canEditManifest = isAdmin;
+  const canEditManifest = isAdmin || isMember;
+
+  // memberモードでロール付与を禁止するカテゴリ名
+  const RESTRICTED_CATEGORY_NAMES = new Set(["\u4f1a\u54e1\u60c5\u5831", "\u5b66\u90e8\u5b66\u79d1", "\u5b66\u5e74"]);
 
   function showStatus(s: Status, durationMs = 5000) {
     setStatus(s);
@@ -138,13 +289,14 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     return allRoles.filter((r) => r.name.toLowerCase().includes(normalizedQuery));
   }, [allRoles, normalizedQuery]);
 
+  // DnD sensors for category reorder
+  const useCatDndSensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   // ===== Persist =====
   async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
-    if (!canEditManifest) {
-      showStatus({ kind: "error", msg: "member 権限では保存できません（モック表示）" });
-      return;
-    }
-
     setSaveState("saving");
     try {
       const res = await fetch("/api/manifest", {
@@ -212,7 +364,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   function createCategory() {
     const name = newCategoryName.trim();
-    if (!name || selectedRoleIds.size === 0) return;
+    if (!name) return;
     const newCatId = `cat_${Date.now()}`;
     const newCat: Category = { id: newCatId, name, display_order: localCategories.length, is_collapsed: false, permissions: 0 };
     const updatedRoles = allRoles.map((r) => selectedRoleIds.has(r.role_id) ? { ...r, category_id: newCatId } : r);
@@ -242,6 +394,16 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setHasUnsaved(true);
     setSaveState("idle");
     showStatus({ kind: "info", msg: "ロールを削除しました（保存ボタンで確定）" });
+  }
+
+  // カテゴリの並び替え（DnD完了時）
+  function reorderCategories(oldIndex: number, newIndex: number) {
+    setLocalCategories((prev) => {
+      const next = arrayMove(prev, oldIndex, newIndex);
+      return next.map((c, i) => ({ ...c, display_order: i }));
+    });
+    setHasUnsaved(true);
+    setSaveState("idle");
   }
 
   // ===== SyncButton / PushButton =====
@@ -343,6 +505,13 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   // ===== Member management callbacks =====
   const handleOpenMemberModal = useCallback((role: Role) => {
+    setMemberModalReadOnly(false);
+    setMemberModalRole(role);
+  }, []);
+
+  // ロール一覧用: 閉覧のみで開く
+  const handleOpenMemberModalReadOnly = useCallback((role: Role) => {
+    setMemberModalReadOnly(true);
     setMemberModalRole(role);
   }, []);
 
@@ -359,6 +528,31 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     const detail = `付与 ${add.length}名 / 削除 ${remove.length}名`;
     showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）（保存ボタンで確定）` });
   }
+
+  // ===== Self-assign (member mode) =====
+  const handleSelfAssign = useCallback(async (role: Role) => {
+    // 禁止カテゴリチェック
+    const cat = localCategories.find((c) => c.id === role.category_id);
+    if (cat && RESTRICTED_CATEGORY_NAMES.has(cat.name)) {
+      showStatus({ kind: "error", msg: `「${cat.name}」カテゴリのロールは付与できません` });
+      return;
+    }
+    try {
+      const res = await fetch("/api/roles/self-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role_id: role.role_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showStatus({ kind: "error", msg: data.detail ?? "ロールの付与に失敗しました" });
+        return;
+      }
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を自分に付与しました` });
+    } catch {
+      showStatus({ kind: "error", msg: "ロールの付与に失敗しました。接続を確認してください" });
+    }
+  }, [localCategories, RESTRICTED_CATEGORY_NAMES]);
 
   const categoryIds = new Set(localCategories.map((c) => c.id));
   const uncategorizedRoles = filteredRoles.filter((r) => !r.category_id || !categoryIds.has(r.category_id));
@@ -399,7 +593,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           />
         </div>
         <SyncButton onSuccess={handleSyncSuccess} onError={handleSyncError} />
-        {isAdmin ? <PushButton onSuccess={handlePushSuccess} onError={handlePushError} /> : null}
+        {(isAdmin || isMember) ? <PushButton onSuccess={handlePushSuccess} onError={handlePushError} /> : null}
         {canCreateRole ? (
           <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
             + ロール作成
@@ -409,8 +603,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           type="button"
           className={isSelectMode ? styles.btnDanger : styles.btnSecondary}
           onClick={toggleSelectMode}
-          disabled={!isAdmin}
-          title={isAdmin ? "カテゴリ作成" : "カテゴリ作成は admin のみ可能"}
+          disabled={!canCreateCategory}
+          title={canCreateCategory ? "カテゴリ作成" : "カテゴリ作成は admin/member のみ可能"}
         >
           {isSelectMode ? "戻る" : "⊙ カテゴリ作成"}
         </button>
@@ -419,7 +613,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       <div className={`${styles.statusBanner} ${styles.info}`}>
         {isAdmin
           ? "adminモード: すべての管理操作が有効です。"
-          : "memberモード: admin専用操作（カテゴリ作成・権限編集・並び替え・会員管理）は無効です。"}
+          : isMember
+          ? "memberモード: ロール・カテゴリの作成および自分へのロール付与ができます。会員全体のロール管理は無効です。"
+          : "obogモード: ロール作成のみ可能です。"}
       </div>
 
       {/* Category creation selection bar */}
@@ -437,7 +633,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             onKeyDown={(e) => { if (e.key === "Enter") createCategory(); }}
           />
           <button type="button" className={styles.btnPrimary} onClick={createCategory}
-            disabled={!newCategoryName.trim() || selectedRoleIds.size === 0}>
+            disabled={!newCategoryName.trim()}>
             作成
           </button>
         </div>
@@ -446,71 +642,51 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {/* Role board */}
       <div className={styles.board}>
 
-        {/* ===== Categorized groups ===== */}
-        {localCategories.map((cat) => {
-          const catRoles = filteredRoles.filter((r) => r.category_id === cat.id);
-          if (catRoles.length === 0 && !isSelectMode) return null;
-          const isOpen = !collapsedIds.has(cat.id);
-
-          return (
-            <div key={cat.id} className={styles.group}>
-              <div
-                className={styles.groupHeader}
-                onClick={() => toggleCollapse(cat.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse(cat.id); }}
-              >
-                <ChevronIcon open={isOpen} />
-                <span className={styles.groupName}>{cat.name}</span>
-                <span className={styles.groupCount}>{catRoles.length}</span>
-
-                {/* Category permissions button */}
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    className={styles.catPermBtn}
-                    onClick={(e) => { e.stopPropagation(); openCategoryPermissions(cat); }}
-                    title="カテゴリ権限設定"
-                    aria-label={`${cat.name} の権限設定`}
-                  >
-                    <ShieldIcon />
-                    権限
-                  </button>
-                ) : null}
-
-                {/* Delete button */}
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    className={styles.groupDeleteBtn}
-                    onClick={(e) => { e.stopPropagation(); deleteCategory(cat.id); }}
-                    aria-label={`${cat.name} を削除`}
-                    title="カテゴリを削除"
-                  >
-                    ✕
-                  </button>
-                ) : null}
-              </div>
-
-              {isOpen && (
-                <RoleList
-                  roles={catRoles}
-                  showHeader={false}
-                  selectedIds={isSelectMode ? selectedRoleIds : undefined}
-                  onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-                  onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
-                  onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
-                  onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
-                  onMembers={!isSelectMode && isAdmin ? handleOpenMemberModal : undefined}
+        {/* ===== Categorized groups with DnD reordering ===== */}
+        <DndContext
+          sensors={useCatDndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(event: DragEndEvent) => {
+            const { active, over } = event;
+            if (!over || active.id === over.id) return;
+            const oldIdx = localCategories.findIndex((c) => c.id === active.id);
+            const newIdx = localCategories.findIndex((c) => c.id === over.id);
+            if (oldIdx !== -1 && newIdx !== -1) reorderCategories(oldIdx, newIdx);
+          }}
+        >
+          <SortableContext items={localCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            {localCategories.map((cat) => {
+              const catRoles = filteredRoles.filter((r) => r.category_id === cat.id);
+              const isOpen = !collapsedIds.has(cat.id);
+              const isRestrictedCat = RESTRICTED_CATEGORY_NAMES.has(cat.name);
+              const memberCanManageCat = isMember && !isRestrictedCat;
+              return (
+                <SortableCategoryItem
+                  key={cat.id}
+                  cat={cat}
+                  catRoles={catRoles}
+                  isOpen={isOpen}
+                  isRestrictedCat={isRestrictedCat}
+                  memberCanManageCat={memberCanManageCat}
+                  isAdmin={isAdmin}
+                  isMember={isMember}
+                  isSelectMode={isSelectMode}
+                  selectedRoleIds={selectedRoleIds}
                   botPosition={botPosition}
+                  onToggleCollapse={toggleCollapse}
+                  onOpenCategoryPermissions={openCategoryPermissions}
+                  onDeleteCategory={deleteCategory}
+                  onToggleSelect={toggleSelectRole}
+                  onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+                  onOpenRolePermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+                  onDeleteRole={!isSelectMode && (isAdmin || memberCanManageCat) ? deleteRole : undefined}
+                  onOpenMemberModal={!isSelectMode && (isAdmin || memberCanManageCat) ? handleOpenMemberModal : undefined}
+                  styles={styles}
                 />
-              )}
-            </div>
-          );
-        })}
-
-
+              );
+            })}
+          </SortableContext>
+        </DndContext>
 
         {/* ===== Master All Roles ===== */}
         <div className={styles.group}>
@@ -534,7 +710,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
               onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
               onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
-              onMembers={!isSelectMode && isAdmin ? handleOpenMemberModal : undefined}
+              onMembers={
+                !isSelectMode && (isAdmin || isMember)
+                  ? handleOpenMemberModalReadOnly
+                  : undefined
+              }
               botPosition={botPosition}
             />
           )}
@@ -544,11 +724,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {/* Floating save bar */}
       {hasUnsaved && (
         <div className={styles.unsavedBar}>
-          <span>
-            {canEditManifest
-              ? "未保存の変更があります"
-              : "未保存の変更があります（memberモック: 保存はadminのみ）"}
-          </span>
+          <span>未保存の変更があります</span>
           <button
             type="button"
             className={styles.unsavedBarBtn}
@@ -577,6 +753,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           botPermissions={botPermissions}
           onCreated={handleRoleCreated}
           onClose={() => setShowNewRole(false)}
+          isMember={isMember}
+          restrictedCategoryNames={RESTRICTED_CATEGORY_NAMES}
         />
       )}
 
@@ -590,6 +768,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           onCommit={(add, remove) => handleMemberCommit(memberModalRole.role_id, add, remove)}
           onClose={() => setMemberModalRole(null)}
           isLocked={botPosition !== undefined && memberModalRole.position >= botPosition}
+          readOnly={memberModalReadOnly}
+          selfDiscordId={(!memberModalReadOnly && isMember) ? myDiscordId : null}
         />
       )}
 

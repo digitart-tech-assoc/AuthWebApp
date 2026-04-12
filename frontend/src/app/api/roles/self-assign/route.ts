@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-
 import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
 
-export async function PUT(request: Request) {
+export async function POST(request: Request) {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin" && role !== "member") {
+		const allowed = new Set(["member", "admin", "obog"]);
+		if (!allowed.has(role)) {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 
@@ -16,8 +16,8 @@ export async function PUT(request: Request) {
 		}
 
 		const payload = await request.json();
-		const res = await fetchBackend("/api/v1/manifest", {
-			method: "PUT",
+		const res = await fetchBackend("/api/v1/roles/self-assign", {
+			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 				Authorization: authorization,
@@ -28,6 +28,6 @@ export async function PUT(request: Request) {
 		const body = await res.json();
 		return NextResponse.json(body, { status: res.status });
 	} catch {
-		return NextResponse.json({ ok: false, detail: "manifest proxy failed" }, { status: 502 });
+		return NextResponse.json({ ok: false, detail: "proxy failed" }, { status: 502 });
 	}
 }

@@ -29,6 +29,8 @@ type Props = {
   botPermissions: bigint;
   onCreated: (role: NewRoleData) => void;
   onClose: () => void;
+  isMember?: boolean;
+  restrictedCategoryNames?: Set<string>;
 };
 
 // ===== Preset palette (Discord-like) =====
@@ -46,7 +48,7 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
   return value ? perms | (1n << bit) : perms & ~(1n << bit);
 }
 
-export default function NewRoleModal({ categories, botPermissions, onCreated, onClose }: Props) {
+export default function NewRoleModal({ categories, botPermissions, onCreated, onClose, isMember = false, restrictedCategoryNames = new Set() }: Props) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#99AAB5");
   const [hexInput, setHexInput] = useState("#99AAB5");
@@ -63,6 +65,14 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
     const cat = categories.find((c) => c.id === categoryId);
     setPerms(BigInt(cat?.permissions ?? 0));
   }, [categoryId, categories]);
+
+  // memberモード: 最初の利用可能なカテゴリを自動選択
+  useEffect(() => {
+    if (isMember && categoryId === null) {
+      const first = categories.find((c) => !restrictedCategoryNames.has(c.name));
+      if (first) setCategoryId(first.id);
+    }
+  }, [isMember, categories, restrictedCategoryNames, categoryId]);
 
   function handleColorPick(c: string) {
     setColor(c);
@@ -87,6 +97,11 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
   async function handleCreate() {
     if (!name.trim()) {
       setError("ロール名を入力してください");
+      return;
+    }
+    // memberモード: カテゴリ必須チェック
+    if (isMember && !categoryId) {
+      setError("ロールを作成するカテゴリを選択してください");
       return;
     }
     setError(null);
@@ -159,16 +174,23 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
               />
 
               {/* Category */}
-              <label className={styles.fieldLabel}>カテゴリ</label>
+              <label className={styles.fieldLabel}>カテゴリ{isMember && <span className={styles.required}> *</span>}</label>
+              {isMember && (
+                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                  禁止カテゴリ（会員情報・学部学科・学年）およびカテゴリに属さない状態での作成できません
+                </p>
+              )}
               <select
                 className={styles.select}
                 value={categoryId ?? ""}
                 onChange={(e) => setCategoryId(e.target.value || null)}
               >
-                <option value="">カテゴリなし</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
+                {!isMember && <option value="">カテゴリなし</option>}
+                {categories
+                  .filter((c) => !restrictedCategoryNames.has(c.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
               </select>
 
               {/* Color palette */}

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.core.auth import require_admin, require_member
 from app.db.repository import (
+	clear_all_role_assignments,
 	fetch_guild_members,
 	fetch_manifest,
 	fetch_role_assignments,
@@ -89,6 +90,8 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 			for role_id in m.get("role_ids", []):
 				assignments.setdefault(role_id, []).append(m["user_id"])
 		print(f"[DEBUG] Found {len(assignments)} roles with assignments. Saving to DB...")
+		# First clear ALL existing assignments so that roles with 0 members don't linger
+		await asyncio.to_thread(clear_all_role_assignments)
 		await asyncio.to_thread(save_role_assignments, assignments)
 		print(f"[DEBUG] Saved role assignments to DB")
 	except Exception as exc:
@@ -103,7 +106,7 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 
 
 @router.post("/push")
-async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
+async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -125,6 +128,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	skipped_managed = 0
 	errors = []
 	created_real_ids: set[str] = set()  # track real Discord IDs for newly created roles
+	deleted_role_ids: set[str] = set()  # track deleted roles to skip member sync
 
 	for role in desired_roles:
 		role_id = role["role_id"]
@@ -172,6 +176,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		try:
 			await delete_guild_role(DISCORD_GUILD_ID, role_id, token)
 			deleted += 1
+			deleted_role_ids.add(role_id)
 		except Exception as exc:
 			msg = f"Failed to delete role {role_id}: {exc}"
 			print(msg)
@@ -226,6 +231,25 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 				except Exception as exc:
 					errors.append(f"Failed to add role {role_id} to {user_id}: {exc}")
 			for user_id in current_set - desired_set:
+				try:
+					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
+					assigned_removes += 1
+				except Exception as exc:
+					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+
+		# Also handle roles that exist in Discord but have been completely removed from desired_assignments
+		# (fetch_role_assignments only returns role_ids with at least 1 member, so 0-member roles are missing)
+		for role_id, current_users in current_by_role.items():
+			if role_id in desired_assignments:
+				continue  # already handled above
+			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
+				continue
+			if role_id not in actual_by_id and role_id not in created_real_ids:
+				continue
+			if role_id in deleted_role_ids:
+				continue
+			# This role has Discord members but no desired members → remove all
+			for user_id in current_users:
 				try:
 					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
 					assigned_removes += 1
@@ -350,6 +374,55 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		print(f"[ERROR] Discord sync failed: {exc}")
 		traceback.print_exc()
 		raise HTTPException(status_code=502, detail=f"Discord sync failed: {exc}") from exc
+
+
+class SelfAssignPayload(BaseModel):
+	role_id: str
+
+
+# カテゴリ名で付与を禁止するカテゴリ（バックエンド側でも確認）
+MEMBER_RESTRICTED_CATEGORY_NAMES = {"会員情報", "学部学科", "学年"}
+
+
+@router.post("/self-assign")
+async def self_assign_role(
+	payload: SelfAssignPayload,
+	_principal: dict = Depends(require_member),
+) -> dict:
+	"""memberが自分自身にロールを付与する。禁止カテゴリに属するロールは拒否。"""
+	discord_id: str | None = _principal.get("discord_id")
+	if not discord_id:
+		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
+
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	# マニフェストで禁止カテゴリチェック
+	manifest = await asyncio.to_thread(fetch_manifest)
+	restricted_cat_ids = {
+		c["id"] for c in manifest.get("categories", [])
+		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
+	}
+	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
+	if role_info and role_info.get("category_id") in restricted_cat_ids:
+		raise HTTPException(status_code=403, detail="このロールは付与できません（禁止カテゴリ）")
+
+	try:
+		await add_role_to_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
+	except Exception as exc:
+		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
+
+	# DB のロール割り当ても更新
+	try:
+		assignments = await asyncio.to_thread(fetch_role_assignments)
+		current = set(assignments.get(payload.role_id, []))
+		current.add(discord_id)
+		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
+	except Exception:
+		pass  # DB更新失敗は無視（Discord側には反映済み）
+
+	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
 
 @router.get("/lists")
