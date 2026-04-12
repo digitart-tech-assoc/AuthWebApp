@@ -393,23 +393,28 @@ async def create_student_profile(
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
 	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
-	# OTP が検証済みか確認（最新レコードを取得して verified フラグを確認）
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, verified, verified_at, expires_at
-				FROM otp_records
-				WHERE discord_id = %s
-				ORDER BY created_at DESC
-				LIMIT 1
-				""",
-				(discord_id,),
-			)
-			row = cur.fetchone()
+	# OTP が検証済みか確認（ただし既に member/admin/obog の場合はスキップ）
+	app_role = principal.get("app_role")
+	skip_otp = app_role in ("member", "admin", "obog")
 
-	if row is None or not row[1]:
-		raise HTTPException(status_code=400, detail="OTP verification required")
+	row = None
+	if not skip_otp:
+		with _connect() as conn:
+			with conn.cursor() as cur:
+				cur.execute(
+					"""
+					SELECT id, verified, verified_at, expires_at
+					FROM otp_records
+					WHERE discord_id = %s
+					ORDER BY created_at DESC
+					LIMIT 1
+					""",
+					(discord_id,),
+				)
+				row = cur.fetchone()
+
+		if row is None or not row[1]:
+			raise HTTPException(status_code=400, detail="OTP verification required")
 
 	email_aoyama = _generate_student_email(req.student_number)
 
@@ -496,11 +501,19 @@ async def create_student_profile(
 		import os
 		import httpx
 		try:
-			discord_bot_url = os.getenv("DISCORD_BOT_URL", "http://authwebapp-discord-bot-service:8000")
+			# Prefer BOT_INTERNAL_URL (set in docker-compose) for internal service address.
+			# Fallback to DISCORD_BOT_URL for compatibility, then to the docker service name.
+			discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
 			shared = os.getenv("SHARED_SECRET", "dev-secret")
 			async with httpx.AsyncClient(timeout=5.0) as client:
+				# If BOT_INTERNAL_URL already includes the path, avoid duplicating it
+				if discord_bot_url.rstrip("/").endswith("/internal/sync"):
+					endpoint = discord_bot_url
+				else:
+					endpoint = f"{discord_bot_url.rstrip('/')}/internal/sync"
+
 				await client.post(
-					f"{discord_bot_url}/internal/sync",
+					endpoint,
 					json={"action": "sync_roles"},
 					headers={"Authorization": f"Bearer {shared}"},
 				)
