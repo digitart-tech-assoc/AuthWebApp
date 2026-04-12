@@ -57,7 +57,7 @@ async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
 
 @router.put("/manifest", response_model=Manifest)
 async def put_manifest(payload: Manifest, principal: dict = Depends(require_member)) -> Manifest:
-	"""マニフェスト保存。member はロール権限変更不可。新規ロール時は会員情報カテゴリのみ権限設定可。"""
+	"""マニフェスト保存。member はロール権限変更不可。新規ロール時は会員情報カテゴリのみ権限設定可。ロール削除時はメンバー割り当て不可。"""
 	is_admin = principal.get("app_role") == "admin"
 	
 	if not is_admin:
@@ -65,6 +65,17 @@ async def put_manifest(payload: Manifest, principal: dict = Depends(require_memb
 		current_data = await asyncio.to_thread(fetch_manifest)
 		current_roles_map = {role["role_id"]: role for role in current_data.get("roles", [])}
 		current_cats_map = {cat["id"]: cat for cat in current_data.get("categories", [])}
+		role_assignments = current_data.get("role_assignments", {})
+		
+		# 削除対象ロールの検出（current に存在して新規の payload に含まれない）
+		new_role_ids = {role.role_id for role in payload.roles}
+		deleted_role_ids = set(current_roles_map.keys()) - new_role_ids
+		
+		# member がロール削除する場合、メンバー割り当てがないか確認
+		for deleted_role_id in deleted_role_ids:
+			assigned_members = role_assignments.get(deleted_role_id, [])
+			if assigned_members:
+				raise HTTPException(status_code=403, detail=f"Member cannot delete role with assigned members ({len(assigned_members)} members)")
 		
 		for new_role in payload.roles:
 			current_role = current_roles_map.get(new_role.role_id)
