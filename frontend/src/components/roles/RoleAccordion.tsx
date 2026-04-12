@@ -422,17 +422,17 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setSaveState("saving");
     try {
       // 1. Calculate Diff
-      const upsertCategories = nextCats.filter(c => {
+      const upsertCategories = pendingCats.filter(c => {
         const init = initCategories.find(i => i.id === c.id);
         return !init || JSON.stringify(init) !== JSON.stringify(c);
       });
-      const deleteCatIds = initCategories.filter(c => !nextCats.find(n => n.id === c.id)).map(c => c.id);
+      const deleteCatIds = initCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
 
-      const upsertRoles = nextRoles.filter(r => {
+      const upsertRoles = pendingRoles.filter(r => {
         const init = initRoles.find(i => i.role_id === r.role_id);
         return !init || JSON.stringify(init) !== JSON.stringify(r);
       });
-      const deleteRoleIds = initRoles.filter(r => !nextRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
+      const deleteRoleIds = initRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
 
       const upsertRoleAssignments: Record<string, string[]> = {};
       const initAssignments = initialAssignmentsRef.current;
