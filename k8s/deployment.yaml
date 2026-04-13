@@ -21,6 +21,8 @@ spec:
           env:
             - name: BACKEND_PORT
               value: "5174"
+            - name: BOT_INTERNAL_URL
+              value: "http://authwebapp-discord-bot-service:8000/internal/sync"
           envFrom:
             - secretRef:
                 name: authwebapp-secret
