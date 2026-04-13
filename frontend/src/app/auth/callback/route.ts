@@ -58,7 +58,7 @@ async function resolvePostSignInPath(accessToken: string, discordId: string | nu
                 return "/roles";
             }
             if (me.app_role === "pre_member") {
-                return "/join/form";
+                return "/join";
             }
         }
 
@@ -78,7 +78,7 @@ async function resolvePostSignInPath(accessToken: string, discordId: string | nu
         const lists = (await listsRes.json()) as MemberListsResponse;
         const preMembers = lists.pre_member_list ?? [];
         const isPreMember = preMembers.some((item) => item.discord_id === discordId);
-        return isPreMember ? "/join/form" : "/non-member";
+        return isPreMember ? "/join" : "/non-member";
     } catch {
         return "/non-member";
     }
