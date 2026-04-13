@@ -8,7 +8,8 @@ services:
       SHARED_SECRET: ${SHARED_SECRET:-dev-secret}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
-      BOT_INTERNAL_URL: http://discord-bot:5174/internal/sync
+      # internal discord-bot sync endpoint (container port 8000)
+      BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
       DISCORD_TOKEN: ${DISCORD_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       DISCORD_INVITE_CHANNEL_ID: ${DISCORD_INVITE_CHANNEL_ID:-}
