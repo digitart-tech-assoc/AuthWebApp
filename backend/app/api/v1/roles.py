@@ -41,10 +41,35 @@ from app.services.discord_client import (
 router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
+DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://discord-bot:8000")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
 
 
 def _get_token() -> str:
 	return DISCORD_TOKEN.strip()
+
+
+async def _notify_bot_to_reconcile() -> bool:
+	"""Discord Bot に対して reconcile を実行するよう要求する。
+	
+	成功した場合は True を返す。失敗した場合はログして False を返す。
+	"""
+	try:
+		async with httpx.AsyncClient(timeout=10.0) as client:
+			resp = await client.post(
+				f"{DISCORD_BOT_URL}/internal/sync",
+				json={"action": "sync_roles"},
+				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
+			)
+			if resp.status_code == 200:
+				print(f"[INFO] Bot reconcile triggered successfully: {resp.json()}")
+				return True
+			else:
+				print(f"[WARNING] Bot reconcile failed with status {resp.status_code}: {resp.text}")
+				return False
+	except Exception as e:
+		print(f"[WARNING] Failed to trigger bot reconcile: {e}")
+		return False
 
 
 @router.post("/refresh")
@@ -274,6 +299,10 @@ async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> d
 	except Exception as exc:
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
+	# Notify Discord Bot to reconcile member_list / pre_member_list
+	print("[DEBUG] Notifying Discord Bot to reconcile member lists...")
+	bot_reconciled = await _notify_bot_to_reconcile()
+
 	return {
 		"ok": len(errors) == 0,
 		"guild_id": DISCORD_GUILD_ID,
@@ -284,6 +313,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> d
 		"skipped_managed": skipped_managed,
 		"assigned_adds": assigned_adds,
 		"assigned_removes": assigned_removes,
+		"bot_reconciled": bot_reconciled,
 		"errors": errors,
 	}
 
