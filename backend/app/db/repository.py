@@ -162,45 +162,70 @@ def init_db() -> None:
                     """
                 )
 
+                # 統合メンバーシップテーブル（member / admin / pre_member / obog）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS user_memberships (
+                        discord_id TEXT NOT NULL,
+                        membership_type TEXT NOT NULL 
+                            CHECK (membership_type IN ('member', 'admin', 'pre_member', 'obog')),
+                        assigned_by TEXT,
+                        assigned_at TIMESTAMPTZ DEFAULT now(),
+                        created_at TIMESTAMPTZ DEFAULT now(),
+                        PRIMARY KEY (discord_id, membership_type),
+                        FOREIGN KEY (discord_id) REFERENCES guild_members(user_id) ON DELETE CASCADE
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_user_memberships_discord_id 
+                    ON user_memberships (discord_id);
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_user_memberships_membership_type 
+                    ON user_memberships (membership_type);
+                    """
+                )
 
-                # member / admin / pre_member リスト（Discord IDベース）
+                # ビュー: ユーザーの app_role を user_memberships から動的に計算
                 cur.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS member_list (
-                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-                        discord_id TEXT UNIQUE NOT NULL,
-                        user_id TEXT,
-                        assigned_by TEXT,
-                        assigned_at TIMESTAMPTZ DEFAULT now(),
-                        created_at TIMESTAMPTZ DEFAULT now()
-                    );
+                    CREATE OR REPLACE VIEW v_users_with_app_role AS
+                    SELECT 
+                        u.id,
+                        u.user_id,
+                        u.discord_id,
+                        CASE 
+                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'admin') 
+                                THEN 'admin'
+                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'member') 
+                                THEN 'member'
+                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'obog') 
+                                THEN 'obog'
+                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'pre_member') 
+                                THEN 'pre_member'
+                            ELSE 'none'
+                        END as app_role,
+                        u.created_at,
+                        u.updated_at
+                    FROM users u
                     """
                 )
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS admin_list (
-                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-                        discord_id TEXT UNIQUE NOT NULL,
-                        user_id TEXT,
-                        assigned_by TEXT,
-                        assigned_at TIMESTAMPTZ DEFAULT now(),
-                        created_at TIMESTAMPTZ DEFAULT now()
-                    );
-                    """
-                )
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS pre_member_list (
-                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-                        discord_id TEXT UNIQUE NOT NULL,
-                        user_id TEXT,
-                        assigned_by TEXT,
-                        assigned_at TIMESTAMPTZ DEFAULT now(),
-                        created_at TIMESTAMPTZ DEFAULT now()
-                    );
-                    """
-                )
-                # guild members (for role assignment UI)
+
+                # Migration: Drop app_role from users table (now calculated via v_users_with_app_role VIEW)
+                # This is a safe migration that preserves data
+                try:
+                    cur.execute(
+                        """
+                        ALTER TABLE users DROP COLUMN IF EXISTS app_role;
+                        """
+                    )
+                except Exception as e:
+                    # Column may already be dropped or table may be in use
+                    pass
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS guild_members (

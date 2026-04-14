@@ -144,11 +144,11 @@ try:
     # テストデータ準備
     with _connect() as conn:
         with conn.cursor() as cur:
-            # guild_members にテストデータ追加
+            # guild_members にテストデータ追加（user_id が Discord ID）
             cur.execute("""
-                INSERT INTO guild_members (discord_id, username, display_name)
+                INSERT INTO guild_members (user_id, username, display_name)
                 VALUES (%s, 'test_user', 'Test User')
-                ON CONFLICT (discord_id) DO NOTHING
+                ON CONFLICT (user_id) DO NOTHING
             """, (test_discord_id,))
             
             # users にテストデータ追加
