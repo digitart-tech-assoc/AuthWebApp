@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 import re
 from datetime import datetime, timedelta, timezone
@@ -13,8 +14,9 @@ import logging
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
-from app.db.repository import _connect
+from app.db.repository import _connect, add_user_to_role, remove_user_from_role
 from app.services.brevo_client import send_otp_email
+
 
 
 router = APIRouter(prefix="/api/v1/student", tags=["student"])
@@ -375,6 +377,25 @@ async def verify_otp(
 				(otp["id"],),
 			)
 			conn.commit()
+
+	# OTP 検証完了後、role_member_assignments を更新する
+	# - member ロールを追加
+	# - pre-member ロールを削除
+	try:
+		member_role_id = os.getenv("MEMBER_ROLE_IDS", "")
+		if member_role_id:
+			# MEMBER_ROLE_IDS が複数存在する場合は最初の1つを使用
+			member_role_id = member_role_id.split(",")[0].strip()
+			add_user_to_role(discord_id, member_role_id)
+			logger.info("Added user %s to member role %s", discord_id, member_role_id)
+
+		pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "")
+		if pre_member_role_id:
+			remove_user_from_role(discord_id, pre_member_role_id)
+			logger.info("Removed user %s from pre-member role %s", discord_id, pre_member_role_id)
+	except Exception as e:
+		logger.error("Failed to update role_member_assignments for user %s: %s", discord_id, str(e))
+		# OTP 検証自体は成功したため、ここでエラーにはしない
 
 	return VerifyOTPResponse(
 		verified=True,

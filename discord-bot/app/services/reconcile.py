@@ -1,6 +1,6 @@
 """役割: 差分同期ロジック
 
-このモジュールでは Discord Bot がバックエンドの `member_list` / `pre_member_list` を取得し、
+このモジュールでは Discord Bot がバックエンドの user_memberships を取得し、
 Discord 側のロール付与/剥奪を行います。
 """
 
@@ -75,18 +75,8 @@ async def run_reconcile() -> dict:
 		removed = 0
 		errors: list[str] = []
 
-		# 2) Ensure members have member roles and do not have pre-member role
+		# 2) Ensure members do not have pre-member role (member roles are already handled by sync)
 		for uid in member_list:
-			# add member roles
-			for rid in member_role_ids:
-				ok, status, body = await _add_role(client, uid, rid)
-				if ok:
-					added += 1
-				else:
-					# ignore 404 (user not in guild) but record other errors
-					if status not in (404,):
-						errors.append(f"add {rid} to {uid} failed: {status} {body}")
-
 			# remove pre-member role if configured
 			if PRE_MEMBER_ROLE_ID:
 				ok, status, body = await _remove_role(client, uid, PRE_MEMBER_ROLE_ID)
