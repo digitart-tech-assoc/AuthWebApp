@@ -846,53 +846,48 @@ def get_pre_member_user_count() -> int:
 
 
 def register_pre_member(discord_id: str, source: str | None = None) -> dict[str, Any]:
-	"""新しい参加者を pre_member_list に登録.
+	"""新しい参加者を user_memberships (pre_member) に登録.
 	
 	Args:
 		discord_id: Discord user ID
+		source: 登録ソース (デフォルト: None)
 		
 	Returns:
 		{"discord_id": "...", "created": True/False}
 	"""
-	# If a source is provided, set assigned_by to that value and update assigned_at.
-	# If source is None, keep existing behavior (do nothing on conflict).
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			if source is None:
-				cur.execute(
-					"""
-					INSERT INTO pre_member_list (discord_id)
-					VALUES (%s)
-					ON CONFLICT (discord_id) DO NOTHING
-					RETURNING id, created_at, assigned_at
-					""",
-					(discord_id,)
-				)
-			else:
-				final_source = source
-				cur.execute(
-					"""
-					INSERT INTO pre_member_list (discord_id, assigned_by)
-					VALUES (%s, %s)
-					ON CONFLICT (discord_id) DO UPDATE SET assigned_by = EXCLUDED.assigned_by, assigned_at = now()
-					RETURNING id, created_at, assigned_at
-					""",
-					(discord_id, final_source)
-				)
+			# Check if already registered as pre_member
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'",
+				(discord_id,)
+			)
+			if cur.fetchone() is not None:
+				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member"}
+
+			# Insert into user_memberships
+			cur.execute(
+				"""
+				INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
+				VALUES (%s, 'pre_member', %s, now(), now())
+				ON CONFLICT (discord_id, membership_type) DO NOTHING
+				RETURNING created_at, assigned_at
+			""",
+				(discord_id, source)
+			)
 
 			result = cur.fetchone()
 			conn.commit()
 
 			if result is None:
-				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member_list"}
+				return {"discord_id": discord_id, "created": False, "message": "Failed to insert"}
 
 			return {
 				"discord_id": discord_id,
 				"created": True,
-				"assigned_at": result[2].isoformat() if result[2] else result[1].isoformat() if result[1] else None,
+				"assigned_at": result[1].isoformat() if result[1] else result[0].isoformat() if result[0] else None,
 				"assigned_by": source,
 			}
-
 
 def expiry_from_assigned_at(assigned_at):
 	"""Calculate expiry (UTC) from an assigned_at datetime using fiscal-year logic (4月開始).
@@ -926,7 +921,11 @@ def cleanup_expired_prospective_members() -> dict[str, int]:
 	now = datetime.now(timezone.utc)
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute("SELECT discord_id, assigned_at FROM pre_member_list WHERE assigned_by = %s", ("P",))
+			# Get pre_member entries from user_memberships (assigned_by = 'P')
+			cur.execute(
+				"SELECT discord_id, assigned_at FROM user_memberships WHERE membership_type = 'pre_member' AND assigned_by = %s",
+				("P",)
+			)
 			rows = cur.fetchall()
 			to_remove = []
 			for row in rows:
@@ -948,14 +947,14 @@ def cleanup_expired_prospective_members() -> dict[str, int]:
 						reason TEXT,
 						created_at TIMESTAMPTZ DEFAULT now()
 					);
-					"""
-				)
+				"""
+			)
 			except Exception:
 				# If creation fails, continue without log
 				pass
 
 			for discord_id, expiry in to_remove:
-				cur.execute("DELETE FROM pre_member_list WHERE discord_id = %s", (discord_id,))
+				cur.execute("DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'", (discord_id,))
 				try:
 					cur.execute(
 						"INSERT INTO pre_member_removal_log (discord_id, source_flow, expired_at, reason) VALUES (%s, %s, %s, %s)",
@@ -972,7 +971,7 @@ def cleanup_expired_prospective_members() -> dict[str, int]:
 
 
 def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, Any]]:
-	"""Pre-member list を pre_member_list から直接取得。
+	"""Pre-member list を user_memberships から取得。
 	paid_invitations に含まれているかどうかも判定。
 	
 	Args:
@@ -989,21 +988,21 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 					"""
 					SELECT p.discord_id, p.assigned_at, 
 						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
-					FROM pre_member_list p
+					FROM user_memberships p
 					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
-					WHERE p.discord_id ILIKE %s
+					WHERE p.membership_type = 'pre_member' AND p.discord_id ILIKE %s
 					ORDER BY p.assigned_at DESC
-					""",
+				""",
 					(f"%{search}%",)
-				)
+			)
 			else:
 				cur.execute(
 					"""
 					SELECT p.discord_id, p.assigned_at, 
 						   CASE WHEN pi.discord_id IS NOT NULL THEN true ELSE false END as is_paid
-					FROM pre_member_list p
+					FROM user_memberships p
 					LEFT JOIN paid_invitations pi ON p.discord_id = pi.discord_id
-					ORDER BY p.assigned_at DESC
+					WHERE p.membership_type = 'pre_member'
 					"""
 				)
 			
