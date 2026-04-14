@@ -516,6 +516,28 @@ def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 					)
 
 
+def add_user_to_role(user_id: str, role_id: str) -> None:
+	"""特定ユーザーをロールに追加する（重複チェック付き）。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+				(role_id, user_id),
+			)
+			conn.commit()
+
+
+def remove_user_from_role(user_id: str, role_id: str) -> None:
+	"""特定ユーザーをロールから削除する。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
+				(role_id, user_id),
+			)
+			conn.commit()
+
+
 def clear_all_role_assignments() -> None:
 	"""role_member_assignments テーブルの全行を削除する（Discordから完全再取得する際に使用）。"""
 	with _connect() as conn:
