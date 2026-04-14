@@ -1,6 +1,6 @@
 """役割: 差分同期ロジック
 
-このモジュールでは Discord Bot がバックエンドの `member_list` / `pre_member_list` を取得し、
+このモジュールでは Discord Bot がバックエンドの user_memberships を取得し、
 Discord 側のロール付与/剥奪を行います。
 """
 

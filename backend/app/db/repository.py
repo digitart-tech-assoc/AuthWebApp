@@ -575,122 +575,249 @@ def sync_member_lists(
 	members: dict[str, list[dict[str, Any]]]
 ) -> dict[str, int]:
 	"""
-	Discord ロール情報から member_list / admin_list / pre_member_list を同期。
+	Discord ロール情報から user_memberships を同期。
 	
 	Parameters:
-	- member_role_ids: member ロール ID のリスト（member または OBOG ロール）
+	- member_role_ids: member ロール ID のリスト
 	- obog_role_ids: OBOG ロール ID のリスト
 	- admin_role_ids: admin ロール ID のリスト
 	- pre_member_role_id: pre-member ロール ID（持っている場合）
 	- members: role_id -> [members] のマッピング（fetch_guild_members_with_role から取得）
 	
 	Returns:
-	- {'member_list': count, 'admin_list': count, 'pre_member_list': count}
+	- {'member': count, 'admin': count, 'pre_member': count}
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			# member_list の同期（member または OBOG ロール）
+			# 既存データをクリア（全置換方式）
+			cur.execute("DELETE FROM user_memberships")
+			
+			counts = {}
+			
+			# 1. Member ロール + OB-OG ロール → membership_type = 'member'
 			member_discord_ids = set()
 			for role_id in member_role_ids + obog_role_ids:
 				for member in members.get(role_id, []):
 					member_discord_ids.add(member["user_id"])
 			
-			cur.execute("DELETE FROM member_list")
-			member_count = 0
 			for discord_id in member_discord_ids:
 				cur.execute(
 					"""
-					INSERT INTO member_list (discord_id)
-					VALUES (%s)
-					ON CONFLICT (discord_id) DO NOTHING
+					INSERT INTO user_memberships 
+					(discord_id, membership_type, assigned_at, created_at)
+					VALUES (%s, 'member', now(), now())
+					ON CONFLICT (discord_id, membership_type) DO NOTHING
 					""",
 					(discord_id,)
 				)
-				member_count += 1
+			counts['member'] = len(member_discord_ids)
 			
-			# admin_list の同期
+			# 2. Admin ロール → membership_type = 'admin'
 			admin_discord_ids = set()
 			for role_id in admin_role_ids:
 				for member in members.get(role_id, []):
 					admin_discord_ids.add(member["user_id"])
 			
-			cur.execute("DELETE FROM admin_list")
-			admin_count = 0
 			for discord_id in admin_discord_ids:
 				cur.execute(
 					"""
-					INSERT INTO admin_list (discord_id)
-					VALUES (%s)
-					ON CONFLICT (discord_id) DO NOTHING
+					INSERT INTO user_memberships 
+					(discord_id, membership_type, assigned_at, created_at)
+					VALUES (%s, 'admin', now(), now())
+					ON CONFLICT (discord_id, membership_type) DO NOTHING
 					""",
 					(discord_id,)
 				)
-				admin_count += 1
+			counts['admin'] = len(admin_discord_ids)
 			
-			# pre_member_list の同期
-			pre_member_count = 0
+			# 3. Pre-member ロール → membership_type = 'pre_member'
+			pre_member_discord_ids = set()
 			if pre_member_role_id:
-				pre_member_discord_ids = set()
 				for member in members.get(pre_member_role_id, []):
 					pre_member_discord_ids.add(member["user_id"])
-				
-				cur.execute("DELETE FROM pre_member_list")
-				for discord_id in pre_member_discord_ids:
-					cur.execute(
-						"""
-						INSERT INTO pre_member_list (discord_id)
-						VALUES (%s)
-						ON CONFLICT (discord_id) DO NOTHING
-						""",
-						(discord_id,)
-					)
-					pre_member_count += 1
+			
+			for discord_id in pre_member_discord_ids:
+				cur.execute(
+					"""
+					INSERT INTO user_memberships 
+					(discord_id, membership_type, assigned_at, created_at)
+					VALUES (%s, 'pre_member', now(), now())
+					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					""",
+					(discord_id,)
+				)
+			counts['pre_member'] = len(pre_member_discord_ids)
 			
 			conn.commit()
 			
-			return {
-				"member_list": member_count,
-				"admin_list": admin_count,
-				"pre_member_list": pre_member_count
-			}
+			return counts
 
 
 def get_member_lists() -> dict[str, list[dict[str, Any]]]:
-	"""member_list, admin_list, pre_member_list を取得."""
+	"""user_memberships から membership_type 別にリストを取得."""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			# member_list
-			cur.execute(
-				"SELECT discord_id, user_id, assigned_at FROM member_list ORDER BY assigned_at DESC"
-			)
-			members = [
-				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
-				for row in cur.fetchall()
-			]
+			result = {}
 			
-			# admin_list
-			cur.execute(
-				"SELECT discord_id, user_id, assigned_at FROM admin_list ORDER BY assigned_at DESC"
-			)
-			admins = [
-				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
-				for row in cur.fetchall()
-			]
+			# membership_type ごとにクエリ
+			for mem_type in ['member', 'admin', 'pre_member', 'obog']:
+				cur.execute(
+					"""
+					SELECT discord_id, assigned_by, assigned_at
+					FROM user_memberships
+					WHERE membership_type = %s
+					ORDER BY assigned_at DESC
+					""",
+					(mem_type,)
+				)
+				result[f'{mem_type}_list'] = [
+					{
+						'discord_id': row[0],
+						'assigned_by': row[1],
+						'assigned_at': row[2].isoformat() if row[2] else None
+					}
+					for row in cur.fetchall()
+				]
 			
-			# pre_member_list
-			cur.execute(
-				"SELECT discord_id, user_id, assigned_at FROM pre_member_list ORDER BY assigned_at DESC"
-			)
-			pre_members = [
-				{"discord_id": row[0], "user_id": row[1], "assigned_at": row[2].isoformat() if row[2] else None}
-				for row in cur.fetchall()
-			]
+			return result
+
+
+# ==========================================
+# user_memberships 用ユーティリティ関数
+# ==========================================
+
+def get_user_membership_type(discord_id: str) -> str:
+	"""user_memberships から membership_type を取得。
 	
-	return {
-		"member_list": members,
-		"admin_list": admins,
-		"pre_member_list": pre_members,
-	}
+	優先順位: admin > member > pre_member > obog > none
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT membership_type FROM user_memberships 
+				WHERE discord_id = %s 
+				ORDER BY CASE membership_type 
+					WHEN 'admin' THEN 1
+					WHEN 'member' THEN 2
+					WHEN 'pre_member' THEN 3
+					WHEN 'obog' THEN 4
+				END LIMIT 1
+				""",
+				(discord_id,)
+			)
+			row = cur.fetchone()
+			return row[0] if row else 'none'
+
+
+def is_member(discord_id: str) -> bool:
+	"""user_memberships で member か確認."""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member' LIMIT 1",
+				(discord_id,)
+			)
+			return cur.fetchone() is not None
+
+
+def is_admin(discord_id: str) -> bool:
+	"""user_memberships で admin か確認."""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'admin' LIMIT 1",
+				(discord_id,)
+			)
+			return cur.fetchone() is not None
+
+
+def is_pre_member(discord_id: str) -> bool:
+	"""user_memberships で pre_member か確認."""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member' LIMIT 1",
+				(discord_id,)
+			)
+			return cur.fetchone() is not None
+
+
+def is_obog(discord_id: str) -> bool:
+	"""user_memberships で obog か確認."""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'obog' LIMIT 1",
+				(discord_id,)
+			)
+			return cur.fetchone() is not None
+
+
+def add_to_user_membership(discord_id: str, membership_type: str) -> None:
+	"""user_memberships にメンバーシップを追加。"""
+	if membership_type not in ('member', 'admin', 'pre_member', 'obog'):
+		raise ValueError(f"Invalid membership_type: {membership_type}")
+	
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				INSERT INTO user_memberships (discord_id, membership_type, assigned_at, created_at)
+				VALUES (%s, %s, now(), now())
+				ON CONFLICT (discord_id, membership_type) DO NOTHING
+				""",
+				(discord_id, membership_type)
+			)
+			conn.commit()
+
+
+def remove_from_user_membership(discord_id: str, membership_type: str) -> None:
+	"""user_memberships からメンバーシップを削除。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = %s",
+				(discord_id, membership_type)
+			)
+			conn.commit()
+
+
+def get_pre_member_list_v2() -> list[str]:
+	"""user_memberships から pre_member の discord_id リストを取得。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT discord_id FROM user_memberships WHERE membership_type = 'pre_member' ORDER BY assigned_at DESC"
+			)
+			return [row[0] for row in cur.fetchall()]
+
+
+def get_member_user_count() -> int:
+	"""user_memberships の member 件数。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT COUNT(*) FROM user_memberships WHERE membership_type = 'member'")
+			row = cur.fetchone()
+			return row[0] if row else 0
+
+
+def get_admin_user_count() -> int:
+	"""user_memberships の admin 件数。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT COUNT(*) FROM user_memberships WHERE membership_type = 'admin'")
+			row = cur.fetchone()
+			return row[0] if row else 0
+
+
+def get_pre_member_user_count() -> int:
+	"""user_memberships の pre_member 件数。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT COUNT(*) FROM user_memberships WHERE membership_type = 'pre_member'")
+			row = cur.fetchone()
+			return row[0] if row else 0
 
 
 def register_pre_member(discord_id: str, source: str | None = None) -> dict[str, Any]:
@@ -871,7 +998,7 @@ def add_to_member_list(
 	assigned_by: str,
 	note: str | None = None,
 ) -> dict[str, Any]:
-	"""Pre-member を member_list に追加。
+	"""pre_member を member に昇格（user_memberships で管理）。
 	同時に paid_invitations にも登録する。
 	
 	Args:
@@ -884,19 +1011,20 @@ def add_to_member_list(
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			# Check if already in member_list
+			# Check if already member in user_memberships
 			cur.execute(
-				"SELECT discord_id FROM member_list WHERE discord_id = %s",
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member'",
 				(discord_id,)
 			)
 			if cur.fetchone() is not None:
-				return {"discord_id": discord_id, "added_to_member_list": False, "message": "Already in member_list"}
+				return {"discord_id": discord_id, "added_to_member_list": False, "message": "Already member"}
 			
-			# Add to member_list
+			# Add to user_memberships as member
 			cur.execute(
 				"""
-				INSERT INTO member_list (discord_id, assigned_by)
-				VALUES (%s, %s)
+				INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
+				VALUES (%s, 'member', %s, now(), now())
+				ON CONFLICT (discord_id, membership_type) DO NOTHING
 				RETURNING id, created_at
 				""",
 				(discord_id, assigned_by)
@@ -905,21 +1033,21 @@ def add_to_member_list(
 			
 			# Also register in paid_invitations if not already there
 			cur.execute(
-				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s",
+				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s AND status = 'completed'",
 				(discord_id,)
 			)
 			if cur.fetchone() is None:
 				cur.execute(
 					"""
-					INSERT INTO paid_invitations (discord_id, note)
-					VALUES (%s, %s)
+					INSERT INTO paid_invitations (discord_id, note, status, assigned_by, assigned_at)
+					VALUES (%s, %s, 'completed', %s, now())
 					""",
-					(discord_id, note)
+					(discord_id, note, assigned_by)
 				)
 			
-			# Remove from pre_member_list if present
+			# Remove from pre_member membership if present
 			cur.execute(
-				"DELETE FROM pre_member_list WHERE discord_id = %s",
+				"DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'",
 				(discord_id,)
 			)
 			
