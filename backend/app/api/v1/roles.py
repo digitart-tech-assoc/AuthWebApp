@@ -390,6 +390,22 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		print(f"[DEBUG]   admin_role_ids={admin_role_ids}")
 		print(f"[DEBUG]   pre_member_role_id={pre_member_role_id}")
 		
+		# ロール ID マッピング失敗のチェック
+		all_matched_role_ids = member_role_ids + obog_role_ids + admin_role_ids
+		if pre_member_role_id:
+			all_matched_role_ids.append(pre_member_role_id)
+		
+		if not all_matched_role_ids:
+			available_names = [r["name"] for r in roles]
+			error_detail = (
+				f"Failed to match Discord role names to expected roles. "
+				f"Expected to find at least one of: member/会員/Member, OBOG/OB/OG/OB-OG, "
+				f"administrator/管理者, pre-member. "
+				f"Available Discord role names: {available_names}"
+			)
+			print(f"[ERROR] {error_detail}")
+			raise HTTPException(status_code=400, detail=error_detail)
+		
 		# Fetch members for each role
 		members_data = {}
 		for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else []):
