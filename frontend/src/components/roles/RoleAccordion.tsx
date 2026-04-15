@@ -477,7 +477,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       const res = await fetch("/api/manifest", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categories: pendingCats, roles: pendingRoles, role_assignments: membersByRole }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
