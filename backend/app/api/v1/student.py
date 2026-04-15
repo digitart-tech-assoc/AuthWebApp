@@ -509,6 +509,31 @@ async def create_student_profile(
 
 			logger.info("Role changed: discord_id=%s (pre_member -> member)", discord_id)
 
+			# role_member_assignments に member ロール割り当てを追加
+			# 環境変数から member ロール ID リストを取得
+			member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
+			member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
+			
+			for role_id in member_role_ids:
+				# 既に割り当てられているかを確認（重複を防ぐ）
+				cur.execute(
+					"""
+					SELECT 1 FROM role_member_assignments
+					WHERE role_id = %s AND user_id = %s
+					""",
+					(role_id, discord_id),
+				)
+				if not cur.fetchone():
+					# 新規割り当てを挿入
+					cur.execute(
+						"""
+						INSERT INTO role_member_assignments (role_id, user_id)
+						VALUES (%s, %s)
+						""",
+						(role_id, discord_id),
+					)
+					logger.info("Added role assignment: user_id=%s role_id=%s", discord_id, role_id)
+
 			conn.commit()
 
 	# 非同期で Discord ボットへ同期要求を送信（失敗しても本処理は成功扱い）
