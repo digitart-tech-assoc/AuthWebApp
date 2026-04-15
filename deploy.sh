@@ -3,6 +3,14 @@
 # AuthWebApp デプロイスクリプト
 # 使用方法: ./deploy.sh [version]
 # 例: ./deploy.sh v0.1.0
+#
+# 環境変数:
+#   SKIP_DB_INIT: "true" に設定すると、DB スキーマ初期化をスキップ（本番環境推奨）
+#               デフォルト: "true"（初期化をスキップ）
+#               初期化を強制実行するには環境変数を unset してください
+#
+# 例: SKIP_DB_INIT=false ./deploy.sh v0.1.0  # DB初期化を実行
+#    ./deploy.sh v0.1.0                      # DB初期化をスキップ（デフォルト）
 
 set -e
 
@@ -154,6 +162,11 @@ echo "  3. View deployment logs:"
 echo "     microk8s kubectl logs -f deployment/authwebapp-frontend-deployment"
 echo "     microk8s kubectl logs -f deployment/authwebapp-backend-deployment"
 echo "     microk8s kubectl logs -f deployment/authwebapp-discord-bot-deployment"
+echo ""
+echo "Database configuration:"
+echo "  SKIP_DB_INIT: ${SKIP_DB_INIT:-true} (set in k8s/deployment.yaml)"
+echo "  - true : DB schema initialization is SKIPPED (default for production)"
+echo "  - false: DB schema initialization RUNS"
 echo ""
 echo "Access the application: https://auth.digitart.jp"
 echo "=========================================="

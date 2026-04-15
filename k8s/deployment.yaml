@@ -23,6 +23,9 @@ spec:
               value: "5174"
             - name: BOT_INTERNAL_URL
               value: "http://authwebapp-discord-bot-service:8000/internal/sync"
+            # 本番環境では DB 初期化をスキップ（既存スキーマを保持）
+            - name: SKIP_DB_INIT
+              value: "true"
           envFrom:
             - secretRef:
                 name: authwebapp-secret
