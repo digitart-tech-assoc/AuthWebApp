@@ -115,11 +115,13 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 		for m in members:
 			for role_id in m.get("role_ids", []):
 				assignments.setdefault(role_id, []).append(m["user_id"])
-		print(f"[DEBUG] Found {len(assignments)} roles with assignments. Saving to DB...")
+		print(f"[DEBUG] Found {len(assignments)} roles with assignments, total members: {sum(len(u) for u in assignments.values())}")
 		# First clear ALL existing assignments so that roles with 0 members don't linger
+		print("[DEBUG] Clearing all existing role assignments...")
 		await asyncio.to_thread(clear_all_role_assignments)
+		print("[DEBUG] Saving new role assignments...")
 		await asyncio.to_thread(save_role_assignments, assignments)
-		print(f"[DEBUG] Saved role assignments to DB")
+		print(f"[DEBUG] Role assignments saved successfully")
 	except Exception as exc:
 		error_detail = str(exc)
 		print(f"[ERROR] Failed to fetch or map guild members: {error_detail}")

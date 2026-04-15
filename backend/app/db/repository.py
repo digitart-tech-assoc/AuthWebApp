@@ -539,16 +539,37 @@ def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 	role_id -> [user_id, ...] のマッピングでロール割り当てを全置き換え保存。
 	assignments に含まれる role_id の割り当てのみ上書き。含まれない role_id は触らない。
 	"""
+	import logging
+	logger = logging.getLogger(__name__)
+	
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			total_inserted = 0
+			total_roles = len(assignments)
+			
 			for role_id, user_ids in assignments.items():
-				cur.execute("DELETE FROM role_member_assignments WHERE role_id = %s", (role_id,))
-				for user_id in user_ids:
-					cur.execute(
-						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-						(role_id, user_id),
-					)
-			conn.commit()
+				try:
+					# 既存の割り当てを削除
+					cur.execute("DELETE FROM role_member_assignments WHERE role_id = %s", (role_id,))
+					deleted = cur.rowcount
+					
+					# 新しい割り当てを挿入
+					inserted = 0
+					for user_id in user_ids:
+						cur.execute(
+							"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+							(role_id, user_id),
+						)
+						inserted += cur.rowcount
+					
+					total_inserted += inserted
+					logger.debug(f"save_role_assignments: role_id={role_id} deleted={deleted} inserted={inserted}")
+				except Exception as e:
+					logger.error(f"save_role_assignments error for role_id={role_id}: {e}")
+					raise
+			
+		conn.commit()
+		logger.info(f"save_role_assignments completed: {total_roles} roles, {total_inserted} total assignments")
 
 def add_user_to_role(user_id: str, role_id: str) -> None:
 	"""特定ユーザーをロールに追加する（重複チェック付き）。"""
@@ -628,10 +649,33 @@ def sync_member_lists(
 		'obog_list': [list of user_memberships records],
 	}
 	"""
+	import logging
+	logger = logging.getLogger(__name__)
+	
+	# Validation: すべての role_id がメンバーデータを持つことを確認
+	expected_role_ids = set(member_role_ids + obog_role_ids + admin_role_ids)
+	if pre_member_role_id:
+		expected_role_ids.add(pre_member_role_id)
+	
+	provided_role_ids = set(members.keys())
+	
+	# 欠落している role_id をチェック
+	missing_role_ids = expected_role_ids - provided_role_ids
+	if missing_role_ids:
+		error_msg = f"Missing members data for role_ids: {missing_role_ids}. Aborting sync to prevent data loss."
+		logger.error(error_msg)
+		raise ValueError(error_msg)
+	
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			# 既存データをバックアップ（念のため）
+			cur.execute("SELECT COUNT(*) FROM user_memberships")
+			old_count = cur.fetchone()[0]
+			logger.info(f"Backing up existing user_memberships: {old_count} records")
+			
 			# 既存データをクリア（全置換方式）
 			cur.execute("DELETE FROM user_memberships")
+			logger.info("Cleared user_memberships table")
 			
 			result = {
 				'member_list': [],
@@ -658,6 +702,7 @@ def sync_member_lists(
 				for member in members.get(role_id, []):
 					member_discord_ids.add(member["user_id"])
 			
+			logger.info(f"Syncing {len(member_discord_ids)} members with membership_type='member'")
 			for discord_id in member_discord_ids:
 				cur.execute(
 					"""
@@ -679,6 +724,7 @@ def sync_member_lists(
 				for member in members.get(role_id, []):
 					obog_discord_ids.add(member["user_id"])
 			
+			logger.info(f"Syncing {len(obog_discord_ids)} members with membership_type='obog'")
 			for discord_id in obog_discord_ids:
 				cur.execute(
 					"""
@@ -700,6 +746,7 @@ def sync_member_lists(
 				for member in members.get(role_id, []):
 					admin_discord_ids.add(member["user_id"])
 			
+			logger.info(f"Syncing {len(admin_discord_ids)} members with membership_type='admin'")
 			for discord_id in admin_discord_ids:
 				cur.execute(
 					"""
@@ -721,6 +768,7 @@ def sync_member_lists(
 				for member in members.get(pre_member_role_id, []):
 					pre_member_discord_ids.add(member["user_id"])
 			
+			logger.info(f"Syncing {len(pre_member_discord_ids)} members with membership_type='pre_member'")
 			for discord_id in pre_member_discord_ids:
 				cur.execute(
 					"""
@@ -737,6 +785,12 @@ def sync_member_lists(
 					result['pre_member_list'].append(row_to_dict(row, cur.description))
 			
 			conn.commit()
+			
+			# 完了ログ
+			total_synced = sum(len(v) for v in result.values())
+			logger.info(f"sync_member_lists completed: {total_synced} total records synced "
+					   f"(member={len(result['member_list'])}, admin={len(result['admin_list'])}, "
+					   f"pre_member={len(result['pre_member_list'])}, obog={len(result['obog_list'])})")
 			
 			return result
 
