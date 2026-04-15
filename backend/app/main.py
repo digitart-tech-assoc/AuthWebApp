@@ -56,7 +56,12 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup() -> None:
-	init_db()
+	# DB初期化を環境変数 SKIP_DB_INIT でスキップ可能
+	# デフォルト: false（初期化を実行しない）
+	# 環境変数で skip_db_init を指定すると初期化
+	skip_db_init = os.getenv("SKIP_DB_INIT", "").lower() in ("false", "1", "yes")
+	if not skip_db_init:
+		init_db()
 
 
 @app.get("/health")
