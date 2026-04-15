@@ -115,11 +115,13 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 		for m in members:
 			for role_id in m.get("role_ids", []):
 				assignments.setdefault(role_id, []).append(m["user_id"])
-		print(f"[DEBUG] Found {len(assignments)} roles with assignments. Saving to DB...")
+		print(f"[DEBUG] Found {len(assignments)} roles with assignments, total members: {sum(len(u) for u in assignments.values())}")
 		# First clear ALL existing assignments so that roles with 0 members don't linger
+		print("[DEBUG] Clearing all existing role assignments...")
 		await asyncio.to_thread(clear_all_role_assignments)
+		print("[DEBUG] Saving new role assignments...")
 		await asyncio.to_thread(save_role_assignments, assignments)
-		print(f"[DEBUG] Saved role assignments to DB")
+		print(f"[DEBUG] Role assignments saved successfully")
 	except Exception as exc:
 		error_detail = str(exc)
 		print(f"[ERROR] Failed to fetch or map guild members: {error_detail}")
@@ -387,6 +389,22 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		print(f"[DEBUG]   obog_role_ids={obog_role_ids}")
 		print(f"[DEBUG]   admin_role_ids={admin_role_ids}")
 		print(f"[DEBUG]   pre_member_role_id={pre_member_role_id}")
+		
+		# ロール ID マッピング失敗のチェック
+		all_matched_role_ids = member_role_ids + obog_role_ids + admin_role_ids
+		if pre_member_role_id:
+			all_matched_role_ids.append(pre_member_role_id)
+		
+		if not all_matched_role_ids:
+			available_names = [r["name"] for r in roles]
+			error_detail = (
+				f"Failed to match Discord role names to expected roles. "
+				f"Expected to find at least one of: member/会員/Member, OBOG/OB/OG/OB-OG, "
+				f"administrator/管理者, pre-member. "
+				f"Available Discord role names: {available_names}"
+			)
+			print(f"[ERROR] {error_detail}")
+			raise HTTPException(status_code=400, detail=error_detail)
 		
 		# Fetch members for each role
 		members_data = {}
