@@ -124,12 +124,12 @@ def _generate_otp_code(length: int = 6) -> str:
 
 
 def _is_pre_member(discord_id: str) -> bool:
-	"""Discord IDが pre_member リストにあるか確認"""
+	"""Discord IDが pre_member リストにあるか確認（user_memberships テーブルから取得）"""
 	try:
 		with _connect() as conn:
 			with conn.cursor() as cur:
 				cur.execute(
-					"SELECT 1 FROM pre_member_list WHERE discord_id = %s LIMIT 1",
+					"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member' LIMIT 1",
 					(discord_id,),
 				)
 				return cur.fetchone() is not None
@@ -497,19 +497,13 @@ async def create_student_profile(
 				)
 
 			# ロール変更：pre_memberからmemberへ
-			# 1. member_listに追加（まだ登録されていない場合）
+			# membership_type カラムを更新
 			cur.execute(
 				"""
-				INSERT INTO member_list (discord_id, assigned_at)
-				SELECT %s, now()
-				WHERE NOT EXISTS (SELECT 1 FROM member_list WHERE discord_id = %s)
+				UPDATE user_memberships
+				SET membership_type = 'member', assigned_at = now()
+				WHERE discord_id = %s AND membership_type = 'pre_member'
 				""",
-				(discord_id, discord_id),
-			)
-
-			# 2. pre_member_listから削除
-			cur.execute(
-				"DELETE FROM pre_member_list WHERE discord_id = %s",
 				(discord_id,),
 			)
 
