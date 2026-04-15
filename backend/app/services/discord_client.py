@@ -72,6 +72,24 @@ async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
 	async with httpx.AsyncClient(timeout=10.0) as client:
 		response = await client.patch(url, headers=_headers(token), json=payload)
+	
+	if response.status_code != 200:
+		error_msg = f"Failed to update role {role_id}: HTTP {response.status_code}"
+		try:
+			error_details = response.json()
+			error_msg += f" - {error_details}"
+		except Exception:
+			error_msg += f" - {response.text}"
+		
+		if response.status_code == 403:
+			error_msg += "\n[LIKELY CAUSES]\n"
+			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
+			error_msg += "2. Bot's role is lower in hierarchy than the target role\n"
+			error_msg += "3. Attempting to modify a managed role\n"
+			error_msg += f"4. Payload sent: {payload}"
+		
+		raise Exception(error_msg)
+	
 	response.raise_for_status()
 
 
@@ -79,6 +97,23 @@ async def create_guild_role(guild_id: str, token: str, payload: dict) -> dict:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
 	async with httpx.AsyncClient(timeout=10.0) as client:
 		response = await client.post(url, headers=_headers(token), json=payload)
+	
+	if response.status_code != 200 and response.status_code != 201:
+		error_msg = f"Failed to create role: HTTP {response.status_code}"
+		try:
+			error_details = response.json()
+			error_msg += f" - {error_details}"
+		except Exception:
+			error_msg += f" - {response.text}"
+		
+		if response.status_code == 403:
+			error_msg += "\n[LIKELY CAUSES]\n"
+			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
+			error_msg += "2. Guild ID is invalid\n"
+			error_msg += f"3. Payload sent: {payload}"
+		
+		raise Exception(error_msg)
+	
 	response.raise_for_status()
 	role = response.json()
 	return {
@@ -92,6 +127,23 @@ async def delete_guild_role(guild_id: str, role_id: str, token: str) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
 	async with httpx.AsyncClient(timeout=10.0) as client:
 		response = await client.delete(url, headers=_headers(token))
+	
+	if response.status_code != 204:
+		error_msg = f"Failed to delete role {role_id}: HTTP {response.status_code}"
+		try:
+			error_details = response.json()
+			error_msg += f" - {error_details}"
+		except Exception:
+			error_msg += f" - {response.text}"
+		
+		if response.status_code == 403:
+			error_msg += "\n[LIKELY CAUSES]\n"
+			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
+			error_msg += "2. Bot's role is lower in hierarchy than the target role\n"
+			error_msg += "3. Attempting to delete a managed role (bot/integration role)"
+		
+		raise Exception(error_msg)
+	
 	response.raise_for_status()
 
 

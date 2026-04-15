@@ -25,7 +25,13 @@ def _connect():
     if "supabase.co" in hostname or "pooler.supabase.com" in hostname or "supabase" in hostname:
         connect_kwargs["sslmode"] = "require"
     try:
-        return psycopg2.connect(DATABASE_URL, **connect_kwargs)
+        conn = psycopg2.connect(DATABASE_URL, **connect_kwargs)
+        # Explicitly set isolation_level to ensure transaction handling works
+        # isolation_level=None causes autocommit, which can cause issues with pooler
+        # Using READ_COMMITTED (1) ensures proper transaction behavior
+        conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED)
+        conn.autocommit = False
+        return conn
     except Exception as e:
         host = parsed.hostname or "<unknown>"
         port = parsed.port or "<unknown>"
@@ -386,6 +392,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 						r.get("is_our_bot", False),
 					),
 				)
+		conn.commit()
 
 
 def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
@@ -423,6 +430,7 @@ def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
 						role.get("is_our_bot", False),
 					),
 				)
+		conn.commit()
 	return len(roles)
 
 
@@ -432,6 +440,7 @@ def update_role_id(old_id: str, new_id: str) -> None:
 		with conn.cursor() as cur:
 			cur.execute("UPDATE role_manifests SET role_id = %s WHERE role_id = %s", (new_id, old_id))
 			cur.execute("UPDATE role_member_assignments SET role_id = %s WHERE role_id = %s", (new_id, old_id))
+		conn.commit()
 
 
 def save_guild_members(members: list[dict[str, Any]]) -> None:
@@ -452,6 +461,7 @@ def save_guild_members(members: list[dict[str, Any]]) -> None:
 					""",
 					(m["user_id"], m["username"], m.get("display_name"), m.get("avatar")),
 				)
+		conn.commit()
 
 
 def patch_manifest_db(
@@ -522,8 +532,7 @@ def patch_manifest_db(
 						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 						(role_id, user_id),
 					)
-
-
+		conn.commit()
 
 def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 	"""
@@ -539,7 +548,7 @@ def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 						(role_id, user_id),
 					)
-
+			conn.commit()
 
 def add_user_to_role(user_id: str, role_id: str) -> None:
 	"""特定ユーザーをロールに追加する（重複チェック付き）。"""
@@ -568,6 +577,7 @@ def clear_all_role_assignments() -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute("DELETE FROM role_member_assignments")
+		conn.commit()
 
 
 def fetch_guild_members() -> list[dict[str, Any]]:
@@ -598,9 +608,10 @@ def sync_member_lists(
 	admin_role_ids: list[str],
 	pre_member_role_id: str | None,
 	members: dict[str, list[dict[str, Any]]]
-) -> dict[str, int]:
+) -> dict[str, Any]:
 	"""
 	Discord ロール情報から user_memberships を同期。
+	user_memberships テーブルの新仕様に対応。
 	
 	Parameters:
 	- member_role_ids: member ロール ID のリスト
@@ -610,18 +621,40 @@ def sync_member_lists(
 	- members: role_id -> [members] のマッピング（fetch_guild_members_with_role から取得）
 	
 	Returns:
-	- {'member': count, 'admin': count, 'pre_member': count}
+	- {
+		'member_list': [list of user_memberships records],
+		'admin_list': [list of user_memberships records],
+		'pre_member_list': [list of user_memberships records],
+		'obog_list': [list of user_memberships records],
+	}
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			# 既存データをクリア（全置換方式）
 			cur.execute("DELETE FROM user_memberships")
 			
-			counts = {}
+			result = {
+				'member_list': [],
+				'admin_list': [],
+				'pre_member_list': [],
+				'obog_list': []
+			}
 			
-			# 1. Member ロール + OB-OG ロール → membership_type = 'member'
+			# ユーティリティ関数: タプルを辞書に変換（タイムスタンプをISO形式に）
+			def row_to_dict(row, description):
+				result = {}
+				for desc, val in zip(description, row):
+					col_name = desc[0]
+					# タイムスタンプ型はISO形式の文字列に変換
+					if col_name in ['assigned_at', 'created_at'] and val is not None:
+						result[col_name] = val.isoformat()
+					else:
+						result[col_name] = val
+				return result
+			
+			# 1. Member ロール → membership_type = 'member'
 			member_discord_ids = set()
-			for role_id in member_role_ids + obog_role_ids:
+			for role_id in member_role_ids:
 				for member in members.get(role_id, []):
 					member_discord_ids.add(member["user_id"])
 			
@@ -632,12 +665,36 @@ def sync_member_lists(
 					(discord_id, membership_type, assigned_at, created_at)
 					VALUES (%s, 'member', now(), now())
 					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					RETURNING *
 					""",
 					(discord_id,)
 				)
-			counts['member'] = len(member_discord_ids)
+				row = cur.fetchone()
+				if row:
+					result['member_list'].append(row_to_dict(row, cur.description))
 			
-			# 2. Admin ロール → membership_type = 'admin'
+			# 2. OB-OG ロール → membership_type = 'obog'
+			obog_discord_ids = set()
+			for role_id in obog_role_ids:
+				for member in members.get(role_id, []):
+					obog_discord_ids.add(member["user_id"])
+			
+			for discord_id in obog_discord_ids:
+				cur.execute(
+					"""
+					INSERT INTO user_memberships 
+					(discord_id, membership_type, assigned_at, created_at)
+					VALUES (%s, 'obog', now(), now())
+					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					RETURNING *
+					""",
+					(discord_id,)
+				)
+				row = cur.fetchone()
+				if row:
+					result['obog_list'].append(row_to_dict(row, cur.description))
+			
+			# 3. Admin ロール → membership_type = 'admin'
 			admin_discord_ids = set()
 			for role_id in admin_role_ids:
 				for member in members.get(role_id, []):
@@ -650,12 +707,15 @@ def sync_member_lists(
 					(discord_id, membership_type, assigned_at, created_at)
 					VALUES (%s, 'admin', now(), now())
 					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					RETURNING *
 					""",
 					(discord_id,)
 				)
-			counts['admin'] = len(admin_discord_ids)
+				row = cur.fetchone()
+				if row:
+					result['admin_list'].append(row_to_dict(row, cur.description))
 			
-			# 3. Pre-member ロール → membership_type = 'pre_member'
+			# 4. Pre-member ロール → membership_type = 'pre_member'
 			pre_member_discord_ids = set()
 			if pre_member_role_id:
 				for member in members.get(pre_member_role_id, []):
@@ -668,14 +728,17 @@ def sync_member_lists(
 					(discord_id, membership_type, assigned_at, created_at)
 					VALUES (%s, 'pre_member', now(), now())
 					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					RETURNING *
 					""",
 					(discord_id,)
 				)
-			counts['pre_member'] = len(pre_member_discord_ids)
+				row = cur.fetchone()
+				if row:
+					result['pre_member_list'].append(row_to_dict(row, cur.description))
 			
 			conn.commit()
 			
-			return counts
+			return result
 
 
 def get_member_lists() -> dict[str, list[dict[str, Any]]]:
