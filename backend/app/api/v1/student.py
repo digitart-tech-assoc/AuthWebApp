@@ -206,6 +206,55 @@ def _get_latest_otp(discord_id: str) -> dict[str, Any] | None:
 
 
 # ============================================================================
+# Discord Bot Notification (同期待機版)
+# ============================================================================
+
+async def _notify_discord_bot_sync(discord_id: str) -> bool:
+	"""Discord ボットに同期的に member ロール同期を要求
+	
+	/roles エンドポイントと同じ方式で、DB commit 直後に同期的に待機する。
+	タイムアウトを 10秒に統一し、ボット側の応答を確実に待つ。
+	
+	Args:
+		discord_id: ロール付与対象のユーザー Discord ID
+	
+	Returns:
+		同期成功時 True、失敗時 False
+	"""
+	try:
+		discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
+		shared_secret = os.getenv("SHARED_SECRET", "dev-secret")
+		
+		endpoint = discord_bot_url if discord_bot_url.rstrip("/").endswith("/internal/sync") \
+				   else f"{discord_bot_url.rstrip('/')}/internal/sync"
+		
+		logger.info("Calling Discord bot sync endpoint: %s for user_id=%s", endpoint, discord_id)
+		
+		async with httpx.AsyncClient(timeout=10.0) as client:  # タイムアウト統一: 10秒
+			response = await client.post(
+				endpoint,
+				json={"action": "sync_roles"},
+				headers={"Authorization": f"Bearer {shared_secret}"},
+			)
+			
+			if response.status_code == 200:
+				result = response.json()
+				logger.info("Bot sync succeeded: discord_id=%s, result=%s", discord_id, result)
+				return True
+			else:
+				logger.warning("Bot sync failed: discord_id=%s, status=%s, response=%s", 
+							 discord_id, response.status_code, response.text[:200])
+				return False
+	
+	except httpx.TimeoutException as e:
+		logger.error("Bot sync timeout: discord_id=%s, error=%s", discord_id, e)
+		return False
+	except Exception as e:
+		logger.exception("Bot sync error: discord_id=%s, error=%s", discord_id, e)
+		return False
+
+
+# ============================================================================
 # Endpoints
 # ============================================================================
 
@@ -536,34 +585,13 @@ async def create_student_profile(
 
 			conn.commit()
 
-	# 非同期で Discord ボットへ同期要求を送信（失敗しても本処理は成功扱い）
-	async def _notify_discord_bot() -> None:
-		import os
-		import httpx
-		try:
-			# Prefer BOT_INTERNAL_URL (set in docker-compose) for internal service address.
-			# Fallback to DISCORD_BOT_URL for compatibility, then to the docker service name.
-			discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
-			shared = os.getenv("SHARED_SECRET", "dev-secret")
-			async with httpx.AsyncClient(timeout=5.0) as client:
-				# If BOT_INTERNAL_URL already includes the path, avoid duplicating it
-				if discord_bot_url.rstrip("/").endswith("/internal/sync"):
-					endpoint = discord_bot_url
-				else:
-					endpoint = f"{discord_bot_url.rstrip('/')}/internal/sync"
-
-				await client.post(
-					endpoint,
-					json={"action": "sync_roles"},
-					headers={"Authorization": f"Bearer {shared}"},
-				)
-		except Exception:
-			logger.exception("Failed to notify discord-bot for sync")
-
-	try:
-		asyncio.create_task(_notify_discord_bot())
-	except Exception:
-		logger.exception("Failed to schedule discord-bot sync task")
+	# 【修正】DB commit 直後に同期的にボット通知を待機
+	# タイミング問題を解決するため、非同期タスク登録ではなく await で待機
+	logger.info("DB commit completed, notifying Discord Bot to reconcile member lists...")
+	success = await _notify_discord_bot_sync(discord_id)
+	
+	if not success:
+		logger.warning("Failed to notify bot, but profile saved successfully for discord_id=%s", discord_id)
 
 	return StudentProfileResponse(
 		profile_id=profile_id,
