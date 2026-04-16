@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 import logging
 from pydantic import BaseModel, Field
