@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { fetchManifest } from "@/actions/manifest";
 import RoleAccordion from "@/components/roles/RoleAccordion";
+import MemberSelfView from "@/components/roles/MemberSelfView";
 import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
@@ -57,13 +58,15 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	}
 
 	const { app_role: role, discord_id: myDiscordId } = await resolveUserInfoFromBackend(authorization);
-	const isAdmin = role === "admin";
+	const isMember = role === "member";
 
 	const displayName =
 		user.user_metadata?.full_name ??
 		user.user_metadata?.name ??
 		user.email ??
 		"不明";
+
+	const avatarUrl: string | null = user.user_metadata?.avatar_url ?? null;
 
 	let manifest;
 	let accessError: string | null = null;
@@ -125,12 +128,22 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 				<p style={{ marginTop: 8, color: "#b91c1c" }}>{accessError}</p>
 			) : null}
 
-			<RoleAccordion
-				categories={manifest.categories}
-				roles={manifest.roles}
-				accessRole={role}
-				myDiscordId={myDiscordId}
-			/>
+			{isMember ? (
+				<MemberSelfView
+					categories={manifest.categories}
+					roles={manifest.roles}
+					myDiscordId={myDiscordId}
+					displayName={displayName}
+					avatarUrl={avatarUrl}
+				/>
+			) : (
+				<RoleAccordion
+					categories={manifest.categories}
+					roles={manifest.roles}
+					accessRole={role}
+					myDiscordId={myDiscordId}
+				/>
+			)}
 		</main>
 	);
 }

@@ -100,6 +100,7 @@ type SortableCategoryItemProps = {
   onOpenRolePermissions: ((role: Role) => void) | undefined;
   onDeleteRole: ((id: string) => void) | undefined;
   onOpenMemberModal: ((role: Role) => void) | undefined;
+  onEditRole: ((role: Role) => void) | undefined;
   styles: Record<string, string>;
 };
 
@@ -108,7 +109,7 @@ function SortableCategoryItem({
   isAdmin, isMember, isSelectMode, selectedRoleIds, botPosition,
   onToggleCollapse, onOpenCategoryPermissions, onDeleteCategory,
   onToggleSelect, onReorder, onOpenRolePermissions, onDeleteRole,
-  onOpenMemberModal, styles,
+  onOpenMemberModal, onEditRole, styles,
 }: SortableCategoryItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
   const catStyle = {
@@ -199,6 +200,7 @@ function SortableCategoryItem({
           onPermissions={!isSelectMode && isAdmin ? onOpenRolePermissions : undefined}
           onDelete={!isSelectMode && (isAdmin || memberCanManageCat) ? onDeleteRole : undefined}
           onMembers={!isSelectMode && (isAdmin || memberCanManageCat) ? onOpenMemberModal : undefined}
+          onEdit={!isSelectMode && isAdmin ? onEditRole : undefined}
           botPosition={botPosition}
         />
       )}
@@ -228,8 +230,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // ===== Permission panel =====
   const [permTarget, setPermTarget] = useState<PermissionTarget | null>(null);
 
-  // ===== New role modal =====
+  // ===== New role / edit role modal =====
   const [showNewRole, setShowNewRole] = useState(false);
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   // ===== Member management =====
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -684,32 +687,43 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setPermTarget(null);
   }
 
-  // ===== New Role creation callback =====
-  function handleRoleCreated(role: {
+  // ===== New Role creation / edit callback =====
+  function handleRoleSaved(role: {
     role_id: string; name: string; color: string;
     hoist: boolean; mentionable: boolean; permissions: number;
     position: number; category_id: string | null; is_our_bot?: boolean;
   }) {
-    // Assign the new role a position that places it at the bottom of editable roles.
-    // Editable roles are those below botPosition (or all roles if no bot found).
-    // Discord positions: higher number = higher in hierarchy. 0 = @everyone.
-    // We want lowest editable position = 1 (just above @everyone).
-    const editableRoles = botPosition !== undefined
-      ? allRoles.filter((r) => r.position < botPosition)
-      : allRoles;
-    const lowestEditablePos = editableRoles.length > 0
-      ? Math.min(...editableRoles.map((r) => r.position))
-      : 1;
-    // Place new role one below the current minimum to put it at the bottom
-    const newPos = Math.max(1, lowestEditablePos - 1);
-    const roleWithPos = { ...role, position: newPos };
-    setAllRoles((prev) => [...prev, roleWithPos]);
-    setShowNewRole(false);
-    showStatus({ kind: "success", msg: `ロール「${role.name}」を作成しました！（保存ボタンで確定）` });
-    // Mark as unsaved so the manifest can be persisted with the new role
+    if (editingRole) {
+      // 編集モード: 既存ロールを更新
+      setAllRoles((prev) =>
+        prev.map((r) => r.role_id === role.role_id ? { ...r, ...role } : r)
+      );
+      setEditingRole(null);
+      setShowNewRole(false);
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を更新しました（保存ボタンで確定）` });
+    } else {
+      // 新規作成モード
+      const editableRoles = botPosition !== undefined
+        ? allRoles.filter((r) => r.position < botPosition)
+        : allRoles;
+      const lowestEditablePos = editableRoles.length > 0
+        ? Math.min(...editableRoles.map((r) => r.position))
+        : 1;
+      const newPos = Math.max(1, lowestEditablePos - 1);
+      const roleWithPos = { ...role, position: newPos };
+      setAllRoles((prev) => [...prev, roleWithPos]);
+      setShowNewRole(false);
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を作成しました！（保存ボタンで確定）` });
+    }
     setHasUnsaved(true);
     setSaveState("idle");
   }
+
+  // ===== Edit role handler =====
+  const handleEditRole = useCallback((role: Role) => {
+    setEditingRole(role);
+    setShowNewRole(true);
+  }, []);
 
   // ===== Member management callbacks =====
   const handleOpenMemberModal = useCallback((role: Role) => {
@@ -897,6 +911,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                         : undefined
                       : undefined
                   }
+                  onEditRole={!isSelectMode && isAdmin ? handleEditRole : undefined}
                   styles={styles}
                 />
               );
@@ -931,6 +946,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   ? handleOpenMemberModalReadOnly
                   : undefined
               }
+              onEdit={!isSelectMode && isAdmin ? handleEditRole : undefined}
               botPosition={botPosition}
             />
           )}
@@ -962,15 +978,16 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         />
       )}
 
-      {/* New role modal */}
+      {/* New role / edit role modal */}
       {showNewRole && (
         <NewRoleModal
           categories={localCategories}
           botPermissions={botPermissions}
-          onCreated={handleRoleCreated}
-          onClose={() => setShowNewRole(false)}
+          onSaved={handleRoleSaved}
+          onClose={() => { setShowNewRole(false); setEditingRole(null); }}
           isMember={isMember}
           restrictedCategoryNames={RESTRICTED_CATEGORY_NAMES}
+          editingRole={editingRole}
         />
       )}
 

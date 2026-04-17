@@ -1,4 +1,4 @@
-// 役割: 新規ロール作成モーダル
+// 役割: ロール作成・編集モーダル
 
 "use client";
 
@@ -12,7 +12,7 @@ type Category = {
   permissions: number;
 };
 
-type NewRoleData = {
+type RoleData = {
   role_id: string;
   name: string;
   color: string;
@@ -27,10 +27,12 @@ type NewRoleData = {
 type Props = {
   categories: Category[];
   botPermissions: bigint;
-  onCreated: (role: NewRoleData) => void;
+  onSaved: (role: RoleData) => void;
   onClose: () => void;
   isMember?: boolean;
   restrictedCategoryNames?: Set<string>;
+  /** 編集モード: 既存ロールを渡すと編集UIになる */
+  editingRole?: RoleData | null;
 };
 
 // ===== Preset palette (Discord-like) =====
@@ -48,13 +50,18 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
   return value ? perms | (1n << bit) : perms & ~(1n << bit);
 }
 
-export default function NewRoleModal({ categories, botPermissions, onCreated, onClose, isMember = false, restrictedCategoryNames = new Set() }: Props) {
-  const [name, setName] = useState("");
-  const [color, setColor] = useState("#99AAB5");
-  const [hexInput, setHexInput] = useState("#99AAB5");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [perms, setPerms] = useState<bigint>(0n);
-  const [isCreating, setIsCreating] = useState(false);
+export default function NewRoleModal({
+  categories, botPermissions, onSaved, onClose,
+  isMember = false, restrictedCategoryNames = new Set(),
+  editingRole = null,
+}: Props) {
+  const isEditMode = !!editingRole;
+
+  const [name, setName] = useState(editingRole?.name ?? "");
+  const [color, setColor] = useState(editingRole?.color ?? "#99AAB5");
+  const [hexInput, setHexInput] = useState(editingRole?.color ?? "#99AAB5");
+  const [categoryId, setCategoryId] = useState<string | null>(editingRole?.category_id ?? null);
+  const [perms, setPerms] = useState<bigint>(BigInt(editingRole?.permissions ?? 0));
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"basic" | "permissions">("basic");
 
@@ -62,25 +69,25 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
   const hoist = false;
   const mentionable = true;
 
-  // When category changes, inherit its permissions (but member can't set permissions except for 会員情報)
+  // When category changes (新規作成時のみ), inherit its permissions
   useEffect(() => {
+    if (isEditMode) return; // 編集モードではカテゴリ変更で権限は上書きしない
     const cat = categories.find((c) => c.id === categoryId);
     const canSetPermissions = !isMember || cat?.name === "会員情報";
     if (canSetPermissions) {
       setPerms(BigInt(cat?.permissions ?? 0));
     } else {
-      // member: 会員情報以外は権限を常に 0 に固定
       setPerms(0n);
     }
-  }, [categoryId, categories, isMember]);
+  }, [categoryId, categories, isMember, isEditMode]);
 
   // memberモード: 最初の利用可能なカテゴリを自動選択
   useEffect(() => {
-    if (isMember && categoryId === null) {
+    if (isMember && categoryId === null && !isEditMode) {
       const first = categories.find((c) => !restrictedCategoryNames.has(c.name));
       if (first) setCategoryId(first.id);
     }
-  }, [isMember, categories, restrictedCategoryNames, categoryId]);
+  }, [isMember, categories, restrictedCategoryNames, categoryId, isEditMode]);
 
   function handleColorPick(c: string) {
     setColor(c);
@@ -101,45 +108,49 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
 
   const isAdminActive = hasBitExact(perms, 3n);
   const botHasAdmin = hasBitExact(botPermissions, 3n);
-  
+
   // member が権限を設定できるかどうか判定
   const selectedCategory = categories.find((c) => c.id === categoryId);
   const canSetPermissions = !isMember || selectedCategory?.name === "会員情報";
 
-  async function handleCreate() {
+  function handleSave() {
     if (!name.trim()) {
       setError("ロール名を入力してください");
       return;
     }
-    // memberモード: カテゴリ必須チェック
     if (isMember && !categoryId) {
       setError("ロールを作成するカテゴリを選択してください");
       return;
     }
     setError(null);
 
-    const draftId = `draft-${Date.now()}`;
-    onCreated({
-      role_id: draftId,
+    const roleId = isEditMode ? editingRole!.role_id : `draft-${Date.now()}`;
+    onSaved({
+      role_id: roleId,
       name: name.trim(),
       color,
       hoist,
       mentionable,
       permissions: Number(perms),
       category_id: categoryId,
-      position: 0, // position will be sorted out locally
+      position: editingRole?.position ?? 0,
+      is_our_bot: editingRole?.is_our_bot,
     });
   }
 
   return (
     <>
       <div className={styles.overlay} onClick={onClose} />
-      <div className={styles.modal} role="dialog" aria-label="新規ロール作成">
+      <div className={styles.modal} role="dialog" aria-label={isEditMode ? "ロール編集" : "新規ロール作成"}>
         {/* Header */}
         <div className={styles.header}>
           <div>
-            <p className={styles.title}>＋ 新規ロールを作成</p>
-            <p className={styles.subtitle}>データベースに下書きとして保存します（Discordへの反映は「送信」を押してください）</p>
+            <p className={styles.title}>{isEditMode ? "✏ ロールを編集" : "＋ 新規ロールを作成"}</p>
+            <p className={styles.subtitle}>
+              {isEditMode
+                ? "変更はローカルに保持されます（Discordへの反映は「送信」を押してください）"
+                : "データベースに下書きとして保存します（Discordへの反映は「送信」を押してください）"}
+            </p>
           </div>
         </div>
 
@@ -317,10 +328,10 @@ export default function NewRoleModal({ categories, botPermissions, onCreated, on
           <button
             type="button"
             className={styles.createBtn}
-            onClick={handleCreate}
+            onClick={handleSave}
             disabled={!name.trim()}
           >
-            作成
+            {isEditMode ? "更新" : "作成"}
           </button>
         </div>
       </div>

@@ -39,6 +39,7 @@ type RoleListProps = {
   onPermissions?: (role: RoleItem) => void;
   onDelete?: (roleId: string) => void;
   onMembers?: (role: RoleItem) => void;
+  onEdit?: (role: RoleItem) => void;
   botPosition?: number;
 };
 
@@ -51,6 +52,7 @@ type SortableRoleRowProps = {
   onPermissions?: () => void;
   onDelete?: () => void;
   onMembers?: () => void;
+  onEdit?: () => void;
 };
 
 function DragIcon() {
@@ -83,6 +85,7 @@ function SortableRoleRow({
   onPermissions,
   onDelete,
   onMembers,
+  onEdit,
 }: SortableRoleRowProps) {
   const {
     attributes,
@@ -146,7 +149,7 @@ function SortableRoleRow({
       </div>
 
       {/* Col 3: action buttons */}
-      <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '160px' }}>
+      <div className={styles.roleActionCol} style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end', minWidth: '200px' }}>
         {onMembers && !onToggle && !isDisabled && (
           <button
             type="button"
@@ -156,6 +159,17 @@ function SortableRoleRow({
             title="メンバーを編集"
           >
             メンバー
+          </button>
+        )}
+        {onEdit && !onToggle && !isDisabled && (
+          <button
+            type="button"
+            className={styles.editBtn}
+            onClick={onEdit}
+            aria-label={`${role.name} を編集`}
+            title="ロールを編集"
+          >
+            編集
           </button>
         )}
         {onPermissions && !onToggle && !isDisabled && (
@@ -197,6 +211,7 @@ export default function RoleList({
   onPermissions,
   onDelete,
   onMembers,
+  onEdit,
   botPosition,
 }: RoleListProps) {
   if (roles.length === 0) {
@@ -262,6 +277,9 @@ export default function RoleList({
                 }
                 onMembers={
                   onMembers ? () => onMembers(role) : undefined
+                }
+                onEdit={
+                  onEdit ? () => onEdit(role) : undefined
                 }
               />
             );
