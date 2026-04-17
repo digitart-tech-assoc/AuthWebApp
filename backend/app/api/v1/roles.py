@@ -489,6 +489,46 @@ async def self_assign_role(
 	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
 
+@router.post("/self-remove")
+async def self_remove_role(
+	payload: SelfAssignPayload,
+	_principal: dict = Depends(require_member),
+) -> dict:
+	"""memberが自分自身からロールを解除する。禁止カテゴリに属するロールは拒否。"""
+	discord_id: str | None = _principal.get("discord_id")
+	if not discord_id:
+		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
+
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	# マニフェストで禁止カテゴリチェック
+	manifest = await asyncio.to_thread(fetch_manifest)
+	restricted_cat_ids = {
+		c["id"] for c in manifest.get("categories", [])
+		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
+	}
+	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
+	if role_info and role_info.get("category_id") in restricted_cat_ids:
+		raise HTTPException(status_code=403, detail="このロールは解除できません（禁止カテゴリ）")
+
+	try:
+		await remove_role_from_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
+	except Exception as exc:
+		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
+
+	# DB のロール割り当ても更新
+	try:
+		assignments = await asyncio.to_thread(fetch_role_assignments)
+		current = set(assignments.get(payload.role_id, []))
+		current.discard(discord_id)
+		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
+	except Exception:
+		pass  # DB更新失敗は無視（Discord側には反映済み）
+
+	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
+
 @router.get("/lists")
 async def get_lists(_principal: dict = Depends(require_member)) -> dict:
 	"""member_list / admin_list / pre_member_list を取得."""
