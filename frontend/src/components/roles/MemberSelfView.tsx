@@ -320,7 +320,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                             className={styles.removeRoleBtn}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
-                            ✕ 解除
+                            ✕ 削除
                           </button>
                         ) : (
                           <button
