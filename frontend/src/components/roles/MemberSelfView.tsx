@@ -4,7 +4,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import SyncButton from "./SyncButton";
 import PushButton from "./PushButton";
 import styles from "./memberself.module.css";
 
@@ -188,13 +187,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     return (membersByRole[roleId] ?? []).includes(myDiscordId);
   }
 
-  // Sync / Push handlers
-  function handleSyncSuccess(count: number) {
-    window.location.href = `/roles?synced=1&roles=${count}&t=${Date.now()}`;
-  }
-  function handleSyncError() {
-    showStatus({ kind: "error", msg: "Discord からの取得に失敗しました" });
-  }
+  // Push handlers
   function handlePushSuccess(result: { updated?: number; created?: number; deleted?: number; reordered?: number }) {
     window.location.href = `/roles?pushed=1&updated=${result.updated ?? 0}&created=${result.created ?? 0}&deleted=${result.deleted ?? 0}&reordered=${result.reordered ?? 0}&t=${Date.now()}`;
   }
@@ -241,7 +234,6 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
       {/* Action bar */}
       <div className={styles.actionBar}>
-        <SyncButton onSuccess={handleSyncSuccess} onError={handleSyncError} />
         <PushButton onSuccess={handlePushSuccess} onError={handlePushError} />
       </div>
 

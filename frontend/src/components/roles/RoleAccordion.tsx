@@ -21,7 +21,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import RoleList from "./RoleList";
-import SyncButton from "./SyncButton";
 import PushButton from "./PushButton";
 import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
@@ -616,15 +615,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setHasUnsaved(true);
     setSaveState("idle");
   }
-
-  // ===== SyncButton / PushButton =====
-  function handleSyncSuccess(count: number) {
-    // Rely on page reload to fetch the new member data via useEffect on the fresh mount
-    window.location.href = `/roles?synced=1&roles=${count}&t=${Date.now()}`;
-  }
-  function handleSyncError() {
-    showStatus({ kind: "error", msg: "Discord からの取得に失敗しました" });
-  }
   function handlePushSuccess(result: { updated?: number; created?: number; deleted?: number; reordered?: number }) {
     const parts: string[] = [];
     if (result.updated) parts.push(`更新 ${result.updated}`);
@@ -814,7 +804,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <SyncButton onSuccess={handleSyncSuccess} onError={handleSyncError} />
         {(isAdmin || isMember) ? <PushButton onSuccess={handlePushSuccess} onError={handlePushError} /> : null}
         {canCreateRole ? (
           <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
