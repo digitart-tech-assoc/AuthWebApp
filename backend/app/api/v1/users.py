@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.auth import get_current_principal
-from app.db.user_repository import find_user_by_sub, is_paid_invitation
+from app.db.user_repository import find_user_by_sub, is_paid_invitation, get_guild_member_info
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -19,6 +19,8 @@ class UserMeResponse(BaseModel):
 	discord_id: str | None
 	app_role: str
 	is_paid: bool = False
+	display_name: str | None = None
+	avatar: str | None = None
 
 
 @router.post("/login-or-register", response_model=UserMeResponse)
@@ -51,14 +53,25 @@ async def get_me(principal: dict = Depends(get_current_principal)) -> UserMeResp
 	app_role = principal.get("app_role", "none")
 
 	paid = False
-	if discord_id and app_role == "none":
-		paid = await asyncio.to_thread(is_paid_invitation, discord_id)
+	display_name = None
+	avatar = None
+	if discord_id:
+		if app_role == "none":
+			paid = await asyncio.to_thread(is_paid_invitation, discord_id)
+		
+		# DBのギルドメンバー情報から最新の表示名を取得
+		member_info = await asyncio.to_thread(get_guild_member_info, discord_id)
+		if member_info:
+			display_name = member_info.get("display_name")
+			avatar = member_info.get("avatar")
 
 	return UserMeResponse(
 		sub=sub,
 		discord_id=discord_id,
 		app_role=app_role,
 		is_paid=paid,
+		display_name=display_name,
+		avatar=avatar,
 	)
 
 

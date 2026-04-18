@@ -9,15 +9,20 @@ import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-async function resolveUserInfoFromBackend(authorization: string): Promise<{ app_role: string; discord_id: string | null }> {
+async function resolveUserInfoFromBackend(authorization: string): Promise<{ app_role: string; discord_id: string | null; display_name?: string; avatar?: string }> {
 	try {
 		const res = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
 			headers: { Authorization: authorization },
 			cache: "no-store",
 		});
 		if (res.ok) {
-			const data = (await res.json()) as { app_role?: string; discord_id?: string };
-			return { app_role: data.app_role ?? "none", discord_id: data.discord_id ?? null };
+			const data = (await res.json());
+			return { 
+				app_role: data.app_role ?? "none", 
+				discord_id: data.discord_id ?? null,
+				display_name: data.display_name,
+				avatar: data.avatar
+			};
 		}
 	} catch {
 		// フォールバック
@@ -57,16 +62,17 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 		redirect("/login?callbackUrl=%2Froles");
 	}
 
-	const { app_role: role, discord_id: myDiscordId } = await resolveUserInfoFromBackend(authorization);
+	const { app_role: role, discord_id: myDiscordId, display_name: backendName, avatar: backendAvatar } = await resolveUserInfoFromBackend(authorization);
 	const isMember = role === "member";
 
 	const displayName =
+		backendName ??
 		user.user_metadata?.full_name ??
 		user.user_metadata?.name ??
 		user.email ??
 		"不明";
 
-	const avatarUrl: string | null = user.user_metadata?.avatar_url ?? null;
+	const avatarUrl: string | null = backendAvatar ? `https://cdn.discordapp.com/avatars/${myDiscordId}/${backendAvatar}.png` : (user.user_metadata?.avatar_url ?? null);
 
 	let manifest;
 	let accessError: string | null = null;

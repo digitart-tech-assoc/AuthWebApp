@@ -226,3 +226,22 @@ def is_paid_invitation(discord_id: str) -> bool:
 				(discord_id,),
 			)
 			return cur.fetchone() is not None
+
+def get_guild_member_info(discord_id: str) -> dict[str, Any] | None:
+	"""discord_id から current profile info を取得する。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"""
+				SELECT display_name, avatar, username FROM guild_members
+				WHERE user_id = %s
+				""",
+				(discord_id,)
+			)
+			row = cur.fetchone()
+			if row is None:
+				return None
+			return {
+				"display_name": row[0] or row[2],
+				"avatar": row[1]
+			}
