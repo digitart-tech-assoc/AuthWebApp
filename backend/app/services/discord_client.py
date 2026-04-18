@@ -268,11 +268,13 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 						print(f"[DEBUG]   checking if {role_id} in {member_roles}")
 					
 					if str(role_id) in [str(r) for r in member_roles]:
+						user = member.get("user", {})
 						members.append({
-							"user_id": member["user"]["id"],
-							"username": member["user"]["username"],
-							"discriminator": member["user"].get("discriminator", "0"),
-							"display_name": member.get("nick") or member["user"]["username"],
+							"user_id": user.get("id"),
+							"username": user.get("username", ""),
+							"discriminator": user.get("discriminator", "0"),
+							"display_name": member.get("nick") or user.get("global_name") or user.get("username", ""),
+							"avatar": user.get("avatar"),
 						})
 				
 				print(f"[DEBUG] fetch_members: found {len(members)} total so far (checked {total_checked})")
