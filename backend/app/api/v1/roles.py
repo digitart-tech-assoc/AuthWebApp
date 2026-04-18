@@ -408,14 +408,21 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		
 		# Fetch members for each role
 		members_data = {}
+		all_unique_members = {}
 		for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else []):
 			if role_id:
 				members = await fetch_guild_members_with_role(DISCORD_GUILD_ID, role_id, token)
 				print(f"[DEBUG] Fetched {len(members)} members for role {role_id}")
 				members_data[role_id] = members
+				for m in members:
+					all_unique_members[m["user_id"]] = m
+		
+		print(f"[DEBUG] Saving {len(all_unique_members)} unique guild members metadata")
+		from app.db.repository import save_guild_members
+		await asyncio.to_thread(save_guild_members, list(all_unique_members.values()))
 		
 		# Sync to DB
-		print(f"[DEBUG] Syncing to DB with members_data keys: {list(members_data.keys())}")
+		print(f"[DEBUG] Syncing role memberships to DB with members_data keys: {list(members_data.keys())}")
 		result = await asyncio.to_thread(
 			sync_member_lists,
 			member_role_ids,
