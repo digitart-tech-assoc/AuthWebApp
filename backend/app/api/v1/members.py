@@ -112,31 +112,46 @@ async def get_pre_member_list(
 	try:
 		result = await asyncio.to_thread(get_pre_member_list_with_users, search)
 		
-		# Discord API から各ユーザーの username を取得（セマフォで並列化）
+		# Discord API から各ユーザーの username を取得（セマフォで並列化 + リトライ付き）
 		if DISCORD_TOKEN and DISCORD_GUILD_ID:
-			concurrency = int(os.getenv("DISCORD_FETCH_CONCURRENCY", "10"))
+			concurrency = 5
+			max_retries = 2
 			sem = asyncio.Semaphore(concurrency)
 
 			async def _fetch_with_sem(member):
 				async with sem:
-					try:
-						return await fetch_guild_member(
-							DISCORD_GUILD_ID,
-							member["discord_id"],
-							DISCORD_TOKEN,
-						)
-					except Exception as e:
-						print(f"Failed to fetch Discord user {member['discord_id']}: {e}")
-						return None
+					for attempt in range(max_retries + 1):
+						try:
+							result_member = await fetch_guild_member(
+								DISCORD_GUILD_ID,
+								member["discord_id"],
+								DISCORD_TOKEN,
+							)
+							if result_member is None:
+								if attempt < max_retries:
+									await asyncio.sleep(0.5 * (attempt + 1))
+									continue
+								else:
+									return None
+							return result_member
+						except Exception as e:
+							if attempt < max_retries:
+								print(f"[RETRY {attempt+1}] Failed to fetch Discord user {member['discord_id']}: {e}")
+								await asyncio.sleep(0.5 * (attempt + 1))
+							else:
+								print(f"[FAILED] Fetch Discord user {member['discord_id']} failed after {max_retries + 1} attempts: {e}")
+								return None
+					return None
 
 			tasks = [_fetch_with_sem(member) for member in result]
 			discord_members = await asyncio.gather(*tasks)
 			for member, discord_member in zip(result, discord_members):
-				if discord_member:
-					member["discord_username"] = discord_member.get("username") if isinstance(discord_member, dict) else "(not found)"
-					member["discord_display_name"] = discord_member.get("display_name") if isinstance(discord_member, dict) else None
+				if discord_member and isinstance(discord_member, dict):
+					# サーバー表示名を優先、なければグローバルユーザー名を使用
+					member["discord_username"] = discord_member.get("display_name") or discord_member.get("username") or "(unknown)"
+					member["discord_display_name"] = discord_member.get("display_name")
 				else:
-					member["discord_username"] = "(not found or error)"
+					member["discord_username"] = "(ユーザー情報取得失敗)"
 					member["discord_display_name"] = None
 		else:
 			for member in result:
