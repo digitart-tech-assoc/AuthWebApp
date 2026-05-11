@@ -112,24 +112,31 @@ async def get_pre_member_list(
 	try:
 		result = await asyncio.to_thread(get_pre_member_list_with_users, search)
 		
-		# Discord API から各ユーザーの username を取得
+		# Discord API から各ユーザーの username を取得（セマフォで並列化）
 		if DISCORD_TOKEN and DISCORD_GUILD_ID:
-			for member in result:
-				try:
-					discord_member = await fetch_guild_member(
-						DISCORD_GUILD_ID,
-						member["discord_id"],
-						DISCORD_TOKEN
-					)
-					if discord_member:
-						member["discord_username"] = discord_member["username"]
-						member["discord_display_name"] = discord_member["display_name"]
-					else:
-						member["discord_username"] = "(not found)"
-						member["discord_display_name"] = None
-				except Exception as e:
-					print(f"Failed to fetch Discord user {member['discord_id']}: {e}")
-					member["discord_username"] = "(error)"
+			concurrency = int(os.getenv("DISCORD_FETCH_CONCURRENCY", "10"))
+			sem = asyncio.Semaphore(concurrency)
+
+			async def _fetch_with_sem(member):
+				async with sem:
+					try:
+						return await fetch_guild_member(
+							DISCORD_GUILD_ID,
+							member["discord_id"],
+							DISCORD_TOKEN,
+						)
+					except Exception as e:
+						print(f"Failed to fetch Discord user {member['discord_id']}: {e}")
+						return None
+
+			tasks = [_fetch_with_sem(member) for member in result]
+			discord_members = await asyncio.gather(*tasks)
+			for member, discord_member in zip(result, discord_members):
+				if discord_member:
+					member["discord_username"] = discord_member.get("username") if isinstance(discord_member, dict) else "(not found)"
+					member["discord_display_name"] = discord_member.get("display_name") if isinstance(discord_member, dict) else None
+				else:
+					member["discord_username"] = "(not found or error)"
 					member["discord_display_name"] = None
 		else:
 			for member in result:
