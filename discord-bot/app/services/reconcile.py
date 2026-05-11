@@ -75,7 +75,7 @@ async def run_reconcile() -> dict:
 		removed = 0
 		errors: list[str] = []
 
-		# 2) Ensure members do not have pre-member role (member roles are already handled by sync)
+		# 2) Ensure members do not have pre-member role
 		for uid in member_list:
 			# remove pre-member role if configured
 			if PRE_MEMBER_ROLE_ID:
@@ -85,6 +85,16 @@ async def run_reconcile() -> dict:
 				else:
 					if status not in (404,):
 						errors.append(f"remove pre-role {PRE_MEMBER_ROLE_ID} from {uid} failed: {status} {body}")
+
+		# 2-B) Ensure members have member roles
+		for uid in member_list:
+			for role_id in member_role_ids:
+				ok, status, body = await _add_role(client, uid, role_id)
+				if ok:
+					added += 1
+				else:
+					if status not in (404,):
+						errors.append(f"add member role {role_id} to {uid} failed: {status} {body}")
 
 		# 3) Ensure pre-members have pre_member role (if not members)
 		for uid in pre_member_list:
