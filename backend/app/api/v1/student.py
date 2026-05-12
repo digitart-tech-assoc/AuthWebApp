@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field
 from app.core.auth import get_current_principal
 from app.db.repository import _connect, add_user_to_role, remove_user_from_role
 from app.services.brevo_client import send_otp_email
+# Use the same roles -> Discord push logic as the /roles endpoint
+from app.api.v1.roles import push_roles_to_discord
 
 
 
@@ -586,13 +588,14 @@ async def create_student_profile(
 
 			conn.commit()
 
-	# 【修正】DB commit 直後に同期的にボット通知を待機
-	# タイミング問題を解決するため、非同期タスク登録ではなく await で待機
-	logger.info("DB commit completed, notifying Discord Bot to reconcile member lists...")
-	success = await _notify_discord_bot_sync(discord_id)
-	
-	if not success:
-		logger.warning("Failed to notify bot, but profile saved successfully for discord_id=%s", discord_id)
+	# DB commit 直後に /roles の同期ロジックを呼び出して Discord 側のロール割当を反映
+	logger.info("DB commit completed; invoking roles.push to apply changes to Discord...")
+	try:
+		result = await push_roles_to_discord(principal)
+		if not result.get("ok", False):
+			logger.warning("roles.push reported errors after profile save: %s", result.get("errors"))
+	except Exception as e:
+		logger.exception("roles.push execution failed after profile save: %s", e)
 
 	return StudentProfileResponse(
 		profile_id=profile_id,
