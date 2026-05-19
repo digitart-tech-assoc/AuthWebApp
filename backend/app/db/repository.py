@@ -97,6 +97,18 @@ def init_db() -> None:
                     ALTER TABLE role_categories ADD COLUMN IF NOT EXISTS permissions BIGINT DEFAULT 0;
                     """
                 )
+                # Migration: add is_restricted column (admin-only category flag)
+                cur.execute(
+                    """
+                    ALTER TABLE role_categories ADD COLUMN IF NOT EXISTS is_restricted BOOLEAN DEFAULT FALSE;
+                    """
+                )
+                # Migration: update default restricted categories to TRUE
+                cur.execute(
+                    """
+                    UPDATE role_categories SET is_restricted = TRUE WHERE name IN ('会員情報', '学部学科', '学年');
+                    """
+                )
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS role_manifests (
@@ -312,7 +324,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0)
+                SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0), COALESCE(is_restricted, FALSE)
                 FROM role_categories
                 ORDER BY display_order ASC, name ASC
                 """
@@ -324,6 +336,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
                     "display_order": row[2],
                     "is_collapsed": row[3],
                     "permissions": int(row[4]),
+                    "is_restricted": bool(row[5]),
                 }
                 for row in cur.fetchall()
             ]
@@ -361,8 +374,8 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 			for c in categories:
 				cur.execute(
 					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions)
-					VALUES (%s, %s, %s, %s, %s)
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
+					VALUES (%s, %s, %s, %s, %s, %s)
 					""",
 					(
 						c["id"],
@@ -370,6 +383,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 						c.get("display_order", 0),
 						c.get("is_collapsed", False),
 						int(c.get("permissions", 0)),
+						bool(c.get("is_restricted", False)),
 					),
 				)
 
@@ -484,17 +498,19 @@ def patch_manifest_db(
 			for c in upsert_categories:
 				cur.execute(
 					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions)
-					VALUES (%s, %s, %s, %s, %s)
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
+					VALUES (%s, %s, %s, %s, %s, %s)
 					ON CONFLICT (id) DO UPDATE SET
 						name = EXCLUDED.name,
 						display_order = EXCLUDED.display_order,
 						is_collapsed = EXCLUDED.is_collapsed,
-						permissions = EXCLUDED.permissions
+						permissions = EXCLUDED.permissions,
+						is_restricted = EXCLUDED.is_restricted
 					""",
 					(
 						c["id"], c["name"], c.get("display_order", 0), 
-						c.get("is_collapsed", False), int(c.get("permissions", 0))
+						c.get("is_collapsed", False), int(c.get("permissions", 0)),
+						bool(c.get("is_restricted", False))
 					),
 				)
 
