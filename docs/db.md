@@ -26,6 +26,14 @@ CREATE TABLE role_manifests (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- role_member_assignments: Discord ロールとユーザーの紐付け
+-- pre_member 登録時は pre-member ロール、student 登録時は member ロールを追加する
+CREATE TABLE role_member_assignments (
+  role_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  PRIMARY KEY (role_id, user_id)
+);
+
 -- events: アウトボックスパターンで Backend -> Bot の命令を受け渡す
 CREATE TABLE events (
   id TEXT PRIMARY KEY,

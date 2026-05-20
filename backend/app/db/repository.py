@@ -1012,38 +1012,69 @@ def register_pre_member(discord_id: str, source: str | None = None) -> dict[str,
 	Returns:
 		{"discord_id": "...", "created": True/False}
 	"""
+	pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "").strip()
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			# Check if already registered as pre_member
 			cur.execute(
-				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'",
+				"""
+				SELECT assigned_at, created_at
+				FROM user_memberships
+				WHERE discord_id = %s AND membership_type = 'pre_member'
+				""",
 				(discord_id,)
 			)
-			if cur.fetchone() is not None:
-				return {"discord_id": discord_id, "created": False, "message": "Already in pre_member"}
+			existing = cur.fetchone()
+			created = False
+			assigned_at = None
+			created_at = None
 
-			# Insert into user_memberships
-			cur.execute(
-				"""
-				INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
-				VALUES (%s, 'pre_member', %s, now(), now())
-				ON CONFLICT (discord_id, membership_type) DO NOTHING
-				RETURNING created_at, assigned_at
-			""",
-				(discord_id, source)
-			)
+			if existing is not None:
+				assigned_at, created_at = existing
+			else:
+				# Insert into user_memberships
+				cur.execute(
+					"""
+					INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
+					VALUES (%s, 'pre_member', %s, now(), now())
+					ON CONFLICT (discord_id, membership_type) DO NOTHING
+					RETURNING created_at, assigned_at
+				""",
+					(discord_id, source)
+				)
 
-			result = cur.fetchone()
+				result = cur.fetchone()
+				if result is None:
+					conn.commit()
+					return {"discord_id": discord_id, "created": False, "message": "Failed to insert"}
+
+				created = True
+				created_at, assigned_at = result[0], result[1]
+
+			role_assignment_created = False
+			if pre_member_role_id:
+				cur.execute(
+					"""
+					INSERT INTO role_member_assignments (role_id, user_id)
+					VALUES (%s, %s)
+					ON CONFLICT DO NOTHING
+					""",
+					(pre_member_role_id, discord_id),
+				)
+				role_assignment_created = cur.rowcount > 0
+			else:
+				# Keep the registration itself working, but make the missing configuration visible in logs.
+				print("WARNING: PRE_MEMBER_ROLE_ID is not configured; skipping role_member_assignments insert")
 			conn.commit()
-
-			if result is None:
-				return {"discord_id": discord_id, "created": False, "message": "Failed to insert"}
 
 			return {
 				"discord_id": discord_id,
-				"created": True,
-				"assigned_at": result[1].isoformat() if result[1] else result[0].isoformat() if result[0] else None,
+				"created": created,
+				"message": "Already in pre_member" if not created and existing is not None else None,
+				"assigned_at": assigned_at.isoformat() if assigned_at else created_at.isoformat() if created_at else None,
 				"assigned_by": source,
+				"pre_member_role_id": pre_member_role_id or None,
+				"role_assignment_created": role_assignment_created,
 			}
 
 def expiry_from_assigned_at(assigned_at):

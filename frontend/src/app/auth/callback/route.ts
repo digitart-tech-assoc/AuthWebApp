@@ -11,6 +11,8 @@ type AuthMeResponse = {
     app_role?: string;
 };
 
+const LOGIN_ERROR_DISCORD_EMAIL_REQUIRED = "discord_email_required";
+
 type MemberItem = {
     discord_id: string;
 };
@@ -102,6 +104,12 @@ export async function GET(request: NextRequest) {
             const {
                 data: { user },
             } = await supabase.auth.getUser();
+
+            if (!user?.email) {
+                return applyCookies(
+                    NextResponse.redirect(`${base}/login?error=${LOGIN_ERROR_DISCORD_EMAIL_REQUIRED}`)
+                );
+            }
 
             const accessToken = session?.access_token?.trim();
             const discordId = extractDiscordId(user);
