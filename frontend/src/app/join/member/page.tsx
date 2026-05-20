@@ -46,17 +46,6 @@ export default function JoinMemberPage() {
   useEffect(() => {
     async function initialize() {
       try {
-        const res = await fetch("/api/debug/session", { cache: "no-store" });
-        if (!res.ok) {
-          router.push("/login");
-          return;
-        }
-        const payload = await res.json();
-        if (!payload?.session) {
-          router.push("/login");
-          return;
-        }
-
         const eligResult = await checkEligibility();
         setEligibility(eligResult);
 
@@ -92,6 +81,10 @@ export default function JoinMemberPage() {
 
         // (profile fetching and step advancement handled above when allowed)
       } catch (err) {
+        if (err instanceof Error && err.message === "Not authenticated") {
+          router.push("/login");
+          return;
+        }
         setError(err instanceof Error ? err.message : "予期しないエラーが発生しました");
         setLoading(false);
       }
