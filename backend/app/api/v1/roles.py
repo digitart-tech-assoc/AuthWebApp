@@ -257,8 +257,9 @@ async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> d
 					await add_role_to_member(DISCORD_GUILD_ID, user_id, role_id, token)
 					assigned_adds += 1
 				except httpx.HTTPStatusError as e:
-					# Ignore 404 (user not in guild) similarly to reconcile behavior
-					if e.response is not None and e.response.status_code == 404:
+					if e.response is not None and e.response.status_code in (404, 403):
+						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上付与不可→スキップ
+						print(f"[WARNING] Skipped add role {role_id} to {user_id}: HTTP {e.response.status_code}")
 						continue
 					errors.append(f"Failed to add role {role_id} to {user_id}: {e}")
 				except Exception as exc:
@@ -268,8 +269,9 @@ async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> d
 					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
 					assigned_removes += 1
 				except httpx.HTTPStatusError as e:
-					# Ignore 404 (user not in guild)
-					if e.response is not None and e.response.status_code == 404:
+					if e.response is not None and e.response.status_code in (404, 403):
+						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上操作不可→スキップ
+						print(f"[WARNING] Skipped remove role {role_id} from {user_id}: HTTP {e.response.status_code}")
 						continue
 					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
 				except Exception as exc:
@@ -292,8 +294,9 @@ async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> d
 					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
 					assigned_removes += 1
 				except httpx.HTTPStatusError as e:
-					# Ignore 404 (user not in guild)
-					if e.response is not None and e.response.status_code == 404:
+					if e.response is not None and e.response.status_code in (404, 403):
+						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上操作不可→スキップ
+						print(f"[WARNING] Skipped remove role {role_id} from {user_id}: HTTP {e.response.status_code}")
 						continue
 					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
 				except Exception as exc:
