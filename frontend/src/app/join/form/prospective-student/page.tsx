@@ -102,7 +102,7 @@ export default function ProspectiveStudentFormPage() {
                 <div>
                   <h2 className="text-xl font-bold text-amber-900 mb-3">受付期間外です</h2>
                   <p className="text-amber-800 mb-4">
-                    現在は入学見込み仮入会の受付は行っておりません。質問がある場合は<Link href="/contact" className="font-bold underline hover:opacity-80 transition">お問い合わせフォーム</Link>よりお問い合わせ下さい。
+                    現在は入学見込み仮入会の受付は行っておりません。<Link href="/join/form/regular" className="font-bold underline hover:opacity-80 transition">在校生の方はこちら</Link>から申請いただけます。その他のご質問がある場合は<Link href="/contact" className="font-bold underline hover:opacity-80 transition">お問い合わせフォーム</Link>よりお問い合わせ下さい。
                   </p>
                 </div>
               </div>
