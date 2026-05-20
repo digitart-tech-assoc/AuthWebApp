@@ -9,10 +9,34 @@ from typing import Any
 import psycopg2
 from urllib.parse import urlparse
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
+
+
+def is_prospective_form_open() -> bool:
+	"""入学見込み仮入会フォームが受け付け可能な期間か判定（毎年2月1日～4月5日、日本時間）
+	
+	Returns:
+		True: 受け付け可能期間内
+		False: 受け付け不可期間
+	"""
+	# 日本時間（JST）で現在日付を取得
+	jst_tz = timezone(timedelta(hours=9))
+	now = datetime.now(jst_tz)
+	month = now.month
+	day = now.day
+	
+	# 2月1日～4月5日の範囲判定
+	if month == 2 and day >= 1:
+		return True
+	elif month == 3:
+		return True
+	elif month == 4 and day <= 5:
+		return True
+	else:
+		return False
 
 
 def _connect():

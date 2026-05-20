@@ -56,12 +56,17 @@ class JoinVerifyResponse(BaseModel):
 async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 	"""OTP送信エンドポイント
 	
-	1. メール重複チェック
-	2. join_requests 作成
-	3. OTP コード生成・ハッシュ化
-	4. otp_codes 作成
-	5. Brevo で OTP メール送信
+	1. 入学見込みフォームの受け付け期間チェック（form_type=prospective-studentの場合）
+	2. メール重複チェック
+	3. join_requests 作成
+	4. OTP コード生成・ハッシュ化
+	5. otp_codes 作成
+	6. Brevo で OTP メール送信
 	"""
+	# 入学見込みフォームの受け付け期間チェック（毎年2月1日～4月5日）
+	if req.form_type == "prospective-student" and not repository.is_prospective_form_open():
+		raise HTTPException(status_code=403, detail="入学見込み仮入会は現在受け付けておりません。期間は毎年2月1日～4月5日です。")
+	
 	# Email 一致チェック
 	if req.email != req.confirm_email:
 		raise HTTPException(status_code=400, detail="Emails do not match")
