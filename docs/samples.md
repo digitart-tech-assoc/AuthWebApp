@@ -24,8 +24,8 @@ export async function saveManifestAndTriggerSync(manifest: any) {
 ## Frontend: React コンポーネント（呼び出し例）
 
 ```tsx
-// app/(admin)/roles/page.tsx
-import { saveManifestAndTriggerSync } from "../actions/roleActions";
+// app/roles/page.tsx
+import { saveManifestAndTriggerSync } from "@/actions/roleActions";
 
 export default function Page() {
   async function onSave(manifest: any) {
