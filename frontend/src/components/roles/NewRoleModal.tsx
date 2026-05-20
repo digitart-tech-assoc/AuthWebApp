@@ -30,7 +30,7 @@ type Props = {
   onSaved: (role: RoleData) => void;
   onClose: () => void;
   isMember?: boolean;
-  restrictedCategoryNames?: Set<string>;
+  restrictedCategoryIds?: Set<string>;
   /** 編集モード: 既存ロールを渡すと編集UIになる */
   editingRole?: RoleData | null;
 };
@@ -52,7 +52,7 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
 
 export default function NewRoleModal({
   categories, botPermissions, onSaved, onClose,
-  isMember = false, restrictedCategoryNames = new Set(),
+  isMember = false, restrictedCategoryIds = new Set(),
   editingRole = null,
 }: Props) {
   const isEditMode = !!editingRole;
@@ -84,10 +84,10 @@ export default function NewRoleModal({
   // memberモード: 最初の利用可能なカテゴリを自動選択
   useEffect(() => {
     if (isMember && categoryId === null && !isEditMode) {
-      const first = categories.find((c) => !restrictedCategoryNames.has(c.name));
+      const first = categories.find((c) => !restrictedCategoryIds.has(c.id));
       if (first) setCategoryId(first.id);
     }
-  }, [isMember, categories, restrictedCategoryNames, categoryId, isEditMode]);
+  }, [isMember, categories, restrictedCategoryIds, categoryId, isEditMode]);
 
   function handleColorPick(c: string) {
     setColor(c);
@@ -111,6 +111,7 @@ export default function NewRoleModal({
 
   // member が権限を設定できるかどうか判定
   const selectedCategory = categories.find((c) => c.id === categoryId);
+  // 会員情報カテゴリのみ権限設定可能（名前は引き継ぎハードコード）
   const canSetPermissions = !isMember || selectedCategory?.name === "会員情報";
 
   function handleSave() {
@@ -148,8 +149,8 @@ export default function NewRoleModal({
             <p className={styles.title}>{isEditMode ? "✏ ロールを編集" : "＋ 新規ロールを作成"}</p>
             <p className={styles.subtitle}>
               {isEditMode
-                ? "変更はローカルに保持されます（Discordへの反映は「送信」を押してください）"
-                : "データベースに下書きとして保存します（Discordへの反映は「送信」を押してください）"}
+                ? "変更を確定すると、DBへの保存とDiscordへの同期が自動で行われます"
+                : "作成を確定すると、DBへの保存とDiscordへの同期が自動で行われます"}
             </p>
           </div>
         </div>
@@ -212,7 +213,7 @@ export default function NewRoleModal({
               >
                 {!isMember && <option value="">カテゴリなし</option>}
                 {categories
-                  .filter((c) => !restrictedCategoryNames.has(c.name))
+                  .filter((c) => !restrictedCategoryIds.has(c.id))
                   .map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}

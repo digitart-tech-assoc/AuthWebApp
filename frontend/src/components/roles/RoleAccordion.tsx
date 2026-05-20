@@ -21,11 +21,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import RoleList from "./RoleList";
-import PushButton from "./PushButton";
 import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
 import NewRoleModal from "./NewRoleModal";
 import RoleMemberModal, { type Member } from "./RoleMemberModal";
+import EditCategoryModal from "./EditCategoryModal";
 import styles from "./roles.module.css";
 
 type Category = {
@@ -34,6 +34,7 @@ type Category = {
   display_order: number;
   is_collapsed: boolean;
   permissions: number;
+  is_restricted: boolean;
 };
 
 type Role = {
@@ -100,6 +101,7 @@ type SortableCategoryItemProps = {
   onDeleteRole: ((id: string) => void) | undefined;
   onOpenMemberModal: ((role: Role) => void) | undefined;
   onEditRole: ((role: Role) => void) | undefined;
+  onEditCategory: ((cat: Category) => void) | undefined;
   styles: Record<string, string>;
 };
 
@@ -108,7 +110,7 @@ function SortableCategoryItem({
   isAdmin, isMember, isSelectMode, selectedRoleIds, botPosition,
   onToggleCollapse, onOpenCategoryPermissions, onDeleteCategory,
   onToggleSelect, onReorder, onOpenRolePermissions, onDeleteRole,
-  onOpenMemberModal, onEditRole, styles,
+  onOpenMemberModal, onEditRole, onEditCategory, styles,
 }: SortableCategoryItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
   const catStyle = {
@@ -145,16 +147,27 @@ function SortableCategoryItem({
         <span className={styles.groupCount}>{catRoles.length}</span>
 
         {isAdmin ? (
-          <button
-            type="button"
-            className={styles.catPermBtn}
-            onClick={(e) => { e.stopPropagation(); onOpenCategoryPermissions(cat); }}
-            title="カテゴリ権限設定"
-            aria-label={`${cat.name} の権限設定`}
-          >
-            <ShieldIcon />
-            権限
-          </button>
+          <>
+            <button
+              type="button"
+              className={styles.catPermBtn}
+              onClick={(e) => { e.stopPropagation(); if (onEditCategory) onEditCategory(cat); }}
+              title="カテゴリ編集"
+              aria-label={`${cat.name} を編集`}
+            >
+              編集
+            </button>
+            <button
+              type="button"
+              className={styles.catPermBtn}
+              onClick={(e) => { e.stopPropagation(); onOpenCategoryPermissions(cat); }}
+              title="カテゴリ権限設定"
+              aria-label={`${cat.name} の権限設定`}
+            >
+              <ShieldIcon />
+              権限
+            </button>
+          </>
         ) : null}
 
         {/* member: ロールが残っている場合は削除不可。admin: 制限なし */}
@@ -221,6 +234,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryRestricted, setNewCategoryRestricted] = useState(false);
 
   // Status banner
   const [status, setStatus] = useState<Status | null>(null);
@@ -229,9 +243,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // ===== Permission panel =====
   const [permTarget, setPermTarget] = useState<PermissionTarget | null>(null);
 
-  // ===== New role / edit role modal =====
+  // ===== New role / edit role / edit category modal =====
   const [showNewRole, setShowNewRole] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   // ===== Member management =====
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -258,8 +273,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const canManageMembers = isAdmin;
   const canEditManifest = isAdmin || isMember;
 
-  // memberモードでロール付与を禁止するカテゴリ名
-  const RESTRICTED_CATEGORY_NAMES = new Set(["\u4f1a\u54e1\u60c5\u5831", "\u5b66\u90e8\u5b66\u79d1", "\u5b66\u5e74"]);
+  // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
+  const restrictedCategoryIds = new Set(
+    localCategories.filter(c => c.is_restricted).map(c => c.id)
+  );
 
   function showStatus(s: Status, durationMs = 5000) {
     setStatus(s);
@@ -411,7 +428,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setShowDiffModal(true);
   }
 
-  // ===== Execute save (called after diff confirmation) =====
+  // ===== Execute save + Discord push (called after diff confirmation) =====
   async function executeSave() {
     if (!pendingRoles || !pendingCats) return;
     
@@ -425,16 +442,16 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     try {
       // 1. Calculate Diff
       const upsertCategories = pendingCats.filter(c => {
-        const init = initCategories.find(i => i.id === c.id);
+        const init = baseCategories.find(i => i.id === c.id);
         return !init || JSON.stringify(init) !== JSON.stringify(c);
       });
-      const deleteCatIds = initCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
+      const deleteCatIds = baseCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
 
       const upsertRoles = pendingRoles.filter(r => {
-        const init = initRoles.find(i => i.role_id === r.role_id);
+        const init = baseRoles.find(i => i.role_id === r.role_id);
         return !init || JSON.stringify(init) !== JSON.stringify(r);
       });
-      const deleteRoleIds = initRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
+      const deleteRoleIds = baseRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
 
       const upsertRoleAssignments: Record<string, string[]> = {};
       const initAssignments = initialAssignmentsRef.current;
@@ -445,8 +462,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           upsertRoleAssignments[roleId] = membersByRole[roleId];
         }
       }
-      // また、初期状態で存在していたが、UI上ですべて消された（キー自体が空の配列として必要、またはキーが消えた）場合への対応として
-      // 実際には membersByRole の更新で空配列 [] として残るので上書きされるため上記でOK。
 
       const payload = {
         upsert_categories: upsertCategories,
@@ -476,6 +491,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         return;
       }
 
+      // 2. DB保存（PATCH /api/manifest）
+      showStatus({ kind: "info", msg: "DBに保存中..." });
       const res = await fetch("/api/manifest", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -483,7 +500,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
         setSaveState("error");
         showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
         setPendingRoles(null);
@@ -491,14 +507,38 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         return;
       }
 
+      // 3. 保存成功: ベースラインをリセット（重複保存防止）
+      setBaseRoles(pendingRoles);
+      setBaseCategories(pendingCats);
+      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
       setHasUnsaved(false);
       setSaveState("saved");
-      showStatus({ kind: "success", msg: "変更を保存しました" });
       setPendingRoles(null);
       setPendingCats(null);
-      
-      // Update our init references to match current
-      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
+
+      // 4. Discord同期（POST /api/roles/push）
+      showStatus({ kind: "info", msg: "Discordへ同期中..." });
+      const pushRes = await fetch("/api/roles/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const pushBody = (await pushRes.json()) as {
+        ok?: boolean;
+        updated?: number;
+        created?: number;
+        deleted?: number;
+        reordered?: number;
+        errors?: string[];
+      };
+
+      if (!pushRes.ok || !pushBody.ok) {
+        const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
+        showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
+        return;
+      }
+
+      // 5. 全て成功 → ページリロード
+      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&t=${Date.now()}`;
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
@@ -540,6 +580,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setIsSelectMode((v) => !v);
     setSelectedRoleIds(new Set());
     setNewCategoryName("");
+    setNewCategoryRestricted(false);
   }
 
   function toggleSelectRole(id: string) {
@@ -555,7 +596,14 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     const name = newCategoryName.trim();
     if (!name) return;
     const newCatId = `cat_${Date.now()}`;
-    const newCat: Category = { id: newCatId, name, display_order: localCategories.length, is_collapsed: false, permissions: 0 };
+    const newCat: Category = {
+      id: newCatId,
+      name,
+      display_order: localCategories.length,
+      is_collapsed: false,
+      permissions: 0,
+      is_restricted: newCategoryRestricted,
+    };
     const updatedRoles = allRoles.map((r) => selectedRoleIds.has(r.role_id) ? { ...r, category_id: newCatId } : r);
     const nextCats = [...localCategories, newCat];
     setLocalCategories(nextCats);
@@ -563,9 +611,25 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setSelectedRoleIds(new Set());
     setIsSelectMode(false);
     setNewCategoryName("");
+    setNewCategoryRestricted(false);
     setHasUnsaved(true);
     setSaveState("idle");
-    showStatus({ kind: "info", msg: `カテゴリ「${name}」を作成しました（保存ボタンで確定）` });
+    const restrictedLabel = newCategoryRestricted ? "（管理者専用）" : "";
+    showStatus({ kind: "info", msg: `カテゴリ「${name}」${restrictedLabel}を作成しました。「変更を確定」で保存してDiscordに同期します` });
+  }
+
+  function handleEditCategorySaved(catId: string, newName: string, newIsRestricted: boolean) {
+    setLocalCategories((prev) =>
+      prev.map((c) =>
+        c.id === catId
+          ? { ...c, name: newName, is_restricted: newIsRestricted }
+          : c
+      )
+    );
+    setEditingCategory(null);
+    setHasUnsaved(true);
+    setSaveState("idle");
+    showStatus({ kind: "info", msg: `カテゴリ「${newName}」を更新しました。「変更を確定」で保存してDiscordに同期します` });
   }
 
   function deleteCategory(catId: string) {
@@ -581,7 +645,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setAllRoles((prev) => prev.map((r) => r.category_id === catId ? { ...r, category_id: null } : r));
     setHasUnsaved(true);
     setSaveState("idle");
-    showStatus({ kind: "info", msg: "カテゴリを削除しました。属していたロールは「未分類」に移動しました（保存ボタンで確定）" });
+    showStatus({ kind: "info", msg: "カテゴリを削除しました。属していたロールは「未分類」に移動しました。「変更を確定」で保存してDiscordに同期します" });
   }
 
   function deleteRole(roleId: string) {
@@ -603,7 +667,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setAllRoles((prev) => prev.filter((r) => r.role_id !== roleId));
     setHasUnsaved(true);
     setSaveState("idle");
-    showStatus({ kind: "info", msg: "ロールを削除しました（保存ボタンで確定）" });
+    showStatus({ kind: "info", msg: "ロールを削除しました。「変更を確定」で保存してDiscordに同期します" });
   }
 
   // カテゴリの並び替え（DnD完了時）
@@ -614,22 +678,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     });
     setHasUnsaved(true);
     setSaveState("idle");
-  }
-  function handlePushSuccess(result: { updated?: number; created?: number; deleted?: number; reordered?: number }) {
-    const parts: string[] = [];
-    if (result.updated) parts.push(`更新 ${result.updated}`);
-    if (result.created) parts.push(`作成 ${result.created}`);
-    if (result.deleted) parts.push(`削除 ${result.deleted}`);
-    if (result.reordered) parts.push(`並び替え ${result.reordered}`);
-    const detail = parts.length ? `（${parts.join(" / ")}）` : "";
-    window.location.href = `/roles?pushed=1&updated=${result.updated ?? 0}&created=${result.created ?? 0}&deleted=${result.deleted ?? 0}&reordered=${result.reordered ?? 0}&t=${Date.now()}`;
-  }
-  function handlePushError(errors?: string[]) {
-    if (errors && errors.length > 0) {
-      showStatus({ kind: "error", msg: `Discord への送信エラー: ${errors[0]}` });
-    } else {
-      showStatus({ kind: "error", msg: "Discord への送信に失敗しました" });
-    }
   }
 
   // ===== Permission panel callbacks =====
@@ -665,12 +713,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       setAllRoles((prev) =>
         prev.map((r) => r.category_id === permTarget.id ? { ...r, permissions: newPermissions } : r)
       );
-      showStatus({ kind: "info", msg: `カテゴリ「${permTarget.name}」の権限をカテゴリ内ロールに適用しました（保存ボタンで確定）` });
+      showStatus({ kind: "info", msg: `カテゴリ「${permTarget.name}」の権限をカテゴリ内ロールに適用しました。「変更を確定」で保存してDiscordに同期します` });
     } else {
       setAllRoles((prev) =>
         prev.map((r) => r.role_id === permTarget.id ? { ...r, permissions: newPermissions } : r)
       );
-      showStatus({ kind: "info", msg: `ロール「${permTarget.name}」の権限を更新しました（保存ボタンで確定）` });
+      showStatus({ kind: "info", msg: `ロール「${permTarget.name}」の権限を更新しました。「変更を確定」で保存してDiscordに同期します` });
     }
     setHasUnsaved(true);
     setSaveState("idle");
@@ -690,7 +738,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       );
       setEditingRole(null);
       setShowNewRole(false);
-      showStatus({ kind: "success", msg: `ロール「${role.name}」を更新しました（保存ボタンで確定）` });
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を更新しました。「変更を確定」で保存してDiscordに同期します` });
     } else {
       // 新規作成モード
       const editableRoles = botPosition !== undefined
@@ -703,7 +751,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       const roleWithPos = { ...role, position: newPos };
       setAllRoles((prev) => [...prev, roleWithPos]);
       setShowNewRole(false);
-      showStatus({ kind: "success", msg: `ロール「${role.name}」を作成しました！（保存ボタンで確定）` });
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を追加しました。「変更を確定」で保存してDiscordに同期します` });
     }
     setHasUnsaved(true);
     setSaveState("idle");
@@ -738,15 +786,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setHasUnsaved(true);
     setSaveState("idle");
     const detail = `付与 ${add.length}名 / 削除 ${remove.length}名`;
-    showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）（保存ボタンで確定）` });
+    showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）。「変更を確定」で保存してDiscordに同期します` });
   }
 
   // ===== Self-assign (member mode) =====
   const handleSelfAssign = useCallback(async (role: Role) => {
-    // 禁止カテゴリチェック
-    const cat = localCategories.find((c) => c.id === role.category_id);
-    if (cat && RESTRICTED_CATEGORY_NAMES.has(cat.name)) {
-      showStatus({ kind: "error", msg: `「${cat.name}」カテゴリのロールは付与できません` });
+    // 禁止カテゴリチェック（is_restrictedフラグで判定）
+    if (role.category_id && restrictedCategoryIds.has(role.category_id)) {
+      const cat = localCategories.find((c) => c.id === role.category_id);
+      showStatus({ kind: "error", msg: `「${cat?.name ?? ""}」カテゴリのロールは付与できません` });
       return;
     }
     try {
@@ -764,7 +812,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     } catch {
       showStatus({ kind: "error", msg: "ロールの付与に失敗しました。接続を確認してください" });
     }
-  }, [localCategories, RESTRICTED_CATEGORY_NAMES]);
+  }, [localCategories, restrictedCategoryIds]);
 
   const categoryIds = new Set(localCategories.map((c) => c.id));
   const uncategorizedRoles = filteredRoles.filter((r) => !r.category_id || !categoryIds.has(r.category_id));
@@ -804,7 +852,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        {(isAdmin || isMember) ? <PushButton onSuccess={handlePushSuccess} onError={handlePushError} /> : null}
+        {/* PushButton は executeSave() 内で自動呼出しされるため非表示 */}
         {canCreateRole ? (
           <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
             + ロール作成
@@ -843,6 +891,16 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") createCategory(); }}
           />
+          {isAdmin && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={newCategoryRestricted}
+                onChange={(e) => setNewCategoryRestricted(e.target.checked)}
+              />
+              管理者専用
+            </label>
+          )}
           <button type="button" className={styles.btnPrimary} onClick={createCategory}
             disabled={!newCategoryName.trim()}>
             作成
@@ -869,7 +927,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             {localCategories.map((cat) => {
               const catRoles = filteredRoles.filter((r) => r.category_id === cat.id);
               const isOpen = !collapsedIds.has(cat.id);
-              const isRestrictedCat = RESTRICTED_CATEGORY_NAMES.has(cat.name);
+              const isRestrictedCat = cat.is_restricted;
               const memberCanManageCat = isMember && !isRestrictedCat;
               return (
                 <SortableCategoryItem
@@ -901,6 +959,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                       : undefined
                   }
                   onEditRole={!isSelectMode && isAdmin ? handleEditRole : undefined}
+                  onEditCategory={!isSelectMode && isAdmin ? setEditingCategory : undefined}
                   styles={styles}
                 />
               );
@@ -945,14 +1004,14 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {/* Floating save bar */}
       {hasUnsaved && (
         <div className={styles.unsavedBar}>
-          <span>未保存の変更があります</span>
+          <span>未送信の変更があります</span>
           <button
             type="button"
             className={styles.unsavedBarBtn}
             disabled={saveState === "saving" || !canEditManifest}
             onClick={() => persistRoles(allRoles, localCategories)}
           >
-            {saveState === "saving" ? "保存中..." : canEditManifest ? "保存する" : "保存不可"}
+            {saveState === "saving" ? "処理中..." : canEditManifest ? "変更を確定" : "操作不可"}
           </button>
         </div>
       )}
@@ -975,8 +1034,18 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           onSaved={handleRoleSaved}
           onClose={() => { setShowNewRole(false); setEditingRole(null); }}
           isMember={isMember}
-          restrictedCategoryNames={RESTRICTED_CATEGORY_NAMES}
+          restrictedCategoryIds={restrictedCategoryIds}
           editingRole={editingRole}
+        />
+      )}
+
+      {/* Edit Category Modal */}
+      {editingCategory && (
+        <EditCategoryModal
+          category={editingCategory}
+          isAdmin={isAdmin}
+          onSaved={handleEditCategorySaved}
+          onClose={() => setEditingCategory(null)}
         />
       )}
 
@@ -1011,7 +1080,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           <div className={styles.modal} role="dialog" aria-label="変更内容確認">
             <div className={styles.header}>
               <p className={styles.title}>変更内容の確認</p>
-              <p className={styles.subtitle}>以下の変更を保存します</p>
+              <p className={styles.subtitle}>以下の変更をDBに保存し、Discordへ同期します</p>
             </div>
             <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '20px', fontSize: '14px', borderBottom: '1px solid #e5e7eb' }}>
               {(diffData.roleAdded.length > 0 || diffData.memberAssigned.length > 0 || diffData.permissionEdited.length > 0 || diffData.orderChanged.length > 0 || diffData.roleDeleted.length > 0 || diffData.categoriesAdded.length > 0 || diffData.categoriesDeleted.length > 0) ? (
@@ -1135,7 +1204,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                 className={styles.confirmBtn}
                 onClick={executeSave}
               >
-                保存する
+                保存してDiscordへ送信
               </button>
             </div>
           </div>

@@ -1,10 +1,9 @@
 // 役割: Member専用ロール管理ビュー（個人単位）
-// ロール付与/解除はローカルで変更 → 保存 → Discord送信の2ステップ（admin同様）
+// ロール付与/解除はローカルで変更 → 確定時にDB保存+Discord同期を自動実行
 
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import PushButton from "./PushButton";
 import styles from "./memberself.module.css";
 
 type Category = {
@@ -13,6 +12,7 @@ type Category = {
   display_order: number;
   is_collapsed: boolean;
   permissions: number;
+  is_restricted: boolean;
 };
 
 type Role = {
@@ -40,7 +40,6 @@ type Props = {
   avatarUrl: string | null;
 };
 
-const RESTRICTED_CATEGORY_NAMES = new Set(["会員情報", "学部学科", "学年"]);
 
 export default function MemberSelfView({ categories, roles, myDiscordId, displayName, avatarUrl }: Props) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -105,7 +104,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     setSaveState("idle");
   }
 
-  // --- Save to DB (same as admin's persistRoles) ---
+  // --- 確定時にDB保存 + Discord push を一次実行 ---
   async function handleSave() {
     setSaveState("saving");
     try {
@@ -136,6 +135,8 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         upsert_role_assignments: upsertRoleAssignments,
       };
 
+      // 2. DB保存
+      showStatus({ kind: "info", msg: "DBに保存中..." });
       const res = await fetch("/api/manifest", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -148,10 +149,34 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         return;
       }
 
+      // ベースラインをリセット（重複保存防止）
+      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
       setHasUnsaved(false);
       setSaveState("saved");
-      showStatus({ kind: "success", msg: "変更を保存しました" });
-      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
+
+      // 3. Discord同期
+      showStatus({ kind: "info", msg: "Discordへ同期中..." });
+      const pushRes = await fetch("/api/roles/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const pushBody = (await pushRes.json()) as {
+        ok?: boolean;
+        updated?: number;
+        created?: number;
+        deleted?: number;
+        reordered?: number;
+        errors?: string[];
+      };
+
+      if (!pushRes.ok || !pushBody.ok) {
+        const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
+        showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
+        return;
+      }
+
+      // 全て成功 → ページリロード
+      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&t=${Date.now()}`;
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
@@ -172,10 +197,14 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     return botPosition !== undefined && role.position >= botPosition;
   }
 
+  // カテゴリのis_restrictedフラグで制限判定
+  const restrictedCategoryIds = new Set(
+    categories.filter(c => c.is_restricted).map(c => c.id)
+  );
+
   function isRestrictedCategory(role: Role): boolean {
     if (!role.category_id) return false;
-    const cat = categories.find((c) => c.id === role.category_id);
-    return cat ? RESTRICTED_CATEGORY_NAMES.has(cat.name) : false;
+    return restrictedCategoryIds.has(role.category_id);
   }
 
   function isRemoveDisabled(role: Role): boolean {
@@ -187,24 +216,16 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     return (membersByRole[roleId] ?? []).includes(myDiscordId);
   }
 
-  // Push handlers
-  function handlePushSuccess(result: { updated?: number; created?: number; deleted?: number; reordered?: number }) {
-    window.location.href = `/roles?pushed=1&updated=${result.updated ?? 0}&created=${result.created ?? 0}&deleted=${result.deleted ?? 0}&reordered=${result.reordered ?? 0}&t=${Date.now()}`;
-  }
-  function handlePushError(errors?: string[]) {
-    showStatus({ kind: "error", msg: errors?.[0] ?? "Discord への送信に失敗しました" });
-  }
+  // Pushハンドラは削除（handleSave内で自動実行）
 
   // My current roles
   const myRoles = sortedRoles.filter((r) => hasRole(r.role_id));
 
-  // Sort categories: editable first, then restricted (会員情報→学年→学部学科)
-  const RESTRICTED_ORDER: Record<string, number> = { "会員情報": 0, "学年": 1, "学部学科": 2 };
+  // ソート: 編集可能カテゴリを先に、次に制限カテゴリ
   const sortedCategories = [...categories].sort((a, b) => {
-    const aR = RESTRICTED_CATEGORY_NAMES.has(a.name);
-    const bR = RESTRICTED_CATEGORY_NAMES.has(b.name);
+    const aR = a.is_restricted;
+    const bR = b.is_restricted;
     if (aR !== bR) return aR ? 1 : -1;
-    if (aR && bR) return (RESTRICTED_ORDER[a.name] ?? 99) - (RESTRICTED_ORDER[b.name] ?? 99);
     return a.display_order - b.display_order;
   });
 
@@ -232,10 +253,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         </div>
       )}
 
-      {/* Action bar */}
-      <div className={styles.actionBar}>
-        <PushButton onSuccess={handlePushSuccess} onError={handlePushError} />
-      </div>
+      {/* Action bar - PushButtonは自動実行のため非表示 */}
 
       {/* Profile card */}
       <div className={styles.profileCard}>
@@ -284,7 +302,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
           const catRoles = sortedRoles.filter((r) => r.category_id === cat.id);
           if (catRoles.length === 0) return null;
           const isOpen = !collapsedCats.has(cat.id);
-          const catRestricted = RESTRICTED_CATEGORY_NAMES.has(cat.name);
+          const catRestricted = cat.is_restricted;
 
           return (
             <div key={cat.id} className={styles.catGroup}>
@@ -374,14 +392,14 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       {/* Floating save bar */}
       {hasUnsaved && (
         <div className={styles.unsavedBar}>
-          <span>未保存の変更があります</span>
+          <span>未送信の変更があります</span>
           <button
             type="button"
             className={styles.unsavedBarBtn}
             disabled={saveState === "saving"}
             onClick={handleSave}
           >
-            {saveState === "saving" ? "保存中..." : "保存する"}
+            {saveState === "saving" ? "処理中..." : "変更を確定"}
           </button>
         </div>
       )}

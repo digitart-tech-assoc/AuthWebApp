@@ -13,6 +13,7 @@ export type ManifestCategory = {
 	display_order: number;
 	is_collapsed: boolean;
 	permissions: number;
+	is_restricted: boolean;
 };
 
 export type ManifestRole = {

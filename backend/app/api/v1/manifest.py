@@ -21,6 +21,7 @@ class Category(BaseModel):
 	display_order: int = 0
 	is_collapsed: bool = False
 	permissions: int = 0
+	is_restricted: bool = False
 
 
 class Role(BaseModel):
@@ -108,15 +109,16 @@ async def patch_manifest(payload: ManifestPatch, principal: dict = Depends(requi
 	is_admin = principal.get("app_role") == "admin"
 	
 	if not is_admin:
-		# member cannot modify restricted categories.
-		# They can't upsert restricted categories
+		# member は restricted カテゴリを変更・作成できない
 		for c in payload.upsert_categories:
+			# 名前ベースのレガシーガード（後方互換）
 			if c.name in RESTRICTED_CATEGORY_NAMES:
 				raise HTTPException(403, f"Member cannot modify restricted category: {c.name}")
+			# is_restricted フラグで管理者専用を設定することも禁止
+			if c.is_restricted:
+				raise HTTPException(403, "Member cannot create or set admin-only (is_restricted) categories")
 		
-		# For roles, they could assign them to restricted? We only check if they touch any existing or new restricted roles.
-		# (A thorough backend check would fetch the DB to check if deleted category IDs or role IDs belong to restricted names,
-		# but for this simplicity we trust the frontend UI restriction combined with this basic payload check. If needed, can query DB.)
+		# (オプション) 削除対象の restricted カテゴリ保護はフロントエンドUIで制御済み
 		
 	await asyncio.to_thread(
 		patch_manifest_db,
