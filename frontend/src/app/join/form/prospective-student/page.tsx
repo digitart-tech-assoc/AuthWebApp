@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Info, CheckCircle, FileText, AlertCircle, Loader } from "lucide-react";
 import OTPModal from "../../../../components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
 import TextInput from "../../../../components/forms/TextInput";
 import { validateFullName } from "../../../../lib/validation";
+import { isProspectiveFormOpen } from "../../../../lib/join";
 
 export default function ProspectiveStudentFormPage() {
+  const [isFormOpen, setIsFormOpen] = useState(true);
   const [year, setYear] = useState("");
   const [yearTouched, setYearTouched] = useState(false);
 
@@ -24,6 +26,13 @@ export default function ProspectiveStudentFormPage() {
   const [showOtp, setShowOtp] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  // ページ読み込み時に期間チェック実行
+  useEffect(() => {
+    if (!isProspectiveFormOpen()) {
+      setIsFormOpen(false);
+    }
+  }, []);
 
   const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
   const isNameValid = validateFullName(name);
@@ -85,7 +94,24 @@ export default function ProspectiveStudentFormPage() {
       {/* メインコンテンツ */}
       <section className="py-12 px-4">
         <div className="max-w-3xl mx-auto">
-          {/* フォームカード */}
+          {/* 期間外アクセス時のエラーメッセージ */}
+          {!isFormOpen && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 md:p-8 mb-8">
+              <div className="flex gap-4">
+                <AlertCircle className="w-8 h-8 text-amber-600 flex-shrink-0 mt-1" />
+                <div>
+                  <h2 className="text-xl font-bold text-amber-900 mb-3">受付期間外です</h2>
+                  <p className="text-amber-800 mb-4">
+                    現在は入学見込み仮入会の受付は行っておりません。質問がある場合は<Link href="/contact" className="font-bold underline hover:opacity-80 transition">お問い合わせフォーム</Link>よりお問い合わせ下さい。
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* フォームカード（期間内のみ表示） */}
+          {isFormOpen && (
+            <>
           <div className="bg-white rounded-2xl border border-slate-100 p-6 md:p-8 shadow-sm mb-8">
             <form className="space-y-6">
               {/* 氏名 */}
@@ -295,6 +321,8 @@ export default function ProspectiveStudentFormPage() {
               </li>
             </ol>
           </div>
+            </>
+          )}
 
         </div>
       </section>
