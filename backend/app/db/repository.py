@@ -205,7 +205,7 @@ def init_db() -> None:
                 )
 
                 # 統合メンバーシップテーブル（member / admin / pre_member / obog）
-				cur.execute(
+                cur.execute(
 					"""
 					CREATE TABLE IF NOT EXISTS user_memberships (
 						discord_id TEXT NOT NULL,
@@ -233,7 +233,7 @@ def init_db() -> None:
                 )
 
                 # ビュー: ユーザーの app_role を user_memberships から動的に計算
-				cur.execute(
+                cur.execute(
 					"""
 					CREATE OR REPLACE VIEW v_users_with_app_role AS
 					SELECT 
