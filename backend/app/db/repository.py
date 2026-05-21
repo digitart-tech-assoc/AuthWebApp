@@ -668,7 +668,8 @@ def sync_member_lists(
 	obog_role_ids: list[str],
 	admin_role_ids: list[str],
 	pre_member_role_id: str | None,
-	members: dict[str, list[dict[str, Any]]]
+	members: dict[str, list[dict[str, Any]]],
+	sub_user_role_ids: list[str] | None = None,
 ) -> dict[str, Any]:
 	"""
 	Discord ロール情報から user_memberships を同期。
@@ -696,6 +697,9 @@ def sync_member_lists(
 	expected_role_ids = set(member_role_ids + obog_role_ids + admin_role_ids)
 	if pre_member_role_id:
 		expected_role_ids.add(pre_member_role_id)
+	# sub_user_role_ids が指定されていれば期待値に含める
+	if sub_user_role_ids:
+		expected_role_ids.update(sub_user_role_ids)
 	
 	provided_role_ids = set(members.keys())
 	
@@ -719,6 +723,7 @@ def sync_member_lists(
 			
 			result = {
 				'member_list': [],
+				'sub_user_list': [],
 				'admin_list': [],
 				'pre_member_list': [],
 				'obog_list': []
@@ -757,13 +762,38 @@ def sync_member_lists(
 				row = cur.fetchone()
 				if row:
 					result['member_list'].append(row_to_dict(row, cur.description))
-			
+
+			# Sub-user ロール → membership_type = 'sub_user'（オプション）
+			sub_user_discord_ids = set()
+			if sub_user_role_ids:
+				for role_id in sub_user_role_ids:
+					for member in members.get(role_id, []):
+						sub_user_discord_ids.add(member["user_id"])
+
+			# sub_user を挿入
+			if sub_user_discord_ids:
+				logger.info(f"Syncing {len(sub_user_discord_ids)} members with membership_type='sub_user'")
+				for discord_id in sub_user_discord_ids:
+					cur.execute(
+						"""
+						INSERT INTO user_memberships 
+						(discord_id, membership_type, assigned_at, created_at)
+						VALUES (%s, 'sub_user', now(), now())
+						ON CONFLICT (discord_id, membership_type) DO NOTHING
+						RETURNING *
+						""",
+						(discord_id,)
+					)
+					row = cur.fetchone()
+					if row:
+						result['sub_user_list'].append(row_to_dict(row, cur.description))
+
 			# 2. OB-OG ロール → membership_type = 'obog'
 			obog_discord_ids = set()
 			for role_id in obog_role_ids:
 				for member in members.get(role_id, []):
 					obog_discord_ids.add(member["user_id"])
-			
+
 			logger.info(f"Syncing {len(obog_discord_ids)} members with membership_type='obog'")
 			for discord_id in obog_discord_ids:
 				cur.execute(
@@ -825,13 +855,15 @@ def sync_member_lists(
 					result['pre_member_list'].append(row_to_dict(row, cur.description))
 			
 			conn.commit()
-			
+
 			# 完了ログ
 			total_synced = sum(len(v) for v in result.values())
-			logger.info(f"sync_member_lists completed: {total_synced} total records synced "
-					   f"(member={len(result['member_list'])}, admin={len(result['admin_list'])}, "
-					   f"pre_member={len(result['pre_member_list'])}, obog={len(result['obog_list'])})")
-			
+			logger.info(
+				f"sync_member_lists completed: {total_synced} total records synced "
+				f"(member={len(result['member_list'])}, sub_user={len(result['sub_user_list'])}, "
+				f"admin={len(result['admin_list'])}, pre_member={len(result['pre_member_list'])}, obog={len(result['obog_list'])})"
+			)
+
 			return result
 
 
@@ -842,7 +874,7 @@ def get_member_lists() -> dict[str, list[dict[str, Any]]]:
 			result = {}
 			
 			# membership_type ごとにクエリ
-			for mem_type in ['member', 'admin', 'pre_member', 'obog']:
+			for mem_type in ['member','sub_user','admin','pre_member','obog']:
 				cur.execute(
 					"""
 					SELECT discord_id, assigned_by, assigned_at
@@ -882,6 +914,7 @@ def get_user_membership_type(discord_id: str) -> str:
 				ORDER BY CASE membership_type 
 					WHEN 'admin' THEN 1
 					WHEN 'member' THEN 2
+					WHEN 'sub_user' THEN 2
 					WHEN 'pre_member' THEN 3
 					WHEN 'obog' THEN 4
 				END LIMIT 1
@@ -897,7 +930,7 @@ def is_member(discord_id: str) -> bool:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
-				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member' LIMIT 1",
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type IN ('member','sub_user') LIMIT 1",
 				(discord_id,)
 			)
 			return cur.fetchone() is not None
@@ -938,7 +971,7 @@ def is_obog(discord_id: str) -> bool:
 
 def add_to_user_membership(discord_id: str, membership_type: str) -> None:
 	"""user_memberships にメンバーシップを追加。"""
-	if membership_type not in ('member', 'admin', 'pre_member', 'obog'):
+	if membership_type not in ('member', 'admin', 'pre_member', 'obog', 'sub_user'):
 		raise ValueError(f"Invalid membership_type: {membership_type}")
 	
 	with _connect() as conn:
