@@ -49,10 +49,11 @@ def _resolve_role_from_memberships(discord_id: str | None) -> str:
 					SELECT membership_type FROM user_memberships 
 					WHERE discord_id = %s 
 					ORDER BY CASE membership_type 
-						WHEN 'admin' THEN 1
-						WHEN 'member' THEN 2
-						WHEN 'pre_member' THEN 3
-						WHEN 'obog' THEN 4
+								WHEN 'admin' THEN 1
+								WHEN 'member' THEN 2
+								WHEN 'sub_user' THEN 2
+								WHEN 'pre_member' THEN 3
+								WHEN 'obog' THEN 4
 					END LIMIT 1
 					""",
 					(discord_id,)
@@ -187,10 +188,11 @@ def get_user_role(user_id: str) -> str:
 				SELECT membership_type FROM user_memberships 
 				WHERE discord_id = %s 
 				ORDER BY CASE membership_type 
-					WHEN 'admin' THEN 1
-					WHEN 'member' THEN 2
-					WHEN 'pre_member' THEN 3
-					WHEN 'obog' THEN 4
+						WHEN 'admin' THEN 1
+						WHEN 'member' THEN 2
+						WHEN 'sub_user' THEN 2
+						WHEN 'pre_member' THEN 3
+						WHEN 'obog' THEN 4
 				END LIMIT 1
 				""",
 				(discord_id,)

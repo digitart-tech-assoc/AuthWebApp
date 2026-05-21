@@ -205,20 +205,20 @@ def init_db() -> None:
                 )
 
                 # 統合メンバーシップテーブル（member / admin / pre_member / obog）
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS user_memberships (
-                        discord_id TEXT NOT NULL,
-                        membership_type TEXT NOT NULL 
-                            CHECK (membership_type IN ('member', 'admin', 'pre_member', 'obog')),
-                        assigned_by TEXT,
-                        assigned_at TIMESTAMPTZ DEFAULT now(),
-                        created_at TIMESTAMPTZ DEFAULT now(),
-                        PRIMARY KEY (discord_id, membership_type),
-                        FOREIGN KEY (discord_id) REFERENCES guild_members(user_id) ON DELETE CASCADE
-                    );
-                    """
-                )
+				cur.execute(
+					"""
+					CREATE TABLE IF NOT EXISTS user_memberships (
+						discord_id TEXT NOT NULL,
+						membership_type TEXT NOT NULL 
+							CHECK (membership_type IN ('member', 'admin', 'pre_member', 'obog', 'sub_user')),
+						assigned_by TEXT,
+						assigned_at TIMESTAMPTZ DEFAULT now(),
+						created_at TIMESTAMPTZ DEFAULT now(),
+						PRIMARY KEY (discord_id, membership_type),
+						FOREIGN KEY (discord_id) REFERENCES guild_members(user_id) ON DELETE CASCADE
+					);
+					"""
+				)
                 cur.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_user_memberships_discord_id 
@@ -233,29 +233,29 @@ def init_db() -> None:
                 )
 
                 # ビュー: ユーザーの app_role を user_memberships から動的に計算
-                cur.execute(
-                    """
-                    CREATE OR REPLACE VIEW v_users_with_app_role AS
-                    SELECT 
-                        u.id,
-                        u.user_id,
-                        u.discord_id,
-                        CASE 
-                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'admin') 
-                                THEN 'admin'
-                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'member') 
-                                THEN 'member'
-                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'obog') 
-                                THEN 'obog'
-                            WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'pre_member') 
-                                THEN 'pre_member'
-                            ELSE 'none'
-                        END as app_role,
-                        u.created_at,
-                        u.updated_at
-                    FROM users u
-                    """
-                )
+				cur.execute(
+					"""
+					CREATE OR REPLACE VIEW v_users_with_app_role AS
+					SELECT 
+						u.id,
+						u.user_id,
+						u.discord_id,
+						CASE 
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'admin') 
+								THEN 'admin'
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type IN ('member','sub_user')) 
+								THEN 'member'
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'obog') 
+								THEN 'obog'
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'pre_member') 
+								THEN 'pre_member'
+							ELSE 'none'
+						END as app_role,
+						u.created_at,
+						u.updated_at
+					FROM users u
+					"""
+				)
 
                 # Migration: Drop app_role from users table (now calculated via v_users_with_app_role VIEW)
                 # This is a safe migration that preserves data
