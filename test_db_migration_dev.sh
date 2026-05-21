@@ -76,7 +76,7 @@ create_user_memberships_table() {
 CREATE TABLE IF NOT EXISTS user_memberships (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
     discord_id TEXT NOT NULL,
-    membership_type TEXT NOT NULL CHECK (membership_type IN ('member', 'admin', 'pre_member', 'obog')),
+    membership_type TEXT NOT NULL CHECK (membership_type IN ('member', 'admin', 'pre_member', 'obog', 'sub_user')),
     assigned_by TEXT,
     assigned_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
@@ -208,7 +208,7 @@ SELECT
             THEN 'admin'
         WHEN EXISTS (SELECT 1 FROM user_memberships 
                      WHERE discord_id = u.discord_id 
-                     AND membership_type = 'member')
+                     AND membership_type IN ('member','sub_user'))
             THEN 'member'
         WHEN EXISTS (SELECT 1 FROM user_memberships 
                      WHERE discord_id = u.discord_id 
