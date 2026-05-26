@@ -79,8 +79,8 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 
 
 def require_member(principal: dict = Depends(get_current_principal)) -> dict:
-	"""member / obog / admin のみ許可する FastAPI Dependency。"""
-	allowed = {"member", "admin", "obog"}
+	"""member / sub_user / obog / admin のみ許可する FastAPI Dependency。"""
+	allowed = {"member", "sub_user", "admin", "obog"}
 	if principal.get("app_role") not in allowed:
 		raise HTTPException(status_code=403, detail="Membership required")
 	return principal

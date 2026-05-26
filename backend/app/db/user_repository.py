@@ -37,6 +37,7 @@ def find_user_by_sub(user_id: str) -> dict[str, Any] | None:
 def _resolve_role_from_memberships(discord_id: str | None) -> str:
 	"""user_memberships から app_role を解決する。
 	優先順位: admin > member > pre_member > obog > none
+	'sub_user' は 'member' と同等として扱う。
 	"""
 	if not discord_id:
 		return "none"
@@ -60,7 +61,8 @@ def _resolve_role_from_memberships(discord_id: str | None) -> str:
 				)
 				row = cur.fetchone()
 				if row is not None:
-					return row[0]
+					role = row[0]
+					return "member" if role == "sub_user" else role
 			except Exception:
 				# user_memberships テーブル未作成などの環境では none を返す
 				return "none"
@@ -171,6 +173,7 @@ def get_user_role(user_id: str) -> str:
 	
 	app_role は user_memberships から計算される値です。
 	優先順位: admin > member > pre_member > obog > none
+	'sub_user' は 'member' として扱う。
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -198,7 +201,9 @@ def get_user_role(user_id: str) -> str:
 				(discord_id,)
 			)
 			result = cur.fetchone()
-			return result[0] if result else "none"
+			if not result:
+				return "none"
+			return "member" if result[0] == "sub_user" else result[0]
 
 
 def update_user_role(user_id: str, role: str) -> None:
