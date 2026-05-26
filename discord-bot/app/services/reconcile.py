@@ -68,15 +68,20 @@ async def run_reconcile() -> dict:
 		data = payload.get("data") if isinstance(payload, dict) and payload.get("data") is not None else payload
 		lists = data or {}
 
+		# Keep members and sub-users as separate lists, but treat both as targets
+		# for member-role assignment so sub-accounts receive the same permissions.
 		member_list = [str(x.get("discord_id")) for x in lists.get("member_list", [])]
+		sub_user_list = [str(x.get("discord_id")) for x in lists.get("sub_user_list", [])]
+		# Combined target set used for role reconciliation (avoid duplicate work)
+		combined_member_targets = set(member_list) | set(sub_user_list)
 		pre_member_list = [str(x.get("discord_id")) for x in lists.get("pre_member_list", [])]
 
 		added = 0
 		removed = 0
 		errors: list[str] = []
 
-		# 2) Ensure members do not have pre-member role
-		for uid in member_list:
+		# 2) Ensure members/sub-users do not have pre-member role
+		for uid in combined_member_targets:
 			# remove pre-member role if configured
 			if PRE_MEMBER_ROLE_ID:
 				ok, status, body = await _remove_role(client, uid, PRE_MEMBER_ROLE_ID)
@@ -86,8 +91,8 @@ async def run_reconcile() -> dict:
 					if status not in (404,):
 						errors.append(f"remove pre-role {PRE_MEMBER_ROLE_ID} from {uid} failed: {status} {body}")
 
-		# 2-B) Ensure members have member roles
-		for uid in member_list:
+		# 2-B) Ensure members and sub-users have member roles
+		for uid in combined_member_targets:
 			for role_id in member_role_ids:
 				ok, status, body = await _add_role(client, uid, role_id)
 				if ok:
@@ -96,9 +101,9 @@ async def run_reconcile() -> dict:
 					if status not in (404,):
 						errors.append(f"add member role {role_id} to {uid} failed: {status} {body}")
 
-		# 3) Ensure pre-members have pre_member role (if not members)
+		# 3) Ensure pre-members have pre_member role (if not members or sub-users)
 		for uid in pre_member_list:
-			if uid in member_list:
+			if uid in combined_member_targets:
 				continue
 			if PRE_MEMBER_ROLE_ID:
 				ok, status, body = await _add_role(client, uid, PRE_MEMBER_ROLE_ID)
