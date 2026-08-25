@@ -101,6 +101,18 @@ sleep 2
 
 echo "  ✓ TLS Secret cleanup complete"
 
+# 4.5 Secret の生成
+echo ""
+echo "[4.5/6] Generating k8s secret from .env..."
+mkdir -p k8s/secrets
+if [ -f .env ]; then
+  microk8s kubectl create secret generic authwebapp-secret --from-env-file=.env --dry-run=client -o yaml > k8s/secrets/authwebapp-secret.yaml
+  echo "  ✓ k8s/secrets/authwebapp-secret.yaml generated successfully"
+else
+  echo "  ❌ Error: .env file is required for generating secrets"
+  exit 1
+fi
+
 # 5. Kubernetes にデプロイ
 echo ""
 echo "[5/6] Deploying to Kubernetes..."
