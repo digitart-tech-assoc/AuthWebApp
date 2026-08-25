@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
 DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://discord-bot:8000")
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 
 def _get_token() -> str:
@@ -134,7 +134,7 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 
 
 @router.post("/push")
-async def push_roles_to_discord(_principal: dict = Depends(require_member)) -> dict:
+async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -464,6 +464,11 @@ async def self_assign_role(
 	_principal: dict = Depends(require_member),
 ) -> dict:
 	"""memberが自分自身にロールを付与する。禁止カテゴリに属するロールは拒否。"""
+	# マニフェストに存在しないロールIDは拒否
+	manifest = await asyncio.to_thread(fetch_manifest)
+	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
+	if role_info is None:
+		raise HTTPException(status_code=404, detail="指定されたロールが見つかりません")
 	discord_id: str | None = _principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
@@ -472,14 +477,12 @@ async def self_assign_role(
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
-	# マニフェストで禁止カテゴリチェック
-	manifest = await asyncio.to_thread(fetch_manifest)
+	# 禁止カテゴリチェック
 	restricted_cat_ids = {
 		c["id"] for c in manifest.get("categories", [])
 		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
 	}
-	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
-	if role_info and role_info.get("category_id") in restricted_cat_ids:
+	if role_info.get("category_id") in restricted_cat_ids:
 		raise HTTPException(status_code=403, detail="このロールは付与できません（禁止カテゴリ）")
 
 	try:
@@ -505,6 +508,12 @@ async def self_remove_role(
 	_principal: dict = Depends(require_member),
 ) -> dict:
 	"""memberが自分自身からロールを解除する。禁止カテゴリに属するロールは拒否。"""
+	# マニフェストに存在しないロールIDは拒否
+	manifest = await asyncio.to_thread(fetch_manifest)
+	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
+	if role_info is None:
+		raise HTTPException(status_code=404, detail="指定されたロールが見つかりません")
+
 	discord_id: str | None = _principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
@@ -513,14 +522,12 @@ async def self_remove_role(
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
-	# マニフェストで禁止カテゴリチェック
-	manifest = await asyncio.to_thread(fetch_manifest)
+	# 禁止カテゴリチェック
 	restricted_cat_ids = {
 		c["id"] for c in manifest.get("categories", [])
 		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
 	}
-	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
-	if role_info and role_info.get("category_id") in restricted_cat_ids:
+	if role_info.get("category_id") in restricted_cat_ids:
 		raise HTTPException(status_code=403, detail="このロールは解除できません（禁止カテゴリ）")
 
 	try:
@@ -547,7 +554,7 @@ async def get_lists(_principal: dict = Depends(require_member)) -> dict:
 
 
 @router.get("/debug/guilds")
-async def debug_bot_guilds() -> dict:
+async def debug_bot_guilds(_principal: dict = Depends(require_admin)) -> dict:
 	"""[DEBUG] Bot が参加しているギルド一覧を取得. ギルドID設定確認用."""
 	token = _get_token()
 	if not token:

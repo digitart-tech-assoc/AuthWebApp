@@ -21,7 +21,7 @@ from app.services.discord_client import fetch_guild_member
 
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 

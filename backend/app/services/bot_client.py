@@ -8,7 +8,7 @@ import httpx
 
 
 BOT_INTERNAL_URL = os.getenv("BOT_INTERNAL_URL", "http://discord-bot:8000/internal/sync")
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 
 async def notify_bot_sync() -> dict:

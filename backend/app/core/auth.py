@@ -11,7 +11,7 @@ from fastapi import Depends, Header, HTTPException
 from app.db.user_repository import get_user_role, upsert_user
 
 
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 # Supabase JWT 署名検証用シークレット（必須）
 SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
@@ -84,7 +84,7 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 	token = _extract_bearer_token(authorization)
 
 	# 内部連携用 shared secret を許容（開発・ボット間通信用）
-	if token == SHARED_SECRET:
+	if SHARED_SECRET and token == SHARED_SECRET:
 		return {"auth_type": "internal", "sub": "internal-service", "app_role": "admin"}
 
 	claims = _decode_supabase_token(token)
@@ -111,11 +111,11 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 		discord_id_effective = discord_id_raw
 
 	return {
+		**claims,
 		"auth_type": "user",
 		"sub": sub,
 		"discord_id": discord_id_effective,
 		"app_role": app_role,
-		**claims,
 	}
 
 

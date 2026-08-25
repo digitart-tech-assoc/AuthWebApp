@@ -11,7 +11,7 @@ from app.services.reconcile import run_reconcile
 
 
 router = APIRouter(prefix="/internal", tags=["internal"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 
 class SyncPayload(BaseModel):
