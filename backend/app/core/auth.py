@@ -13,8 +13,11 @@ from app.db.user_repository import get_user_role, upsert_user
 
 SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
 
+# Supabase JWT 署名検証用シークレット（必須）
+SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
-
+# Supabase の issuer URL（任意: 設定時に iss クレームも検証する）
+SUPABASE_ISSUER_URL: str = os.getenv("SUPABASE_ISSUER_URL", "")
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -27,14 +30,52 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
 
 def _decode_supabase_token(token: str) -> dict[str, Any]:
-	"""Supabase からの JWT を検証する（署名は Supabase が保証済みとして信頼）。
-	Sub と user_metadata を抽出し、アプリ側では DB role 判定のみ行う。
+	"""Supabase からの JWT を署名検証付きでデコードする。
+
+	HS256 署名を SUPABASE_JWT_SECRET で検証し、aud / iss クレームも確認する。
+	algorithms を明示指定することで alg:none や RS256 すり替え攻撃を防ぐ。
 	"""
+	if not SUPABASE_JWT_SECRET:
+		raise HTTPException(
+			status_code=500,
+			detail="Server misconfiguration: SUPABASE_JWT_SECRET is not set",
+		)
+
+	decode_options: dict[str, Any] = {
+		"verify_signature": True,
+		"verify_exp": True,
+		"verify_aud": True,
+	}
+
+	# issuer 検証は環境変数が設定されている場合のみ有効化
+	if SUPABASE_ISSUER_URL:
+		decode_options["verify_iss"] = True
+	else:
+		decode_options["verify_iss"] = False
+
 	try:
-		claims = jwt.decode(token, options={"verify_signature": False})
+		kwargs: dict[str, Any] = {
+			"jwt": token,
+			"key": SUPABASE_JWT_SECRET,
+			"algorithms": ["HS256"],
+			"audience": "authenticated",
+			"options": decode_options,
+		}
+		if SUPABASE_ISSUER_URL:
+			kwargs["issuer"] = SUPABASE_ISSUER_URL
+
+		claims = jwt.decode(**kwargs)
 		if not claims.get("sub"):
 			raise HTTPException(status_code=401, detail="Invalid token: missing sub claim")
 		return claims
+	except jwt.ExpiredSignatureError:
+		raise HTTPException(status_code=401, detail="Token has expired")
+	except jwt.InvalidAudienceError:
+		raise HTTPException(status_code=401, detail="Invalid token: audience mismatch")
+	except jwt.InvalidIssuerError:
+		raise HTTPException(status_code=401, detail="Invalid token: issuer mismatch")
+	except jwt.InvalidAlgorithmError:
+		raise HTTPException(status_code=401, detail="Invalid token: algorithm not allowed")
 	except jwt.PyJWTError as exc:
 		raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
