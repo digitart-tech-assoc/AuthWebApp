@@ -19,7 +19,15 @@ from app.api.v1.survey import router as survey_router
 from app.db.repository import init_db
 
 
-app = FastAPI(title="AuthWebApp Backend", version="0.1.0")
+# 本番環境では OpenAPI docs を無効化する
+_is_prod = os.getenv("FASTAPI_ENV", "").lower() == "production"
+app = FastAPI(
+	title="AuthWebApp Backend",
+	version="0.1.0",
+	docs_url=None if _is_prod else "/docs",
+	redoc_url=None if _is_prod else "/redoc",
+	openapi_url=None if _is_prod else "/openapi.json",
+)
 
 # Build allowlist for CORS. Use FRONTEND_ORIGIN (comma-separated) when set,
 # otherwise allow both localhost and 127.0.0.1 for local development.
@@ -46,7 +54,7 @@ app.add_middleware(
 	CORSMiddleware,
 	allow_origins=_origins,
 	# allow_origin_regex covers other local variants like http://localhost:5173/ and IPv4/IPv6 forms
-	allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\\d+)?$",
+	allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
 	allow_credentials=True,
 	allow_methods=["*"],
 	allow_headers=["*"],

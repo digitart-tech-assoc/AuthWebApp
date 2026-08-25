@@ -26,6 +26,8 @@ spec:
             # 本番環境では DB 初期化をスキップ（既存スキーマを保持）
             - name: SKIP_DB_INIT
               value: "true"
+            - name: FASTAPI_ENV
+              value: "production"
           envFrom:
             - secretRef:
                 name: authwebapp-secret
