@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from app.services.discord_client import send_message_to_channel
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/contact", tags=["contact"])
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN", "")
@@ -68,7 +70,7 @@ async def submit_contact(request: ContactRequest) -> dict:
 			},
 		],
 		"footer": {
-			"text": f"受信時刻: {datetime.utcnow().isoformat()}Z"
+			"text": f"受信時刻: {datetime.now(timezone.utc).isoformat()}"
 		},
 	}
 	
@@ -84,7 +86,5 @@ async def submit_contact(request: ContactRequest) -> dict:
 			"message_id": result.get("id"),
 		}
 	except Exception as e:
-		print(f"[ERROR] Failed to send contact message to Discord: {e}")
-		import traceback
-		traceback.print_exc()
+		logger.error("Failed to send contact message to Discord: %s", e, exc_info=True)
 		raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")

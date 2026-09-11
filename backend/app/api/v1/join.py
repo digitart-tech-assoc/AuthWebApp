@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import traceback
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
-from app.services.brevo_client import BrevoClient
 from app.db import repository
-from app.utils.otp import generate_otp_code, hash_otp_code
+from app.services.brevo_client import BrevoClient
 from app.services.discord_client import create_channel_invite
-import os
+from app.utils.otp import generate_otp_code, hash_otp_code
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/join", tags=["join"])
 
@@ -153,40 +158,28 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 			code = invite.get("code") or invite.get("id")
 			if code:
 				discord_invite_url = f"https://discord.gg/{code}"
-		except Exception:
-			# Fail silently for now — verification already succeeded.
-			import traceback
-			traceback.print_exc()
+		except Exception as exc:
+			logger.warning("Failed to create Discord channel invite: %s", exc, exc_info=True)
 			discord_invite_url = None
 
 	# If we have a discord invite URL, attempt to email it to the user
 	if discord_invite_url:
 		try:
 			brevo = BrevoClient()
-			# look up join_request to get recipient email & name
 			join_req = repository.get_join_request(req.join_request_id)
 			if join_req:
 				email = join_req.get("email")
 				name = join_req.get("name")
-				# send invite email asynchronously
 				try:
 					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, name=name, form_type=join_req.get("form_type"))
-					# Print to stdout as well so container logs capture the result
-					print(f"[invite-email] result={result}")
 					if result.get("status") != "success":
-						# log but do not fail verification
-						import logging
-						logging.getLogger(__name__).error(f"Failed to send invite email: {result}")
+						logger.error("Failed to send invite email: %s", result)
 					else:
-						import logging
-						logging.getLogger(__name__).info(f"Invite email sent: {result}")
+						logger.info("Invite email sent: %s", result)
 				except Exception:
-					import logging, traceback
-					logging.getLogger(__name__).exception("Error while sending invite email")
+					logger.exception("Error while sending invite email")
 		except Exception:
-			# swallow any Brevo initialization errors
-			import logging
-			logging.getLogger(__name__).exception("Failed to initialize BrevoClient for invite email")
+			logger.exception("Failed to initialize BrevoClient for invite email")
 
 	return JoinVerifyResponse(
 		status="verified",

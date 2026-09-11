@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin
 from app.db.repository import (
@@ -136,10 +139,10 @@ async def get_pre_member_list(
 							return result_member
 						except Exception as e:
 							if attempt < max_retries:
-								print(f"[RETRY {attempt+1}] Failed to fetch Discord user {member['discord_id']}: {e}")
+								logger.warning("[RETRY %d] Failed to fetch Discord user %s: %s", attempt + 1, member['discord_id'], e)
 								await asyncio.sleep(0.5 * (attempt + 1))
 							else:
-								print(f"[FAILED] Fetch Discord user {member['discord_id']} failed after {max_retries + 1} attempts: {e}")
+								logger.error("[FAILED] Fetch Discord user %s failed after %d attempts: %s", member['discord_id'], max_retries + 1, e)
 								return None
 					return None
 
@@ -202,9 +205,6 @@ async def register_paid_invitation_endpoint(
 			or "unknown"
 		)
 		
-		# ログ出力（デバッグ用）
-		import logging
-		logger = logging.getLogger(__name__)
 		logger.info(f"register_paid_invitation: principal={_principal}, assigned_by={assigned_by}")
 		
 		result = await asyncio.to_thread(
@@ -215,7 +215,5 @@ async def register_paid_invitation_endpoint(
 		)
 		return {"ok": True, "data": result}
 	except Exception as e:
-		import logging
-		logger = logging.getLogger(__name__)
 		logger.error(f"Error in register_paid_invitation: {e}")
 		raise HTTPException(status_code=400, detail=str(e))

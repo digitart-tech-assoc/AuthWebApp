@@ -1,15 +1,24 @@
 """役割: Discordロール取得API"""
-
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
 from pydantic import BaseModel
 
+logger = logging.getLogger(__name__)
+
 from app.core.auth import require_admin, require_member
+from app.core.config import (
+	ADMIN_ROLE_NAMES,
+	MEMBER_RESTRICTED_CATEGORY_NAMES,
+	MEMBER_ROLE_NAMES,
+	OBOG_ROLE_NAMES,
+	PRE_MEMBER_ROLE_NAME,
+)
 from app.db.repository import (
 	clear_all_role_assignments,
 	fetch_guild_members,
@@ -62,13 +71,13 @@ async def _notify_bot_to_reconcile() -> bool:
 				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
 			)
 			if resp.status_code == 200:
-				print(f"[INFO] Bot reconcile triggered successfully: {resp.json()}")
+				logger.info("Bot reconcile triggered successfully: %s", resp.json())
 				return True
 			else:
-				print(f"[WARNING] Bot reconcile failed with status {resp.status_code}: {resp.text}")
+				logger.warning("Bot reconcile failed with status %d: %s", resp.status_code, resp.text)
 				return False
 	except Exception as e:
-		print(f"[WARNING] Failed to trigger bot reconcile: {e}")
+		logger.warning("Failed to trigger bot reconcile: %s", e)
 		return False
 
 
@@ -79,74 +88,60 @@ async def refresh_roles_from_discord(_principal: dict = Depends(require_member))
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
 	try:
-		print("[DEBUG] Starting Discord roles refresh...")
+		logger.debug("Starting Discord roles refresh...")
 		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-		print(f"[DEBUG] Fetched {len(roles)} roles from Discord")
+		logger.debug("Fetched %d roles from Discord", len(roles))
 	except Exception as exc:
 		error_detail = str(exc)
-		print(f"[ERROR] Discord roles fetch failed: {error_detail}")
-		import traceback
-		traceback.print_exc()
+		logger.exception("Discord roles fetch failed: %s", error_detail)
 		raise HTTPException(status_code=502, detail=f"Discord API error: {error_detail}") from exc
 
 	try:
 		count = await asyncio.to_thread(replace_roles_from_discord, roles)
-		print(f"[DEBUG] Replaced {count} roles in database")
+		logger.debug("Replaced %d roles in database", count)
 	except Exception as exc:
 		error_detail = str(exc)
-		print(f"[ERROR] Database replace_roles failed: {error_detail}")
-		import traceback
-		traceback.print_exc()
+		logger.exception("Database replace_roles failed: %s", error_detail)
 		raise HTTPException(status_code=502, detail=f"Database error: {error_detail}") from exc
 
 	# Also fetch all guild members and their role assignments
 	members = []
 	try:
 		members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
-		print(f"[DEBUG] Fetched {len(members)} guild members")
+		logger.debug("Fetched %d guild members", len(members))
 		await asyncio.to_thread(save_guild_members, [
 			{"user_id": m["user_id"], "username": m["username"],
 			 "display_name": m["display_name"], "avatar": m["avatar"]}
 			for m in members
 		])
-		print(f"[DEBUG] Saved {len(members)} guild members to database")
+		logger.debug("Saved %d guild members to database", len(members))
 		# Build role_id -> [user_id] mapping from member data
 		assignments: dict[str, list[str]] = {}
 		for m in members:
 			for role_id in m.get("role_ids", []):
 				assignments.setdefault(role_id, []).append(m["user_id"])
-		print(f"[DEBUG] Found {len(assignments)} roles with assignments, total members: {sum(len(u) for u in assignments.values())}")
+		logger.debug("Found %d roles with assignments, total members: %d", len(assignments), sum(len(u) for u in assignments.values()))
 		# First clear ALL existing assignments so that roles with 0 members don't linger
-		print("[DEBUG] Clearing all existing role assignments...")
+		logger.debug("Clearing all existing role assignments...")
 		await asyncio.to_thread(clear_all_role_assignments)
-		print("[DEBUG] Saving new role assignments...")
+		logger.debug("Saving new role assignments...")
 		await asyncio.to_thread(save_role_assignments, assignments)
-		print(f"[DEBUG] Role assignments saved successfully")
+		logger.debug("Role assignments saved successfully")
 	except Exception as exc:
 		error_detail = str(exc)
-		print(f"[ERROR] Failed to fetch or map guild members: {error_detail}")
-		import traceback
-		traceback.print_exc()
+		logger.exception("Failed to fetch or map guild members: %s", error_detail)
 		# Don't fail the entire request if member sync fails
-		print(f"[WARNING] Continuing without member sync")
+		logger.warning("Continuing without member sync")
 
 	return {"ok": True, "guild_id": DISCORD_GUILD_ID, "roles": count, "members": len(members)}
 
 
-@router.post("/push")
-async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
-	token = _get_token()
-	if not token:
-		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
-
-	manifest = await asyncio.to_thread(fetch_manifest)
-	desired_roles = manifest.get("roles", [])
-
-	try:
-		actual_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-	except Exception as exc:  # noqa: BLE001
-		raise HTTPException(status_code=502, detail=f"Discord fetch failed: {exc}") from exc
-
+async def _sync_role_definitions(
+	desired_roles: list[dict],
+	actual_roles: list[dict],
+	token: str,
+) -> tuple[int, int, int, int, set[str], set[str], list[str], dict, dict]:
+	"""ロール定義の同期（Create / Update / Delete）"""
 	actual_by_id = {role["role_id"]: role for role in actual_roles}
 	desired_by_id = {role["role_id"]: role for role in desired_roles}
 
@@ -154,9 +149,9 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	created = 0
 	deleted = 0
 	skipped_managed = 0
-	errors = []
-	created_real_ids: set[str] = set()  # track real Discord IDs for newly created roles
-	deleted_role_ids: set[str] = set()  # track deleted roles to skip member sync
+	errors: list[str] = []
+	created_real_ids: set[str] = set()
+	deleted_role_ids: set[str] = set()
 
 	for role in desired_roles:
 		role_id = role["role_id"]
@@ -166,20 +161,16 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 				new_role_discord = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
 				created += 1
 				real_id = new_role_discord["role_id"]
-				# Replace temporary draft ID with the real Discord ID in the local DB
 				if str(role_id).startswith("draft-"):
 					await asyncio.to_thread(update_role_id, role_id, real_id)
-					# Update our local mapping so the real role isn't accidentally deleted below
 					desired_by_id[real_id] = role
 					role["role_id"] = real_id
 					actual_by_id[real_id] = new_role_discord
 					created_real_ids.add(real_id)
 			except Exception as exc:
 				msg = f"Failed to create role locally {role_id}: {exc}"
-				print(msg)
+				logger.exception("%s", msg)
 				errors.append(msg)
-				import traceback
-				traceback.print_exc()
 			continue
 		if actual.get("managed") or role_id == DISCORD_GUILD_ID:
 			skipped_managed += 1
@@ -192,7 +183,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			updated += 1
 		except Exception as exc:
 			msg = f"Failed to update role in discord {role_id}: {exc}"
-			print(msg)
+			logger.error("%s", msg)
 			errors.append(msg)
 
 	for role in actual_roles:
@@ -207,12 +198,24 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			deleted_role_ids.add(role_id)
 		except Exception as exc:
 			msg = f"Failed to delete role {role_id}: {exc}"
-			print(msg)
+			logger.error("%s", msg)
 			errors.append(msg)
 
-	# Build position payload: sort all desired roles by their position value (ascending = lower priority).
-	# Assign contiguous 1..N positions so Discord gets a clean, gapless ordering.
-	# Include roles that were just created (created_real_ids) since their real IDs are now in actual_by_id.
+	return (
+		updated, created, deleted, skipped_managed,
+		created_real_ids, deleted_role_ids, errors,
+		actual_by_id, desired_by_id
+	)
+
+
+async def _reorder_roles(
+	desired_roles: list[dict],
+	actual_by_id: dict,
+	created_real_ids: set[str],
+	token: str,
+) -> tuple[int, list[str]]:
+	"""ロール順序の再編成（contiguous 1..N positions）"""
+	errors: list[str] = []
 	desired_roles_sorted = sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
 	position_payload = []
 	current_pos = 1
@@ -230,13 +233,23 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 			reordered = len(position_payload)
 		except Exception as exc:
 			msg = f"Failed to reorder roles: {exc}"
-			print(msg)
+			logger.error("%s", msg)
 			errors.append(msg)
 			reordered = 0
+	return reordered, errors
 
-	# Apply role assignment diffs: compare DB desired assignments vs current Discord member roles
+
+async def _apply_role_assignment_diffs(
+	actual_by_id: dict,
+	created_real_ids: set[str],
+	deleted_role_ids: set[str],
+	token: str,
+) -> tuple[int, int, list[str]]:
+	"""メンバーロール割り当ての差分適用"""
 	assigned_adds = 0
 	assigned_removes = 0
+	errors: list[str] = []
+
 	try:
 		desired_assignments = await asyncio.to_thread(fetch_role_assignments)
 		current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
@@ -258,8 +271,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 					assigned_adds += 1
 				except httpx.HTTPStatusError as e:
 					if e.response is not None and e.response.status_code in (404, 403):
-						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上付与不可→スキップ
-						print(f"[WARNING] Skipped add role {role_id} to {user_id}: HTTP {e.response.status_code}")
+						logger.warning("Skipped add role %s to %s: HTTP %s", role_id, user_id, e.response.status_code)
 						continue
 					errors.append(f"Failed to add role {role_id} to {user_id}: {e}")
 				except Exception as exc:
@@ -270,33 +282,28 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 					assigned_removes += 1
 				except httpx.HTTPStatusError as e:
 					if e.response is not None and e.response.status_code in (404, 403):
-						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上操作不可→スキップ
-						print(f"[WARNING] Skipped remove role {role_id} from {user_id}: HTTP {e.response.status_code}")
+						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
 						continue
 					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
 				except Exception as exc:
 					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
 
-		# Also handle roles that exist in Discord but have been completely removed from desired_assignments
-		# (fetch_role_assignments only returns role_ids with at least 1 member, so 0-member roles are missing)
 		for role_id, current_users in current_by_role.items():
 			if role_id in desired_assignments:
-				continue  # already handled above
+				continue
 			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
 				continue
 			if role_id not in actual_by_id and role_id not in created_real_ids:
 				continue
 			if role_id in deleted_role_ids:
 				continue
-			# This role has Discord members but no desired members → remove all
 			for user_id in current_users:
 				try:
 					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
 					assigned_removes += 1
 				except httpx.HTTPStatusError as e:
 					if e.response is not None and e.response.status_code in (404, 403):
-						# 404: ユーザーがギルドに不在 / 403: Botのロール階層上操作不可→スキップ
-						print(f"[WARNING] Skipped remove role {role_id} from {user_id}: HTTP {e.response.status_code}")
+						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
 						continue
 					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
 				except Exception as exc:
@@ -304,12 +311,45 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	except Exception as exc:
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
+	return assigned_adds, assigned_removes, errors
+
+
+@router.post("/push")
+async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	manifest = await asyncio.to_thread(fetch_manifest)
+	desired_roles = manifest.get("roles", [])
+
+	try:
+		actual_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
+	except Exception as exc:  # noqa: BLE001
+		raise HTTPException(status_code=502, detail=f"Discord fetch failed: {exc}") from exc
+
+	(
+		updated, created, deleted, skipped_managed,
+		created_real_ids, deleted_role_ids, sync_errors,
+		actual_by_id, desired_by_id
+	) = await _sync_role_definitions(desired_roles, actual_roles, token)
+
+	reordered, reorder_errors = await _reorder_roles(
+		desired_roles, actual_by_id, created_real_ids, token
+	)
+
+	assigned_adds, assigned_removes, assign_errors = await _apply_role_assignment_diffs(
+		actual_by_id, created_real_ids, deleted_role_ids, token
+	)
+
+	all_errors = sync_errors + reorder_errors + assign_errors
+
 	# Notify Discord Bot to reconcile member_list / pre_member_list
-	print("[DEBUG] Notifying Discord Bot to reconcile member lists...")
+	logger.debug("Notifying Discord Bot to reconcile member lists...")
 	bot_reconciled = await _notify_bot_to_reconcile()
 
 	return {
-		"ok": len(errors) == 0,
+		"ok": len(all_errors) == 0,
 		"guild_id": DISCORD_GUILD_ID,
 		"updated": updated,
 		"created": created,
@@ -319,7 +359,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		"assigned_adds": assigned_adds,
 		"assigned_removes": assigned_removes,
 		"bot_reconciled": bot_reconciled,
-		"errors": errors,
+		"errors": all_errors,
 	}
 
 
@@ -359,6 +399,26 @@ async def update_role_permissions(
 	return {"ok": True, "role_id": role_id, "permissions": payload.permissions}
 
 
+def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
+	"""Discordロール一覧から期待されるロール種別のIDを特定する"""
+	member_role_ids = [r["role_id"] for r in roles if r["name"] in MEMBER_ROLE_NAMES]
+	obog_role_ids = [r["role_id"] for r in roles if r["name"] in OBOG_ROLE_NAMES]
+	admin_role_ids = [r["role_id"] for r in roles if r["name"] in ADMIN_ROLE_NAMES]
+	pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == PRE_MEMBER_ROLE_NAME), None)
+
+	all_matched = member_role_ids + obog_role_ids + admin_role_ids
+	if pre_member_role_id:
+		all_matched.append(pre_member_role_id)
+
+	return {
+		"member_role_ids": member_role_ids,
+		"obog_role_ids": obog_role_ids,
+		"admin_role_ids": admin_role_ids,
+		"pre_member_role_id": pre_member_role_id,
+		"all_matched_role_ids": all_matched,
+	}
+
+
 @router.post("/members/sync")
 async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -> dict:
 	"""Discord ギルドメンバーから member_list / admin_list / pre_member_list を同期."""
@@ -367,36 +427,27 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
 	try:
-		print(f"[DEBUG] sync_members: GUILD_ID={DISCORD_GUILD_ID}")
+		logger.debug("sync_members: GUILD_ID=%s", DISCORD_GUILD_ID)
 		
 		# Get all roles from Discord
 		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-		print(f"[DEBUG] Fetched {len(roles)} roles from Discord")
+		logger.debug("Fetched %d roles from Discord", len(roles))
 		for r in roles:
-			print(f"[DEBUG]   Role: {r['name']} (id={r['role_id']})")
+			logger.debug("  Role: %s (id=%s)", r['name'], r['role_id'])
 		
-		# Identify role IDs by name pattern (configurable from env)
-		# Expected roles: "member", "OBOG", "administrator", "pre-member"
-		member_role_names = {"member", "会員", "Member"}
-		obog_role_names = {"OBOG", "OB/OG", "OB-OG"}
-		admin_role_names = {"administrator", "管理者", "Administrator"}
-		pre_member_role_name = "pre-member"
+		# Identify role IDs by name pattern (from app.core.config)
+		matched = _match_role_ids(roles)
+		member_role_ids = matched["member_role_ids"]
+		obog_role_ids = matched["obog_role_ids"]
+		admin_role_ids = matched["admin_role_ids"]
+		pre_member_role_id = matched["pre_member_role_id"]
+		all_matched_role_ids = matched["all_matched_role_ids"]
 		
-		member_role_ids = [r["role_id"] for r in roles if r["name"] in member_role_names]
-		obog_role_ids = [r["role_id"] for r in roles if r["name"] in obog_role_names]
-		admin_role_ids = [r["role_id"] for r in roles if r["name"] in admin_role_names]
-		pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == pre_member_role_name), None)
-		
-		print(f"[DEBUG] Matched roles:")
-		print(f"[DEBUG]   member_role_ids={member_role_ids}")
-		print(f"[DEBUG]   obog_role_ids={obog_role_ids}")
-		print(f"[DEBUG]   admin_role_ids={admin_role_ids}")
-		print(f"[DEBUG]   pre_member_role_id={pre_member_role_id}")
-		
-		# ロール ID マッピング失敗のチェック
-		all_matched_role_ids = member_role_ids + obog_role_ids + admin_role_ids
-		if pre_member_role_id:
-			all_matched_role_ids.append(pre_member_role_id)
+		logger.debug("Matched roles:")
+		logger.debug("  member_role_ids=%s", member_role_ids)
+		logger.debug("  obog_role_ids=%s", obog_role_ids)
+		logger.debug("  admin_role_ids=%s", admin_role_ids)
+		logger.debug("  pre_member_role_id=%s", pre_member_role_id)
 		
 		if not all_matched_role_ids:
 			available_names = [r["name"] for r in roles]
@@ -406,7 +457,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 				f"administrator/管理者, pre-member. "
 				f"Available Discord role names: {available_names}"
 			)
-			print(f"[ERROR] {error_detail}")
+			logger.error("%s", error_detail)
 			raise HTTPException(status_code=400, detail=error_detail)
 		
 		# Fetch members for each role
@@ -415,17 +466,16 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else []):
 			if role_id:
 				members = await fetch_guild_members_with_role(DISCORD_GUILD_ID, role_id, token)
-				print(f"[DEBUG] Fetched {len(members)} members for role {role_id}")
+				logger.debug("Fetched %d members for role %s", len(members), role_id)
 				members_data[role_id] = members
 				for m in members:
 					all_unique_members[m["user_id"]] = m
 		
-		print(f"[DEBUG] Saving {len(all_unique_members)} unique guild members metadata")
-		from app.db.repository import save_guild_members
+		logger.debug("Saving %d unique guild members metadata", len(all_unique_members))
 		await asyncio.to_thread(save_guild_members, list(all_unique_members.values()))
 		
 		# Sync to DB
-		print(f"[DEBUG] Syncing role memberships to DB with members_data keys: {list(members_data.keys())}")
+		logger.debug("Syncing role memberships to DB with members_data keys: %s", list(members_data.keys()))
 		result = await asyncio.to_thread(
 			sync_member_lists,
 			member_role_ids,
@@ -434,7 +484,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			pre_member_role_id,
 			members_data
 		)
-		print(f"[DEBUG] Sync result: {result}")
+		logger.debug("Sync result: %s", result)
 		
 		return {
 			"ok": True,
@@ -444,9 +494,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			"pre_member_list": result["pre_member_list"],
 		}
 	except Exception as exc:  # noqa: BLE001
-		import traceback
-		print(f"[ERROR] Discord sync failed: {exc}")
-		traceback.print_exc()
+		logger.exception("Discord sync failed: %s", exc)
 		raise HTTPException(status_code=502, detail=f"Discord sync failed: {exc}") from exc
 
 
@@ -454,22 +502,24 @@ class SelfAssignPayload(BaseModel):
 	role_id: str
 
 
-# カテゴリ名で付与を禁止するカテゴリ（バックエンド側でも確認）
-MEMBER_RESTRICTED_CATEGORY_NAMES = {"会員情報", "学部学科", "学年"}
+# NOTE: MEMBER_RESTRICTED_CATEGORY_NAMES は app.core.config からインポート済み
 
 
-@router.post("/self-assign")
-async def self_assign_role(
+async def _validate_self_role_operation(
 	payload: SelfAssignPayload,
-	_principal: dict = Depends(require_member),
-) -> dict:
-	"""memberが自分自身にロールを付与する。禁止カテゴリに属するロールは拒否。"""
-	# マニフェストに存在しないロールIDは拒否
+	principal: dict,
+	operation_name: str = "操作",
+) -> tuple[dict, str, str]:
+	"""セルフロール操作（付与/解除）の共通バリデーション。
+	Returns:
+		(role_info, discord_id, token)
+	"""
 	manifest = await asyncio.to_thread(fetch_manifest)
 	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
 	if role_info is None:
 		raise HTTPException(status_code=404, detail="指定されたロールが見つかりません")
-	discord_id: str | None = _principal.get("discord_id")
+
+	discord_id: str | None = principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
 
@@ -483,7 +533,18 @@ async def self_assign_role(
 		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
 	}
 	if role_info.get("category_id") in restricted_cat_ids:
-		raise HTTPException(status_code=403, detail="このロールは付与できません（禁止カテゴリ）")
+		raise HTTPException(status_code=403, detail=f"このロールは{operation_name}できません（禁止カテゴリ）")
+
+	return role_info, discord_id, token
+
+
+@router.post("/self-assign")
+async def self_assign_role(
+	payload: SelfAssignPayload,
+	_principal: dict = Depends(require_member),
+) -> dict:
+	"""memberが自分自身にロールを付与する。禁止カテゴリに属するロールは拒否。"""
+	_role_info, discord_id, token = await _validate_self_role_operation(payload, _principal, "付与")
 
 	try:
 		await add_role_to_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
@@ -508,27 +569,7 @@ async def self_remove_role(
 	_principal: dict = Depends(require_member),
 ) -> dict:
 	"""memberが自分自身からロールを解除する。禁止カテゴリに属するロールは拒否。"""
-	# マニフェストに存在しないロールIDは拒否
-	manifest = await asyncio.to_thread(fetch_manifest)
-	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
-	if role_info is None:
-		raise HTTPException(status_code=404, detail="指定されたロールが見つかりません")
-
-	discord_id: str | None = _principal.get("discord_id")
-	if not discord_id:
-		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
-
-	token = _get_token()
-	if not token:
-		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
-
-	# 禁止カテゴリチェック
-	restricted_cat_ids = {
-		c["id"] for c in manifest.get("categories", [])
-		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
-	}
-	if role_info.get("category_id") in restricted_cat_ids:
-		raise HTTPException(status_code=403, detail="このロールは解除できません（禁止カテゴリ）")
+	_role_info, discord_id, token = await _validate_self_role_operation(payload, _principal, "解除")
 
 	try:
 		await remove_role_from_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
@@ -574,5 +615,5 @@ async def debug_bot_guilds(_principal: dict = Depends(require_admin)) -> dict:
 		}
 	except Exception as exc:
 		error_detail = str(exc)
-		print(f"[ERROR] Debug guilds fetch failed: {error_detail}")
+		logger.error("Debug guilds fetch failed: %s", error_detail)
 		raise HTTPException(status_code=502, detail=f"Failed to fetch guilds: {error_detail}") from exc

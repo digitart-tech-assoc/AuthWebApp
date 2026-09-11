@@ -46,7 +46,7 @@ async def submit_survey(req: SurveyRequest, principal: dict = Depends(get_curren
         raise HTTPException(status_code=401, detail="Discord account not linked")
 
     # Try to resolve profile by discord_id
-    profile = repository._get_student_profile(discord_id) if hasattr(repository, "_get_student_profile") else None
+    profile = repository.get_student_profile(discord_id) if discord_id else None
     profile_id = profile.get("id") if profile else None
     student_number = profile.get("student_number") if profile else ""
 

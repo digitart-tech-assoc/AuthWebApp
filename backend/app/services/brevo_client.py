@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
+import asyncio
 import logging
+import os
 from datetime import datetime
 from typing import Any
 
@@ -234,8 +235,6 @@ def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
 	Returns:
 		dict with messageId or error information
 	"""
-	import asyncio
-	
 	client = BrevoClient()
 	
 	# Create or get event loop
