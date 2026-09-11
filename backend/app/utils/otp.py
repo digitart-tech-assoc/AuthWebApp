@@ -5,10 +5,12 @@ from __future__ import annotations
 import secrets
 import bcrypt
 
+from app.core.config import OTP_CODE_LENGTH
+
 
 def generate_otp_code() -> str:
 	"""Generate a random 6-digit OTP code"""
-	return "".join(secrets.choice("0123456789") for _ in range(6))
+	return "".join(secrets.choice("0123456789") for _ in range(OTP_CODE_LENGTH))
 
 
 def hash_otp_code(code: str) -> str:
