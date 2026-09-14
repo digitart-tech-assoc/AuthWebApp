@@ -541,7 +541,7 @@ def add_to_member_list(
 				INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
 				VALUES (%s, 'member', %s, now(), now())
 				ON CONFLICT (discord_id, membership_type) DO NOTHING
-				RETURNING id, created_at
+				RETURNING created_at, assigned_at
 				""",
 				(discord_id, assigned_by)
 			)
@@ -572,7 +572,7 @@ def add_to_member_list(
 			return {
 				"discord_id": discord_id,
 				"added_to_member_list": True,
-				"created_at": result[1].isoformat() if result[1] else None
+				"created_at": result[0].isoformat() if result and result[0] else None
 			}
 
 
