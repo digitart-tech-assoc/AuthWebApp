@@ -85,10 +85,10 @@ def create_otp_record(
 	otp_id: str,
 	discord_id: str,
 	email_aoyama: str,
-	otp_code: str,
+	code_hash: str,
 	otp_expires_at: datetime,
 ) -> None:
-	"""新しい学生OTPレコードを作成"""
+	"""新しい学生OTPレコードを作成（ハッシュ化済みコードを保存）"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
@@ -96,7 +96,7 @@ def create_otp_record(
 				INSERT INTO otp_records (id, discord_id, email_aoyama, code, expires_at)
 				VALUES (%s, %s, %s, %s, %s)
 				""",
-				(otp_id, discord_id, email_aoyama, otp_code, otp_expires_at),
+				(otp_id, discord_id, email_aoyama, code_hash, otp_expires_at),
 			)
 			conn.commit()
 

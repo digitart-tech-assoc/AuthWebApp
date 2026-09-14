@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
 from app.core.config import OTP_EXPIRY_SECONDS
+from app.utils.otp import hash_otp_code, verify_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
@@ -262,9 +263,10 @@ async def send_otp(
 	otp_code = _generate_otp_code()
 	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS)
 
-	# OTP レコードを DB に保存
+	# OTP レコードを DB に保存（bcrypt ハッシュ化）
 	otp_id = f"otp_{uuid.uuid4().hex[:12]}"
-	student_repository.create_otp_record(otp_id, discord_id, email_aoyama, otp_code, otp_expires_at)
+	code_hash = hash_otp_code(otp_code)
+	student_repository.create_otp_record(otp_id, discord_id, email_aoyama, code_hash, otp_expires_at)
 
 	# メール送信
 	try:
@@ -315,8 +317,8 @@ async def verify_otp(
 	if otp["attempt_count"] >= 3:
 		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
 
-	# OTP コード確認
-	if otp["code"] != req.code:
+	# OTP コード確認（bcrypt によるハッシュ突合）
+	if not verify_otp_code(req.code, otp["code"]):
 		# 試行回数をインクリメント
 		student_repository.increment_otp_attempt(otp["id"])
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")

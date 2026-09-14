@@ -460,3 +460,34 @@ class TestSupabaseJWTDecode:
         assert claims["iss"] == "https://test.supabase.co/auth/v1"
 
 
+# ============================================================================
+# student_repository / student OTP ハッシュ化テスト
+# ============================================================================
+
+class TestStudentOTPHashing:
+    """学生OTPがbcryptで安全にハッシュ化され突合されるテスト"""
+
+    def test_create_otp_record_stores_hash(self):
+        from unittest.mock import MagicMock, patch
+        from app.db.student_repository import create_otp_record
+        from app.utils.otp import hash_otp_code, verify_otp_code
+
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+
+        otp_code = "123456"
+        code_hash = hash_otp_code(otp_code)
+
+        with patch("app.db.student_repository._connect", return_value=MagicMock(__enter__=MagicMock(return_value=mock_conn))):
+            create_otp_record("otp_123", "discord_456", "a123@aoyama.ac.jp", code_hash, datetime.now(timezone.utc))
+            sql, params = mock_cur.execute.call_args[0]
+            assert "INSERT INTO otp_records" in sql
+            stored_hash = params[3]
+            # 平文ではなくハッシュ値が保存されていること
+            assert stored_hash != otp_code
+            assert verify_otp_code(otp_code, stored_hash) is True
+            assert verify_otp_code("999999", stored_hash) is False
+
+
+
