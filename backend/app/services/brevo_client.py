@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 from datetime import datetime
@@ -201,10 +202,12 @@ def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
 	client = BrevoClient()
 	try:
 		asyncio.get_running_loop()
-		# すでに非同期イベントループが稼働中の場合は警告
-		logger.warning("send_otp_email called synchronously inside an existing event loop. Use 'await BrevoClient().send_otp_email()' instead.")
+		# すでに非同期イベントループが稼働中の場合は別スレッドで安全に実行
+		logger.warning("send_otp_email called synchronously inside an existing event loop. Offloading to worker thread. Use 'await BrevoClient().send_otp_email()' instead.")
+		with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+			future = executor.submit(asyncio.run, client.send_otp_email(email, code, name, "full-registration"))
+			return future.result()
 	except RuntimeError:
-		pass
-
-	return asyncio.run(client.send_otp_email(email, code, name, "full-registration"))
+		# イベントループが存在しない場合は直接 asyncio.run で実行
+		return asyncio.run(client.send_otp_email(email, code, name, "full-registration"))
 
