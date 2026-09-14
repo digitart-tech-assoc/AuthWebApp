@@ -557,8 +557,9 @@ async def self_assign_role(
 		current = set(assignments.get(payload.role_id, []))
 		current.add(discord_id)
 		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
-	except Exception:
-		pass  # DB更新失敗は無視（Discord側には反映済み）
+	except Exception as exc:
+		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
+		raise HTTPException(status_code=500, detail="Discord role updated, but failed to persist assignment to database.") from exc
 
 	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
@@ -582,8 +583,9 @@ async def self_remove_role(
 		current = set(assignments.get(payload.role_id, []))
 		current.discard(discord_id)
 		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
-	except Exception:
-		pass  # DB更新失敗は無視（Discord側には反映済み）
+	except Exception as exc:
+		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
+		raise HTTPException(status_code=500, detail="Discord role removed, but failed to persist assignment to database.") from exc
 
 	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
