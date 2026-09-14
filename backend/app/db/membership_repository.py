@@ -549,14 +549,14 @@ def add_to_member_list(
 			
 			# Also register in paid_invitations if not already there
 			cur.execute(
-				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s AND status = 'completed'",
+				"SELECT discord_id FROM paid_invitations WHERE discord_id = %s",
 				(discord_id,)
 			)
 			if cur.fetchone() is None:
 				cur.execute(
 					"""
-					INSERT INTO paid_invitations (discord_id, note, status, assigned_by, assigned_at)
-					VALUES (%s, %s, 'completed', %s, now())
+					INSERT INTO paid_invitations (discord_id, note, assigned_by, assigned_at)
+					VALUES (%s, %s, %s, now())
 					""",
 					(discord_id, note, assigned_by)
 				)
