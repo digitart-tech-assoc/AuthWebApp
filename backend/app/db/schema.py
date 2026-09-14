@@ -124,6 +124,19 @@ def init_db() -> None:
                     """
                 )
 
+                # ギルドメンバー情報（user_membershipsの外部キー参照先）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS guild_members (
+                        user_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        display_name TEXT,
+                        avatar TEXT,
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    );
+                    """
+                )
+
                 # 統合メンバーシップテーブル（member / admin / pre_member / obog）
                 cur.execute(
 					"""
@@ -188,17 +201,6 @@ def init_db() -> None:
                 except Exception as e:
                     # Column may already be dropped or table may be in use
                     pass
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS guild_members (
-                        user_id TEXT PRIMARY KEY,
-                        username TEXT NOT NULL,
-                        display_name TEXT,
-                        avatar TEXT,
-                        updated_at TIMESTAMPTZ DEFAULT now()
-                    );
-                    """
-                )
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS role_member_assignments (
