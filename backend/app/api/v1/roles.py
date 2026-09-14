@@ -527,10 +527,10 @@ async def _validate_self_role_operation(
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
-	# 禁止カテゴリチェック
+	# 禁止カテゴリチェック（静的制限カテゴリ名 + 動的 is_restricted フラグ）
 	restricted_cat_ids = {
 		c["id"] for c in manifest.get("categories", [])
-		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES
+		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES or c.get("is_restricted", False)
 	}
 	if role_info.get("category_id") in restricted_cat_ids:
 		raise HTTPException(status_code=403, detail=f"このロールは{operation_name}できません（禁止カテゴリ）")
