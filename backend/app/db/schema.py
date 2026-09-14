@@ -19,9 +19,11 @@ def init_db() -> None:
                 # Ensure pgcrypto extension is available for gen_random_uuid().
                 # Ignore failures (hosted providers may restrict extension creation).
                 try:
+                    cur.execute("SAVEPOINT create_pgcrypto;")
                     cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                    cur.execute("RELEASE SAVEPOINT create_pgcrypto;")
                 except Exception:
-                    pass
+                    cur.execute("ROLLBACK TO SAVEPOINT create_pgcrypto;")
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS role_categories (
