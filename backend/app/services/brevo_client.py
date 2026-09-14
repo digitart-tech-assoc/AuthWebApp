@@ -96,12 +96,14 @@ Digitart Technology Association
 			"textContent": text_body,
 			"replyTo": {"email": self.sender_email},
 		}
+		return await self._send_smtp_email(payload, "send_otp")
 
+	async def _send_smtp_email(self, payload: dict[str, Any], operation_name: str = "email") -> dict[str, Any]:
+		"""Brevo API への SMTP メール送信共通処理"""
 		headers = {
 			"api-key": self.api_key,
 			"Content-Type": "application/json",
 		}
-
 		try:
 			async with httpx.AsyncClient(timeout=10.0) as client:
 				response = await client.post(
@@ -109,24 +111,23 @@ Digitart Technology Association
 					json=payload,
 					headers=headers,
 				)
-				# Inspect response for debugging: Brevo returns 201 on success, 4xx/5xx on errors
 				if response.status_code >= 400:
 					text = response.text
-					logger.error(f"Brevo API returned error: status={response.status_code} body={text}")
+					logger.error(f"Brevo API returned error ({operation_name}): status={response.status_code} body={text}")
 					return {"error": f"{response.status_code} {text}", "status": "failed"}
 				try:
 					data = response.json()
-					logger.info(f"Brevo send_otp response: status={response.status_code} body={data}")
+					logger.info(f"Brevo {operation_name} response: status={response.status_code} body={data}")
 				except Exception:
 					data = {}
 				message_id = data.get("messageId") or data.get("message_id")
-				logger.info(f"Brevo send_otp success message_id={message_id}")
+				logger.info(f"Brevo {operation_name} success message_id={message_id}")
 				return {"message_id": message_id, "status": "success"}
 		except httpx.HTTPError as e:
-			logger.error(f"Brevo API error: {e}", exc_info=True)
+			logger.error(f"Brevo API error ({operation_name}): {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}
 		except Exception as e:
-			logger.error(f"Unexpected error sending OTP email: {e}", exc_info=True)
+			logger.error(f"Unexpected error ({operation_name}): {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}
 
 	async def send_invite_email(self, email: str, invite_url: str, name: str, form_type: str) -> dict[str, Any]:
@@ -188,62 +189,22 @@ Digitart Technology Association
 			"replyTo": {"email": self.sender_email},
 		}
 
-		headers = {
-			"api-key": self.api_key,
-			"Content-Type": "application/json",
-		}
-
-		try:
-			async with httpx.AsyncClient(timeout=10.0) as client:
-				response = await client.post(
-					f"{self.base_url}/smtp/email",
-					json=payload,
-					headers=headers,
-				)
-				if response.status_code >= 400:
-					text = response.text
-					logger.error(f"Brevo invite email error: status={response.status_code} body={text}")
-					return {"error": f"{response.status_code} {text}", "status": "failed"}
-				try:
-					data = response.json()
-					logger.info(f"Brevo send_invite response: status={response.status_code} body={data}")
-				except Exception:
-					data = {}
-				message_id = data.get("messageId") or data.get("message_id")
-				logger.info(f"Brevo send_invite success message_id={message_id}")
-				return {"message_id": message_id, "status": "success"}
-		except httpx.HTTPError as e:
-			logger.error(f"Brevo API error sending invite: {e}", exc_info=True)
-			return {"error": str(e), "status": "failed"}
-		except Exception as e:
-			logger.error(f"Unexpected error sending invite email: {e}", exc_info=True)
-			return {"error": str(e), "status": "failed"}
+		return await self._send_smtp_email(payload, "send_invite")
 
 
 # ============================================================================
-# Synchronous wrapper functions for use in thread executor
+# Synchronous wrapper functions for backward compatibility
 # ============================================================================
 
 def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
-	"""Synchronous wrapper for sending OTP email.
-	
-	Args:
-		email: recipient email (e.g., a2412345@aoyama.ac.jp)
-		code: 6-digit OTP code
-		name: recipient name
-	
-	Returns:
-		dict with messageId or error information
-	"""
+	"""後方互換用同期ラッパー（非同期コンテキスト外からの呼び出し用）"""
 	client = BrevoClient()
-	
-	# Create or get event loop
 	try:
-		loop = asyncio.get_event_loop()
+		asyncio.get_running_loop()
+		# すでに非同期イベントループが稼働中の場合は警告
+		logger.warning("send_otp_email called synchronously inside an existing event loop. Use 'await BrevoClient().send_otp_email()' instead.")
 	except RuntimeError:
-		loop = asyncio.new_event_loop()
-		asyncio.set_event_loop(loop)
-	
-	# Run async method
-	result = loop.run_until_complete(client.send_otp_email(email, code, name, "full-registration"))
-	return result
+		pass
+
+	return asyncio.run(client.send_otp_email(email, code, name, "full-registration"))
+

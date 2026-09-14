@@ -20,7 +20,7 @@ from app.core.config import OTP_EXPIRY_SECONDS
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
-from app.services.brevo_client import send_otp_email
+from app.services.brevo_client import BrevoClient
 # Use the same roles -> Discord push logic as the /roles endpoint
 from app.api.v1.roles import push_roles_to_discord
 
@@ -268,12 +268,15 @@ async def send_otp(
 
 	# メール送信
 	try:
-		await asyncio.to_thread(
-			send_otp_email,
-			email_aoyama,
-			otp_code,
-			req.name,
+		brevo = BrevoClient()
+		result = await brevo.send_otp_email(
+			email=email_aoyama,
+			code=otp_code,
+			name=req.name,
+			form_type="full-registration",
 		)
+		if result.get("status") != "success":
+			raise RuntimeError(result.get("error", "Unknown Brevo error"))
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
 
