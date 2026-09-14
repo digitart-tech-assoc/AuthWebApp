@@ -91,6 +91,26 @@ async def put_manifest(payload: Manifest, principal: dict = Depends(require_memb
 				# 既存ロール: permissions 変更は禁止
 				if current_role.get("permissions", 0) != new_role.permissions:
 					raise HTTPException(status_code=403, detail="Member cannot modify role permissions")
+
+		# member は restricted カテゴリの変更・解除・作成を禁止
+		for cat in payload.categories:
+			curr_cat = current_cats_map.get(cat.id)
+			if curr_cat:
+				if curr_cat.get("is_restricted") or curr_cat.get("name") in RESTRICTED_CATEGORY_NAMES:
+					if cat.name != curr_cat.get("name") or not cat.is_restricted:
+						raise HTTPException(status_code=403, detail=f"Member cannot modify restricted category: {curr_cat.get('name')}")
+				elif cat.is_restricted:
+					raise HTTPException(status_code=403, detail="Member cannot set category as restricted")
+			else:
+				if cat.is_restricted or cat.name in RESTRICTED_CATEGORY_NAMES:
+					raise HTTPException(status_code=403, detail="Member cannot create restricted category")
+
+		# 削除対象カテゴリの制限チェック
+		deleted_cat_ids = set(current_cats_map.keys()) - {c.id for c in payload.categories}
+		for d_id in deleted_cat_ids:
+			curr_cat = current_cats_map.get(d_id)
+			if curr_cat and (curr_cat.get("is_restricted") or curr_cat.get("name") in RESTRICTED_CATEGORY_NAMES):
+				raise HTTPException(status_code=403, detail=f"Member cannot delete restricted category: {curr_cat.get('name')}")
 	
 	await asyncio.to_thread(
 		save_manifest,
@@ -109,16 +129,30 @@ async def patch_manifest(payload: ManifestPatch, principal: dict = Depends(requi
 	is_admin = principal.get("app_role") == "admin"
 	
 	if not is_admin:
-		# member は restricted カテゴリを変更・作成できない
+		current_data = await asyncio.to_thread(fetch_manifest)
+		current_cats_map = {cat["id"]: cat for cat in current_data.get("categories", [])}
+
+		# member は restricted カテゴリを変更・作成・解除できない
 		for c in payload.upsert_categories:
-			# 名前ベースのレガシーガード（後方互換）
-			if c.name in RESTRICTED_CATEGORY_NAMES:
-				raise HTTPException(403, f"Member cannot modify restricted category: {c.name}")
-			# is_restricted フラグで管理者専用を設定することも禁止
-			if c.is_restricted:
-				raise HTTPException(403, "Member cannot create or set admin-only (is_restricted) categories")
+			curr_cat = current_cats_map.get(c.id)
+			if curr_cat:
+				# 既存の restricted カテゴリの変更・解除は禁止
+				if curr_cat.get("is_restricted") or curr_cat.get("name") in RESTRICTED_CATEGORY_NAMES:
+					raise HTTPException(403, f"Member cannot modify restricted category: {curr_cat.get('name')}")
+				if c.is_restricted:
+					raise HTTPException(403, "Member cannot set admin-only (is_restricted) categories")
+			else:
+				# 新規作成時
+				if c.name in RESTRICTED_CATEGORY_NAMES:
+					raise HTTPException(403, f"Member cannot create restricted category: {c.name}")
+				if c.is_restricted:
+					raise HTTPException(403, "Member cannot create or set admin-only (is_restricted) categories")
 		
-		# (オプション) 削除対象の restricted カテゴリ保護はフロントエンドUIで制御済み
+		# 削除対象の restricted カテゴリ保護
+		for d_id in payload.delete_category_ids:
+			curr_cat = current_cats_map.get(d_id)
+			if curr_cat and (curr_cat.get("is_restricted") or curr_cat.get("name") in RESTRICTED_CATEGORY_NAMES):
+				raise HTTPException(403, f"Member cannot delete restricted category: {curr_cat.get('name')}")
 		
 	await asyncio.to_thread(
 		patch_manifest_db,
