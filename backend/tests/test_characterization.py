@@ -403,3 +403,60 @@ class TestMembershipBoilerplate:
             assert get_membership_count("member") == 42
             assert get_member_user_count() == 42
 
+
+# ============================================================================
+# Supabase JWT Decode — ES256 / HS256 検証
+# ============================================================================
+
+class TestSupabaseJWTDecode:
+    """_decode_supabase_token の ES256/JWKS および HS256 テスト"""
+
+    def test_decode_hs256_token(self, monkeypatch):
+        import jwt
+        from app.core.auth import _decode_supabase_token
+
+        secret = "test-secret-key-12345678901234567890"
+        monkeypatch.setattr("app.core.auth.SUPABASE_JWT_SECRET", secret)
+        monkeypatch.setattr("app.core.auth.jwks_client", None)
+
+        payload = {
+            "sub": "user-uuid-123",
+            "aud": "authenticated",
+            "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
+        }
+        token = jwt.encode(payload, secret, algorithm="HS256")
+        claims = _decode_supabase_token(token)
+        assert claims["sub"] == "user-uuid-123"
+
+    def test_decode_es256_with_mock_jwks(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from app.core.auth import _decode_supabase_token
+        import jwt
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+
+        # テスト用 EC 秘密鍵・公開鍵を生成
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        public_key = private_key.public_key()
+
+        mock_signing_key = MagicMock()
+        mock_signing_key.key = public_key
+
+        mock_jwks = MagicMock()
+        mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+
+        monkeypatch.setattr("app.core.auth.jwks_client", mock_jwks)
+        monkeypatch.setattr("app.core.auth.SUPABASE_ISSUER_URL", "")
+
+        payload = {
+            "sub": "user-uuid-es256",
+            "aud": "authenticated",
+            "iss": "https://test.supabase.co/auth/v1",
+            "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
+        }
+        token = jwt.encode(payload, private_key, algorithm="ES256")
+        claims = _decode_supabase_token(token)
+        assert claims["sub"] == "user-uuid-es256"
+        assert claims["iss"] == "https://test.supabase.co/auth/v1"
+
+

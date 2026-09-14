@@ -20,9 +20,36 @@ SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
 # Supabase の URL（JWKSのエンドポイント組み立て等に使用）
-SUPABASE_URL: str = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
+SUPABASE_URL: str = (os.getenv("NEXT_PUBLIC_SUPABASE_URL") or os.getenv("SUPABASE_URL") or "").rstrip("/")
 JWKS_URL: str = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else ""
 jwks_client = PyJWKClient(JWKS_URL) if JWKS_URL else None
+
+
+def _get_jwks_client(token: str) -> PyJWKClient | None:
+	"""JWKSクライアントを取得する。環境変数がない場合はトークンの iss クレームから導出する。"""
+	global jwks_client
+	if jwks_client is not None:
+		return jwks_client
+
+	url = SUPABASE_URL
+	if not url:
+		try:
+			unverified_claims = jwt.decode(token, options={"verify_signature": False})
+			iss = unverified_claims.get("iss", "").rstrip("/")
+			if iss.endswith("/auth/v1"):
+				url = iss[:-len("/auth/v1")]
+			elif iss:
+				url = iss
+		except Exception as e:
+			logger.warning("Failed to extract iss from unverified token: %s", e)
+
+	if url:
+		jwks_url = f"{url}/auth/v1/.well-known/jwks.json"
+		logger.info("Initializing PyJWKClient with JWKS URL: %s", jwks_url)
+		jwks_client = PyJWKClient(jwks_url)
+		return jwks_client
+
+	return None
 
 # Supabase の issuer URL（任意: 設定時に iss クレームも検証する）
 SUPABASE_ISSUER_URL: str = os.getenv("SUPABASE_ISSUER_URL", "")
@@ -59,9 +86,11 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 		unverified_header = jwt.get_unverified_header(token)
 		alg = unverified_header.get("alg")
 
-		if jwks_client and alg in ["RS256", "ES256"]:
+		client = _get_jwks_client(token) if alg in ["RS256", "ES256"] else None
+
+		if client and alg in ["RS256", "ES256"]:
 			# 非対称キーの場合 (JWKSから公開鍵を取得)
-			signing_key = jwks_client.get_signing_key_from_jwt(token)
+			signing_key = client.get_signing_key_from_jwt(token)
 			key = signing_key.key
 			algorithms = ["RS256", "ES256"]
 		else:
@@ -69,10 +98,10 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 			key = SUPABASE_JWT_SECRET
 			algorithms = ["HS256"]
 			if not key:
-				logger.error("SUPABASE_JWT_SECRET is not set for HS256")
+				logger.error("SUPABASE_JWT_SECRET is not set for HS256 (alg=%s)", alg)
 				raise HTTPException(
 					status_code=500,
-					detail="Server misconfiguration: SUPABASE_JWT_SECRET is missing for HS256",
+					detail=f"Server misconfiguration: SUPABASE_JWT_SECRET is missing for HS256 (alg={alg})",
 				)
 
 		kwargs: dict[str, Any] = {

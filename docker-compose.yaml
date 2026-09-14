@@ -7,6 +7,8 @@ services:
     environment:
       SHARED_SECRET: ${SHARED_SECRET}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       # internal discord-bot sync endpoint (container port 8000)
       BOT_INTERNAL_URL: http://discord-bot:8000/internal/sync
