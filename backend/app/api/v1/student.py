@@ -263,9 +263,9 @@ async def send_otp(
 	otp_code = _generate_otp_code()
 	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS)
 
-	# OTP レコードを DB に保存（bcrypt ハッシュ化）
+	# OTP レコードを DB に保存（bcrypt ハッシュ化: CPU-bound 処理を別スレッドにオフロード）
 	otp_id = f"otp_{uuid.uuid4().hex[:12]}"
-	code_hash = hash_otp_code(otp_code)
+	code_hash = await asyncio.to_thread(hash_otp_code, otp_code)
 	student_repository.create_otp_record(otp_id, discord_id, email_aoyama, code_hash, otp_expires_at)
 
 	# メール送信
@@ -317,8 +317,9 @@ async def verify_otp(
 	if otp["attempt_count"] >= 3:
 		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
 
-	# OTP コード確認（bcrypt によるハッシュ突合）
-	if not verify_otp_code(req.code, otp["code"]):
+	# OTP コード確認（bcrypt によるハッシュ突合: CPU-bound 処理を別スレッドにオフロード）
+	is_valid = await asyncio.to_thread(verify_otp_code, req.code, otp["code"])
+	if not is_valid:
 		# 試行回数をインクリメント
 		student_repository.increment_otp_attempt(otp["id"])
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")
