@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.db.repository import _connect
+
+logger = logging.getLogger(__name__)
 
 
 def find_user_by_sub(user_id: str) -> dict[str, Any] | None:
@@ -73,16 +76,15 @@ def _resolve_role_from_memberships(discord_id: str | None) -> str:
 def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 	"""ユーザーを存在すれば更新して返し、存在しなければ新規作成する。
 	サインイン時に user_memberships を参照し app_role を自動同期する。
-	
-	注意: 戻り値に含まれた app_role は参考値です。実際の権限判定には必ず get_user_role() を使用してください。
+
+	アカウント乗っ取り防止のため、既存ユーザーの user_id や discord_id の不正な上書きは行わない。
 	"""
 	if not user_id:
 		raise ValueError("user_id is required")
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			resolved_role = _resolve_role_from_memberships(discord_id)
-			# 1) user_id 一致を最優先
+			# 1) user_id (Supabase UUID) 一致を確認
 			cur.execute(
 				"""
 				SELECT id, user_id, discord_id
@@ -93,34 +95,54 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 			)
 			row = cur.fetchone()
 			if row is not None:
-				next_discord_id = row[2] or discord_id
-				next_role = _resolve_role_from_memberships(next_discord_id)
-				# discord_id/app_role のどちらかが変わる場合のみ更新
-				if (discord_id and not row[2]) or (next_role != resolved_role):
-					cur.execute(
-						"""
-						UPDATE users
-						SET discord_id = %s, updated_at = now()
-						WHERE id = %s
-						RETURNING id, user_id, discord_id
-						""",
-						(next_discord_id, row[0]),
+				current_discord_id = row[2]
+				# 既に discord_id がバインドされている場合、不一致の別 discord_id での上書きは防止
+				if current_discord_id and discord_id and current_discord_id != discord_id:
+					logger.warning(
+						"Discord ID conflict for user_id=%s: existing=%s, new=%s. Keeping existing.",
+						user_id,
+						current_discord_id,
+						discord_id,
 					)
-					updated = cur.fetchone()
-					return {
-						"id": updated[0],
-						"user_id": updated[1],
-						"discord_id": updated[2],
-						"app_role": next_role,
-					}
+					effective_discord_id = current_discord_id
+				elif not current_discord_id and discord_id:
+					# まだ discord_id が未登録だった場合のみ、安全にバインド
+					# ただしその discord_id が既に他人に使われていないかチェック
+					cur.execute(
+						"SELECT id, user_id FROM users WHERE discord_id = %s AND user_id != %s",
+						(discord_id, user_id),
+					)
+					conflict = cur.fetchone()
+					if conflict:
+						logger.error(
+							"Security Violation: discord_id=%s already bound to user_id=%s, rejecting for user_id=%s",
+							discord_id,
+							conflict[1],
+							user_id,
+						)
+						effective_discord_id = None
+					else:
+						cur.execute(
+							"""
+							UPDATE users
+							SET discord_id = %s, updated_at = now()
+							WHERE id = %s
+							""",
+							(discord_id, row[0]),
+						)
+						effective_discord_id = discord_id
+				else:
+					effective_discord_id = current_discord_id or discord_id
+
+				resolved_role = _resolve_role_from_memberships(effective_discord_id)
 				return {
 					"id": row[0],
 					"user_id": row[1],
-					"discord_id": next_discord_id,
-					"app_role": next_role,
+					"discord_id": effective_discord_id,
+					"app_role": resolved_role,
 				}
 
-			# 2) discord_id 一致があれば、既存ロールを保ったまま user_id を最新化
+			# 2) 新規ユーザー登録時: 既に同じ discord_id を持つ別ユーザーが存在しないか検証
 			if discord_id:
 				cur.execute(
 					"""
@@ -132,25 +154,17 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				)
 				by_discord = cur.fetchone()
 				if by_discord is not None:
-					next_role = _resolve_role_from_memberships(discord_id)
-					cur.execute(
-						"""
-						UPDATE users
-						SET user_id = %s, updated_at = now()
-						WHERE id = %s
-						RETURNING id, user_id, discord_id
-						""",
-						(user_id, by_discord[0]),
+					# 既に他人のアカウントがその Discord ID に紐づいているため、乗っ取り・上書きを禁止する
+					logger.error(
+						"Security Violation: Rejected user_id=%s attempting to claim existing discord_id=%s owned by user_id=%s",
+						user_id,
+						discord_id,
+						by_discord[1],
 					)
-					updated = cur.fetchone()
-					return {
-						"id": updated[0],
-						"user_id": updated[1],
-						"discord_id": updated[2],
-						"app_role": next_role,
-					}
+					# Discord ID なしで一般ユーザーとして作成
+					discord_id = None
 
-			# 3) どちらにも一致しない場合だけ新規作成
+			resolved_role = _resolve_role_from_memberships(discord_id)
 			cur.execute(
 				"""
 				INSERT INTO users (user_id, discord_id)
@@ -160,6 +174,7 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				(user_id, discord_id),
 			)
 			row = cur.fetchone()
+			conn.commit()
 			return {
 				"id": row[0],
 				"user_id": row[1],
