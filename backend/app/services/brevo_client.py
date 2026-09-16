@@ -32,6 +32,7 @@ class BrevoClient:
 		code: str,
 		name: str,
 		form_type: str,
+		expires_in_minutes: int = 10,
 	) -> dict[str, Any]:
 		"""Send OTP code via email using Brevo API
 
@@ -40,6 +41,7 @@ class BrevoClient:
 			code: 6-digit OTP code
 			name: recipient name
 			form_type: "prospective-student" or "contact"
+			expires_in_minutes: OTP expiration time in minutes (default 10)
 
 		Returns:
 			{"message_id": "...", "status": "success"} or {"error": "..."}
@@ -52,7 +54,7 @@ class BrevoClient:
 		<body style="font-family: Arial, sans-serif; color: #333;">
 			<h2 style="color: #2563eb;">メール認証コード</h2>
 			<p>こんにちは {name} さん、</p>
-			<p>以下の認証コードを 15 分以内に入力してください。</p>
+			<p>以下の認証コードを {expires_in_minutes} 分以内に入力してください。</p>
 			<div style="background-color: #f0f0f0; padding: 20px; text-align: center; border-radius: 8px;">
 				<h1 style="letter-spacing: 0.5em; color: #0f172a;">{code}</h1>
 			</div>
@@ -72,7 +74,7 @@ class BrevoClient:
 
 こんにちは {name} さん、
 
-以下の認証コードを 15 分以内に入力してください：
+以下の認証コードを {expires_in_minutes} 分以内に入力してください：
 
 {code}
 
@@ -197,7 +199,7 @@ Digitart Technology Association
 # Synchronous wrapper functions for backward compatibility
 # ============================================================================
 
-def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
+def send_otp_email(email: str, code: str, name: str, expires_in_minutes: int = 10) -> dict[str, Any]:
 	"""後方互換用同期ラッパー（非同期コンテキスト外からの呼び出し用）"""
 	client = BrevoClient()
 	try:
@@ -205,9 +207,9 @@ def send_otp_email(email: str, code: str, name: str) -> dict[str, Any]:
 		# すでに非同期イベントループが稼働中の場合は別スレッドで安全に実行
 		logger.warning("send_otp_email called synchronously inside an existing event loop. Offloading to worker thread. Use 'await BrevoClient().send_otp_email()' instead.")
 		with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-			future = executor.submit(asyncio.run, client.send_otp_email(email, code, name, "full-registration"))
+			future = executor.submit(asyncio.run, client.send_otp_email(email, code, name, "full-registration", expires_in_minutes))
 			return future.result()
 	except RuntimeError:
 		# イベントループが存在しない場合は直接 asyncio.run で実行
-		return asyncio.run(client.send_otp_email(email, code, name, "full-registration"))
+		return asyncio.run(client.send_otp_email(email, code, name, "full-registration", expires_in_minutes))
 

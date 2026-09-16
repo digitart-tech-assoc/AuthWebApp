@@ -40,4 +40,8 @@ def verify_otp_code(code: str, code_hash: str) -> bool:
 	try:
 		return bcrypt.checkpw(code.encode(), code_hash.encode())
 	except Exception:
-		return False
+		# 旧形式（平文）との安全な比較フォールバック
+		try:
+			return secrets.compare_digest(code, code_hash)
+		except Exception:
+			return False

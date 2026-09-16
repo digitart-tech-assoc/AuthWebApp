@@ -354,6 +354,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                           <button
                             type="button"
                             className={styles.removeRoleBtn}
+                            disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
                             ✕ 削除
@@ -362,6 +363,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                           <button
                             type="button"
                             className={styles.assignBtn}
+                            disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
                             ＋ 付与
