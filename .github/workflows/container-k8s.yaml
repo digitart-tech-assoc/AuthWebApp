@@ -1,0 +1,106 @@
+name: Container & Kubernetes Check
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'discord-bot/**'
+      - 'k8s/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/container-k8s.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'discord-bot/**'
+      - 'k8s/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/container-k8s.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================
+  # 1. Docker Build Check
+  # ==========================================
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: authwebapp-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Discord Bot Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./discord-bot
+          file: ./discord-bot/Dockerfile
+          push: false
+          tags: authwebapp-discord-bot:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: authwebapp-frontend:test
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=https://dummy.supabase.co
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy-anon-key
+            NEXT_PUBLIC_BACKEND_URL=http://localhost:5174
+            NEXT_PUBLIC_SITE_URL=http://localhost:5173
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================
+  # 2. Kubernetes Manifest Check (Kustomize)
+  # ==========================================
+  k8s-manifest-check:
+    name: K8s Manifest Check (Kustomize)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up dummy secrets for Kustomize
+        run: |
+          mkdir -p k8s/secrets
+          # ダミーのauthwebapp-secret.yamlを生成
+          kubectl create secret generic authwebapp-secret \
+            --from-literal=SHARED_SECRET=dummy \
+            --from-literal=SUPABASE_JWT_SECRET=dummy \
+            --from-literal=DATABASE_URL=postgresql://user:pass@localhost:5432/db \
+            --dry-run=client -o yaml > k8s/secrets/authwebapp-secret.yaml
+
+          # ダミーのtls.crt / tls.keyを生成
+          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout k8s/secrets/tls.key -out k8s/secrets/tls.crt \
+            -subj "/CN=authwebapp.local"
+
+      - name: Validate Kustomize Build
+        run: |
+          echo "Validating k8s/kustomization.yaml..."
+          kubectl kustomize k8s/ > /dev/null
+          echo "✓ Kustomize build succeeded without errors"
