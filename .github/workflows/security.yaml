@@ -1,0 +1,79 @@
+name: Security & Audit
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # 毎週月曜 午前9:00 JST (0:00 UTC) に定期実行
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================
+  # 1. Gitleaks (Secret Detection)
+  # ==========================================
+  gitleaks:
+    name: Secret Detection (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION="8.24.0"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /tmp
+          sudo mv /tmp/gitleaks /usr/local/bin/
+
+      - name: Run Gitleaks
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Scanning PR changes against origin/${{ github.base_ref }}..."
+            gitleaks detect --log-opts="origin/${{ github.base_ref }}..HEAD" --verbose --redact
+          else
+            echo "Scanning branch/commits..."
+            gitleaks detect --verbose --redact
+          fi
+
+  # ==========================================
+  # 2. Dependency Vulnerability Audit
+  # ==========================================
+  dependency-audit:
+    name: Dependency Audit (pip & npm)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Backend (Python) Audit
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Run pip-audit (Backend)
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt || echo "::warning::pip-audit found vulnerabilities in Python packages"
+
+      # Frontend (Node.js) Audit
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run npm audit (Frontend)
+        working-directory: frontend
+        run: |
+          npm audit || echo "::warning::npm audit found vulnerabilities in Node packages"

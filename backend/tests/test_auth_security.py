@@ -10,22 +10,22 @@ class TestExtractVerifiedDiscordId:
             "sub": "user-uuid-1",
             "app_metadata": {"provider": "discord"},
             "identities": [
-                {"provider": "discord", "id": "111222333444555666"}
+                {"provider": "discord", "id": "123456789012345678"}
             ],
             "user_metadata": {"provider_id": "malicious_fake_id"},
         }
         # identities が最優先され、user_metadata の改ざん値は無視される
         result = _extract_verified_discord_id(claims)
-        assert result == "111222333444555666"
+        assert result == "123456789012345678"
 
     def test_extract_from_discord_provider_metadata(self):
         claims = {
             "sub": "user-uuid-2",
             "app_metadata": {"provider": "discord", "providers": ["discord"]},
-            "user_metadata": {"provider_id": "999888777666555444"},
+            "user_metadata": {"provider_id": "123456789012345678"},
         }
         result = _extract_verified_discord_id(claims)
-        assert result == "999888777666555444"
+        assert result == "123456789012345678"
 
     def test_reject_email_provider_spoofing_user_metadata(self):
         # Email 等でサインアップしたユーザーが user_metadata.provider_id を勝手に改ざんした場合

@@ -1,0 +1,11 @@
+title = "Gitleaks configuration"
+
+[allowlist]
+description = "テストコード、ドキュメント、および統一ダミー値のスキャン除外"
+paths = [
+  '''backend/tests/''',
+  '''docs/''',
+]
+regexes = [
+  '''123456789012345678''',
+]

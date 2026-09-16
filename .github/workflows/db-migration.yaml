@@ -1,0 +1,68 @@
+name: DB Migration Check
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/db-migration.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/db-migration.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-migration:
+    name: Database Migration (PostgreSQL 15 & Alembic)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: authwebapp_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Alembic Upgrade & Downgrade
+        env:
+          DATABASE_URL: postgresql://test_user:test_password@localhost:5432/authwebapp_test
+        run: |
+          echo "Applying all migrations (upgrade head)..."
+          alembic upgrade head
+          echo "Verifying current revision..."
+          alembic current
+          echo "Testing rollback capability (downgrade base)..."
+          alembic downgrade base
+          echo "Re-applying migrations (upgrade head)..."
+          alembic upgrade head
