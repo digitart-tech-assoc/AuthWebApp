@@ -130,6 +130,7 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 							""",
 							(discord_id, row[0]),
 						)
+						conn.commit()
 						effective_discord_id = discord_id
 				else:
 					effective_discord_id = current_discord_id or discord_id
