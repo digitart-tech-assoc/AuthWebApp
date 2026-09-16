@@ -22,25 +22,39 @@ type MemberListsResponse = {
 };
 
 function extractDiscordId(user: {
+    app_metadata?: Record<string, unknown>;
     user_metadata?: Record<string, unknown>;
-    identities?: Array<{ identity_data?: Record<string, unknown> }>;
+    identities?: Array<{ provider?: string; id?: string; identity_data?: Record<string, unknown> }>;
 } | null): string | null {
     if (!user) {
         return null;
     }
 
-    const metadata = user.user_metadata ?? {};
-    const fromMetadata = metadata.provider_id ?? metadata.sub;
-    if (typeof fromMetadata === "string" && fromMetadata.trim().length > 0) {
-        return fromMetadata;
-    }
-
+    // 1. identities (SupabaseがOAuth検証した署名済みプロバイダ情報) を最優先
     const identities = user.identities ?? [];
     for (const identity of identities) {
-        const identityData = identity.identity_data ?? {};
-        const candidate = identityData.provider_id ?? identityData.sub;
-        if (typeof candidate === "string" && candidate.trim().length > 0) {
-            return candidate;
+        if (identity.provider === "discord") {
+            const candidate =
+                identity.id ??
+                identity.identity_data?.sub ??
+                identity.identity_data?.provider_id;
+            if (typeof candidate === "string" && candidate.trim().length > 0) {
+                return candidate.trim();
+            }
+        }
+    }
+
+    // 2. OAuth プロバイダが discord であることを確認した上でのみフォールバック
+    const appMetadata = user.app_metadata ?? {};
+    const provider = appMetadata.provider;
+    const providers = (appMetadata.providers as string[]) ?? [];
+    const isDiscord = provider === "discord" || providers.includes("discord");
+
+    if (isDiscord) {
+        const metadata = user.user_metadata ?? {};
+        const fromMetadata = metadata.provider_id ?? metadata.sub;
+        if (typeof fromMetadata === "string" && fromMetadata.trim().length > 0) {
+            return fromMetadata.trim();
         }
     }
 

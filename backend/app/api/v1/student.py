@@ -3,22 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
-import secrets
 import re
+import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-import logging
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
-from app.db.repository import _connect, add_user_to_role, remove_user_from_role
-from app.services.brevo_client import send_otp_email
-# Use the same roles -> Discord push logic as the /roles endpoint
-from app.api.v1.roles import push_roles_to_discord
+from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS, OTP_MAX_ATTEMPTS
+from app.utils.otp import hash_otp_code, verify_otp_code
+from app.db.membership_repository import is_pre_member
+from app.db.repository import add_user_to_role, remove_user_from_role
+from app.db import student_repository
+from app.services.brevo_client import BrevoClient
+from app.services.discord_client import add_role_to_member
 
 
 
@@ -128,84 +132,22 @@ def _generate_otp_code(length: int = 6) -> str:
 
 def _is_pre_member(discord_id: str) -> bool:
 	"""Discord IDが pre_member リストにあるか確認（user_memberships テーブルから取得）"""
-	try:
-		with _connect() as conn:
-			with conn.cursor() as cur:
-				cur.execute(
-					"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member' LIMIT 1",
-					(discord_id,),
-				)
-				return cur.fetchone() is not None
-	except Exception:
-		return False
+	return is_pre_member(discord_id)
 
 
 def _is_paid_invitation(discord_id: str) -> bool:
 	"""Discord IDが支払済リストにあるか確認"""
-	try:
-		with _connect() as conn:
-			with conn.cursor() as cur:
-				cur.execute(
-					"SELECT 1 FROM paid_invitations WHERE discord_id = %s LIMIT 1",
-					(discord_id,),
-				)
-				return cur.fetchone() is not None
-	except Exception:
-		return False
+	return student_repository.is_paid_invitation(discord_id)
 
 
 def _get_student_profile(discord_id: str) -> dict[str, Any] | None:
 	"""既存の学生プロフィール取得"""
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, student_number, name, furigana, department, gender, phone, email_aoyama
-				FROM student_profiles
-				WHERE discord_id = %s
-				""",
-				(discord_id,),
-			)
-			row = cur.fetchone()
-			if row is None:
-				return None
-			return {
-				"id": row[0],
-				"student_number": row[1],
-				"name": row[2],
-				"furigana": row[3],
-				"department": row[4],
-				"gender": row[5],
-				"phone": row[6],
-				"email_aoyama": row[7],
-			}
+	return student_repository.get_student_profile(discord_id)
 
 
 def _get_latest_otp(discord_id: str) -> dict[str, Any] | None:
 	"""最新の OTP レコード取得"""
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, email_aoyama, code, attempt_count, verified, expires_at
-				FROM otp_records
-				WHERE discord_id = %s AND verified = FALSE
-				ORDER BY created_at DESC
-				LIMIT 1
-				""",
-				(discord_id,),
-			)
-			row = cur.fetchone()
-			if row is None:
-				return None
-			return {
-				"id": row[0],
-				"email_aoyama": row[1],
-				"code": row[2],
-				"attempt_count": row[3],
-				"verified": row[4],
-				"expires_at": row[5],
-			}
+	return student_repository.get_latest_otp(discord_id, unverified_only=True)
 
 
 # ============================================================================
@@ -318,38 +260,32 @@ async def send_otp(
 
 	email_aoyama = _generate_student_email(req.student_number)
 	otp_code = _generate_otp_code()
-	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=600)  # 10 minutes
+	otp_expires_at = datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS)
 
-	# OTP レコードを DB に保存
-	import uuid
+	# OTP レコードを DB に保存（bcrypt ハッシュ化: CPU-bound 処理を別スレッドにオフロード）
 	otp_id = f"otp_{uuid.uuid4().hex[:12]}"
-
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				INSERT INTO otp_records (id, discord_id, email_aoyama, code, expires_at)
-				VALUES (%s, %s, %s, %s, %s)
-				""",
-				(otp_id, discord_id, email_aoyama, otp_code, otp_expires_at),
-			)
-			conn.commit()
+	code_hash = await asyncio.to_thread(hash_otp_code, otp_code)
+	student_repository.create_otp_record(otp_id, discord_id, email_aoyama, code_hash, otp_expires_at)
 
 	# メール送信
 	try:
-		await asyncio.to_thread(
-			send_otp_email,
-			email_aoyama,
-			otp_code,
-			req.name,
+		brevo = BrevoClient()
+		result = await brevo.send_otp_email(
+			email=email_aoyama,
+			code=otp_code,
+			name=req.name,
+			form_type="full-registration",
+			expires_in_minutes=OTP_EXPIRY_MINUTES,
 		)
+		if result.get("status") != "success":
+			raise RuntimeError(result.get("error", "Unknown Brevo error"))
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
 
 	return SendOTPResponse(
 		email_aoyama=email_aoyama,
 		message="OTP を送信しました。メールを確認してください",
-		expires_in_seconds=600,
+		expires_in_seconds=OTP_EXPIRY_SECONDS,
 	)
 
 
@@ -365,31 +301,9 @@ async def verify_otp(
 
 	logger.info("verify_otp called: discord_id=%s", discord_id)
 	# 最新の OTP レコードを取得（検証済みフラグに関わらず）
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, email_aoyama, code, attempt_count, verified, expires_at
-				FROM otp_records
-				WHERE discord_id = %s
-				ORDER BY created_at DESC
-				LIMIT 1
-				""",
-				(discord_id,),
-			)
-			row = cur.fetchone()
-
-	if row is None:
+	otp = student_repository.get_latest_otp(discord_id, unverified_only=False)
+	if otp is None:
 		raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
-
-	otp = {
-		"id": row[0],
-		"email_aoyama": row[1],
-		"code": row[2],
-		"attempt_count": row[3],
-		"verified": row[4],
-		"expires_at": row[5],
-	}
 
 	# 既に検証済みの場合は成功扱いしてフロントが続行できるようにする
 	if otp["verified"]:
@@ -399,36 +313,19 @@ async def verify_otp(
 	if otp["expires_at"] < datetime.now(timezone.utc):
 		raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
 
-
-	# 試行回数確認（最大3回）
-	if otp["attempt_count"] >= 3:
+	# 試行回数確認（最大試行回数超過チェック）
+	if otp["attempt_count"] >= OTP_MAX_ATTEMPTS:
 		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
 
-	# OTP コード確認
-	if otp["code"] != req.code:
+	# OTP コード確認（bcrypt によるハッシュ突合: CPU-bound 処理を別スレッドにオフロード）
+	is_valid = await asyncio.to_thread(verify_otp_code, req.code, otp["code"])
+	if not is_valid:
 		# 試行回数をインクリメント
-		with _connect() as conn:
-			with conn.cursor() as cur:
-				cur.execute(
-					"UPDATE otp_records SET attempt_count = attempt_count + 1 WHERE id = %s",
-					(otp["id"],),
-				)
-				conn.commit()
-
+		student_repository.increment_otp_attempt(otp["id"])
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")
 
 	# OTP を検証済みにする
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				UPDATE otp_records
-				SET verified = TRUE, verified_at = now()
-				WHERE id = %s
-				""",
-				(otp["id"],),
-			)
-			conn.commit()
+	student_repository.mark_otp_verified(otp["id"])
 
 	# OTP 検証完了後、role_member_assignments を更新する
 	# - member ロールを追加
@@ -470,132 +367,40 @@ async def create_student_profile(
 	app_role = principal.get("app_role")
 	skip_otp = app_role in ("member", "admin", "obog")
 
-	row = None
 	if not skip_otp:
-		with _connect() as conn:
-			with conn.cursor() as cur:
-				cur.execute(
-					"""
-					SELECT id, verified, verified_at, expires_at
-					FROM otp_records
-					WHERE discord_id = %s
-					ORDER BY created_at DESC
-					LIMIT 1
-					""",
-					(discord_id,),
-				)
-				row = cur.fetchone()
-
-		if row is None or not row[1]:
+		verified_otp = student_repository.get_latest_verified_otp(discord_id)
+		if verified_otp is None or not verified_otp["verified"]:
 			raise HTTPException(status_code=400, detail="OTP verification required")
 
 	email_aoyama = _generate_student_email(req.student_number)
 
-	import uuid
-	profile_id = f"prof_{uuid.uuid4().hex[:12]}"
+	member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
+	member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
 
-	# プロフィールを保存（upsert）
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			# 既存プロフィールを確認
-			cur.execute(
-				"SELECT id FROM student_profiles WHERE discord_id = %s",
-				(discord_id,),
-			)
-			existing = cur.fetchone()
+	profile_id = student_repository.upsert_student_profile_and_promote(
+		profile_id=f"prof_{uuid.uuid4().hex[:12]}",
+		discord_id=discord_id,
+		student_number=req.student_number,
+		name=req.name,
+		furigana=req.furigana,
+		department=req.department,
+		gender=req.gender,
+		phone=req.phone,
+		email_aoyama=email_aoyama,
+		member_role_ids=member_role_ids,
+	)
 
-			if existing:
-				# 更新
-				cur.execute(
-					"""
-					UPDATE student_profiles
-					SET student_number = %s, name = %s, furigana = %s, department = %s,
-						gender = %s, phone = %s, email_aoyama = %s, email_verified = TRUE,
-						email_verified_at = now(), profile_submitted_at = now(), updated_at = now()
-					WHERE discord_id = %s
-					""",
-					(
-						req.student_number,
-						req.name,
-						req.furigana,
-						req.department,
-						req.gender,
-						req.phone,
-						email_aoyama,
-						discord_id,
-					),
-				)
-				profile_id = existing[0]
-			else:
-				# 新規作成
-				cur.execute(
-					"""
-					INSERT INTO student_profiles
-					(id, discord_id, student_number, name, furigana, department, gender, phone,
-					 email_aoyama, email_verified, email_verified_at, profile_submitted_at)
-					VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, now(), now())
-					""",
-					(
-						profile_id,
-						discord_id,
-						req.student_number,
-						req.name,
-						req.furigana,
-						req.department,
-						req.gender,
-						req.phone,
-						email_aoyama,
-					),
-				)
-
-			# ロール変更：pre_memberからmemberへ
-			# membership_type カラムを更新
-			cur.execute(
-				"""
-				UPDATE user_memberships
-				SET membership_type = 'member', assigned_at = now()
-				WHERE discord_id = %s AND membership_type = 'pre_member'
-				""",
-				(discord_id,),
-			)
-
-			logger.info("Role changed: discord_id=%s (pre_member -> member)", discord_id)
-
-			# role_member_assignments に member ロール割り当てを追加
-			# 環境変数から member ロール ID リストを取得
-			member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
-			member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
-			
-			for role_id in member_role_ids:
-				# 既に割り当てられているかを確認（重複を防ぐ）
-				cur.execute(
-					"""
-					SELECT 1 FROM role_member_assignments
-					WHERE role_id = %s AND user_id = %s
-					""",
-					(role_id, discord_id),
-				)
-				if not cur.fetchone():
-					# 新規割り当てを挿入
-					cur.execute(
-						"""
-						INSERT INTO role_member_assignments (role_id, user_id)
-						VALUES (%s, %s)
-						""",
-						(role_id, discord_id),
-					)
-					logger.info("Added role assignment: user_id=%s role_id=%s", discord_id, role_id)
-
-			conn.commit()
-
-	# DB commit 直後に /roles の同期ロジックを呼び出して Discord 側のロール割当を反映
-	logger.info("DB commit completed; invoking roles.push to apply changes to Discord...")
-	try:
-		result = await push_roles_to_discord(principal)
-		if not result.get("ok", False):
-			logger.warning("roles.push reported errors after profile save: %s", result.get("errors"))
-	except Exception as e:
-		logger.exception("roles.push execution failed after profile save: %s", e)
+	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与
+	logger.info("DB commit completed; applying member roles to Discord member: discord_id=%s", discord_id)
+	token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
+	guild_id = os.getenv("DISCORD_GUILD_ID")
+	if token and guild_id and member_role_ids:
+		for role_id in member_role_ids:
+			try:
+				await add_role_to_member(guild_id, discord_id, role_id, token)
+				logger.info("Successfully assigned role %s to student %s on Discord", role_id, discord_id)
+			except Exception as e:
+				logger.warning("Failed to assign role %s to student %s on Discord: %s", role_id, discord_id, e)
 
 	return StudentProfileResponse(
 		profile_id=profile_id,

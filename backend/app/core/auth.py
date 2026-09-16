@@ -20,9 +20,24 @@ SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
 # Supabase の URL（JWKSのエンドポイント組み立て等に使用）
-SUPABASE_URL: str = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
+SUPABASE_URL: str = (os.getenv("NEXT_PUBLIC_SUPABASE_URL") or os.getenv("SUPABASE_URL") or "").rstrip("/")
 JWKS_URL: str = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json" if SUPABASE_URL else ""
 jwks_client = PyJWKClient(JWKS_URL) if JWKS_URL else None
+
+
+def _get_jwks_client() -> PyJWKClient | None:
+	"""JWKSクライアントを取得する。環境変数 SUPABASE_URL が設定されている場合のみ初期化。"""
+	global jwks_client
+	if jwks_client is not None:
+		return jwks_client
+
+	if SUPABASE_URL:
+		jwks_url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+		logger.info("Initializing PyJWKClient with JWKS URL: %s", jwks_url)
+		jwks_client = PyJWKClient(jwks_url)
+		return jwks_client
+
+	return None
 
 # Supabase の issuer URL（任意: 設定時に iss クレームも検証する）
 SUPABASE_ISSUER_URL: str = os.getenv("SUPABASE_ISSUER_URL", "")
@@ -31,10 +46,10 @@ SUPABASE_ISSUER_URL: str = os.getenv("SUPABASE_ISSUER_URL", "")
 def _extract_bearer_token(authorization: str | None) -> str:
 	if not authorization:
 		raise HTTPException(status_code=401, detail="Authorization header is required")
-	parts = authorization.split(" ", 1)
-	if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
-		raise HTTPException(status_code=401, detail="Invalid authorization header")
-	return parts[1].strip()
+	parts = authorization.split()
+	if len(parts) != 2 or parts[0].lower() != "bearer":
+		raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+	return parts[1]
 
 
 def _decode_supabase_token(token: str) -> dict[str, Any]:
@@ -59,9 +74,15 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 		unverified_header = jwt.get_unverified_header(token)
 		alg = unverified_header.get("alg")
 
-		if jwks_client and alg in ["RS256", "ES256"]:
-			# 非対称キーの場合 (JWKSから公開鍵を取得)
-			signing_key = jwks_client.get_signing_key_from_jwt(token)
+		if alg in ["RS256", "ES256"]:
+			client = _get_jwks_client()
+			if not client:
+				logger.error("SUPABASE_URL is not configured to verify %s token via JWKS", alg)
+				raise HTTPException(
+					status_code=500,
+					detail=f"Server misconfiguration: SUPABASE_URL is required for {alg} token verification",
+				)
+			signing_key = client.get_signing_key_from_jwt(token)
 			key = signing_key.key
 			algorithms = ["RS256", "ES256"]
 		else:
@@ -69,10 +90,10 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 			key = SUPABASE_JWT_SECRET
 			algorithms = ["HS256"]
 			if not key:
-				logger.error("SUPABASE_JWT_SECRET is not set for HS256")
+				logger.error("SUPABASE_JWT_SECRET is not set for HS256 (alg=%s)", alg)
 				raise HTTPException(
 					status_code=500,
-					detail="Server misconfiguration: SUPABASE_JWT_SECRET is missing for HS256",
+					detail=f"Server misconfiguration: SUPABASE_JWT_SECRET is missing for HS256 (alg={alg})",
 				)
 
 		kwargs: dict[str, Any] = {
@@ -106,6 +127,52 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 		raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
 
+def _extract_verified_discord_id(claims: dict[str, Any]) -> str | None:
+	"""Supabase JWTから改ざん不可能な検証済みDiscord IDを抽出する。
+
+	エンドユーザーによる user_metadata 改ざん攻撃を防ぐため、
+	OAuth プロバイダ（Discord）経由の認証であること（app_metadata.provider == 'discord'）
+	または署名済み identities を検証する。
+	"""
+	app_metadata = claims.get("app_metadata") or {}
+	user_metadata = claims.get("user_metadata") or {}
+
+	# 1. identities クレームが存在する場合は最優先（provider == "discord" の ID）
+	identities = claims.get("identities")
+	if isinstance(identities, list):
+		for identity in identities:
+			if identity.get("provider") == "discord":
+				discord_id = (
+					identity.get("id")
+					or identity.get("identity_data", {}).get("sub")
+					or identity.get("identity_data", {}).get("provider_id")
+				)
+				if discord_id:
+					return str(discord_id)
+
+	# 2. app_metadata 内に discord_id が安全に付与されている場合
+	if isinstance(app_metadata, dict) and app_metadata.get("discord_id"):
+		return str(app_metadata["discord_id"])
+
+	# 3. OAuth プロバイダが Discord であることを検証した上でのみ user_metadata をフォールバック利用
+	# （Email/Password 等の別プロバイダからの user_metadata.provider_id 偽装を遮断）
+	provider = app_metadata.get("provider")
+	providers = app_metadata.get("providers") or []
+	is_discord_provider = provider == "discord" or "discord" in providers
+
+	if is_discord_provider:
+		discord_id_candidate = user_metadata.get("provider_id") or user_metadata.get("sub")
+		if discord_id_candidate:
+			return str(discord_id_candidate)
+
+	logger.warning(
+		"No verified Discord identity found for user %s (app_metadata=%s)",
+		claims.get("sub"),
+		app_metadata,
+	)
+	return None
+
+
 def get_current_principal(authorization: str | None = Header(default=None)) -> dict[str, Any]:
 	try:
 		token = _extract_bearer_token(authorization)
@@ -131,13 +198,8 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 		logger.error("Missing sub claim")
 		raise HTTPException(status_code=401, detail="Invalid token: missing sub claim")
 
-	# Supabase は user_metadata.provider_id に Discord ID を格納する
-	user_metadata = claims.get("user_metadata") or {}
-	discord_id_raw: str | None = (
-		user_metadata.get("provider_id")
-		or user_metadata.get("sub")
-		or None
-	)
+	# 改ざん不可能な安全な方法で Discord ID を解決する
+	discord_id_raw = _extract_verified_discord_id(claims)
 
 	# DBからroleを取得（DBになければ upsert で 'none' で登録）
 	try:

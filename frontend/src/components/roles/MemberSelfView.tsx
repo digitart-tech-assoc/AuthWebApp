@@ -104,79 +104,97 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     setSaveState("idle");
   }
 
-  // --- 確定時にDB保存 + Discord push を一次実行 ---
+  // --- 確定時に自己ロールの付与・解除APIを呼び出す ---
   async function handleSave() {
+    if (!myDiscordId) {
+      showStatus({ kind: "error", msg: "Discord ID が特定できません。再ログインしてください。" });
+      return;
+    }
+
     setSaveState("saving");
     try {
       const initAssignments = initialAssignmentsRef.current;
-      const upsertRoleAssignments: Record<string, string[]> = {};
+      const rolesToAdd: string[] = [];
+      const rolesToRemove: string[] = [];
 
-      for (const roleId of Object.keys(membersByRole)) {
-        const curr = [...membersByRole[roleId]].sort();
-        const init = [...(initAssignments[roleId] || [])].sort();
-        if (JSON.stringify(curr) !== JSON.stringify(init)) {
-          upsertRoleAssignments[roleId] = membersByRole[roleId];
+      const allRoleIds = new Set([
+        ...Object.keys(membersByRole),
+        ...Object.keys(initAssignments),
+      ]);
+
+      for (const roleId of allRoleIds) {
+        const wasAssigned = (initAssignments[roleId] ?? []).includes(myDiscordId);
+        const isAssigned = (membersByRole[roleId] ?? []).includes(myDiscordId);
+
+        if (!wasAssigned && isAssigned) {
+          rolesToAdd.push(roleId);
+        } else if (wasAssigned && !isAssigned) {
+          rolesToRemove.push(roleId);
         }
       }
 
-      const hasDiff = Object.keys(upsertRoleAssignments).length > 0;
-      if (!hasDiff) {
+      if (rolesToAdd.length === 0 && rolesToRemove.length === 0) {
         setHasUnsaved(false);
         setSaveState("idle");
         showStatus({ kind: "info", msg: "変更点はありませんでした" });
         return;
       }
 
-      const payload = {
-        upsert_categories: [],
-        delete_category_ids: [],
-        upsert_roles: [],
-        delete_role_ids: [],
-        upsert_role_assignments: upsertRoleAssignments,
-      };
+      showStatus({ kind: "info", msg: "ロールの変更を適用中..." });
+      const errors: string[] = [];
 
-      // 2. DB保存
-      showStatus({ kind: "info", msg: "DBに保存中..." });
-      const res = await fetch("/api/manifest", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      // 追加リクエスト
+      for (const roleId of rolesToAdd) {
+        try {
+          const res = await fetch("/api/roles/self-assign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role_id: roleId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            const roleObj = roles.find((r) => r.role_id === roleId);
+            const roleName = roleObj ? roleObj.name : roleId;
+            errors.push(`${roleName}の付与失敗: ${data.detail || res.statusText}`);
+          }
+        } catch {
+          errors.push(`通信エラー (${roleId})`);
+        }
+      }
 
-      if (!res.ok) {
+      // 削除リクエスト
+      for (const roleId of rolesToRemove) {
+        try {
+          const res = await fetch("/api/roles/self-remove", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ role_id: roleId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) {
+            const roleObj = roles.find((r) => r.role_id === roleId);
+            const roleName = roleObj ? roleObj.name : roleId;
+            errors.push(`${roleName}の解除失敗: ${data.detail || res.statusText}`);
+          }
+        } catch {
+          errors.push(`通信エラー (${roleId})`);
+        }
+      }
+
+      if (errors.length > 0) {
         setSaveState("error");
-        showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
+        showStatus({ kind: "error", msg: `一部のロール変更に失敗しました: ${errors.join(", ")}` });
+        await fetchMembers();
         return;
       }
 
-      // ベースラインをリセット（重複保存防止）
+      // ベースラインをリセット
       initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
       setHasUnsaved(false);
       setSaveState("saved");
 
-      // 3. Discord同期
-      showStatus({ kind: "info", msg: "Discordへ同期中..." });
-      const pushRes = await fetch("/api/roles/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const pushBody = (await pushRes.json()) as {
-        ok?: boolean;
-        updated?: number;
-        created?: number;
-        deleted?: number;
-        reordered?: number;
-        errors?: string[];
-      };
-
-      if (!pushRes.ok || !pushBody.ok) {
-        const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
-        showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
-        return;
-      }
-
-      // 全て成功 → ページリロード
-      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&t=${Date.now()}`;
+      // 全て成功 → ページリロードして最新状態を同期
+      window.location.href = `/roles?t=${Date.now()}`;
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
@@ -197,19 +215,6 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     return botPosition !== undefined && role.position >= botPosition;
   }
 
-  // カテゴリのis_restrictedフラグで制限判定
-  const restrictedCategoryIds = new Set(
-    categories.filter(c => c.is_restricted).map(c => c.id)
-  );
-
-  function isRestrictedCategory(role: Role): boolean {
-    if (!role.category_id) return false;
-    return restrictedCategoryIds.has(role.category_id);
-  }
-
-  function isRemoveDisabled(role: Role): boolean {
-    return isAboveBot(role) || isRestrictedCategory(role);
-  }
 
   function hasRole(roleId: string): boolean {
     if (!myDiscordId) return false;
@@ -336,6 +341,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                           <button
                             type="button"
                             className={styles.removeRoleBtn}
+                            disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
                             ✕ 削除
@@ -344,6 +350,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                           <button
                             type="button"
                             className={styles.assignBtn}
+                            disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
                             ＋ 付与

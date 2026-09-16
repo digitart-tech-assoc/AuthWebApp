@@ -5,10 +5,12 @@ from __future__ import annotations
 import secrets
 import bcrypt
 
+from app.core.config import OTP_CODE_LENGTH
+
 
 def generate_otp_code() -> str:
 	"""Generate a random 6-digit OTP code"""
-	return "".join(secrets.choice("0123456789") for _ in range(6))
+	return "".join(secrets.choice("0123456789") for _ in range(OTP_CODE_LENGTH))
 
 
 def hash_otp_code(code: str) -> str:
@@ -38,4 +40,8 @@ def verify_otp_code(code: str, code_hash: str) -> bool:
 	try:
 		return bcrypt.checkpw(code.encode(), code_hash.encode())
 	except Exception:
-		return False
+		# 旧形式（平文）との安全な比較フォールバック
+		try:
+			return secrets.compare_digest(code, code_hash)
+		except Exception:
+			return False
