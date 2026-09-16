@@ -285,6 +285,7 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 				after = batch[-1]["user"]["id"]
 	except Exception as e:
 		logger.exception("fetch_guild_members_with_role failed: %s", e)
+		raise
 	
 	logger.debug("fetch_members: role_id=%s final count=%d", role_id, len(members))
 	return members

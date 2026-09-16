@@ -17,7 +17,7 @@ def is_paid_invitation(discord_id: str) -> bool:
 		with _connect() as conn:
 			with conn.cursor() as cur:
 				cur.execute(
-					"SELECT 1 FROM paid_invitations WHERE discord_id = %s LIMIT 1",
+					"SELECT 1 FROM paid_invitations WHERE discord_id = %s AND (expires_at IS NULL OR expires_at > now()) LIMIT 1",
 					(discord_id,),
 				)
 				return cur.fetchone() is not None

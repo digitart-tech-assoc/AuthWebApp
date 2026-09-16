@@ -22,8 +22,7 @@ from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
 from app.services.brevo_client import BrevoClient
-# Use the same roles -> Discord push logic as the /roles endpoint
-from app.api.v1.roles import push_roles_to_discord
+from app.services.discord_client import add_role_to_member
 
 
 
@@ -390,14 +389,17 @@ async def create_student_profile(
 		member_role_ids=member_role_ids,
 	)
 
-	# DB commit 直後に /roles の同期ロジックを呼び出して Discord 側のロール割当を反映
-	logger.info("DB commit completed; invoking roles.push to apply changes to Discord...")
-	try:
-		result = await push_roles_to_discord(principal)
-		if not result.get("ok", False):
-			logger.warning("roles.push reported errors after profile save: %s", result.get("errors"))
-	except Exception as e:
-		logger.exception("roles.push execution failed after profile save: %s", e)
+	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与
+	logger.info("DB commit completed; applying member roles to Discord member: discord_id=%s", discord_id)
+	token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
+	guild_id = os.getenv("DISCORD_GUILD_ID")
+	if token and guild_id and member_role_ids:
+		for role_id in member_role_ids:
+			try:
+				await add_role_to_member(guild_id, discord_id, role_id, token)
+				logger.info("Successfully assigned role %s to student %s on Discord", role_id, discord_id)
+			except Exception as e:
+				logger.warning("Failed to assign role %s to student %s on Discord: %s", role_id, discord_id, e)
 
 	return StudentProfileResponse(
 		profile_id=profile_id,
