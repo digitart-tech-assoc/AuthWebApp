@@ -215,19 +215,6 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     return botPosition !== undefined && role.position >= botPosition;
   }
 
-  // カテゴリのis_restrictedフラグで制限判定
-  const restrictedCategoryIds = new Set(
-    categories.filter(c => c.is_restricted).map(c => c.id)
-  );
-
-  function isRestrictedCategory(role: Role): boolean {
-    if (!role.category_id) return false;
-    return restrictedCategoryIds.has(role.category_id);
-  }
-
-  function isRemoveDisabled(role: Role): boolean {
-    return isAboveBot(role) || isRestrictedCategory(role);
-  }
 
   function hasRole(roleId: string): boolean {
     if (!myDiscordId) return false;

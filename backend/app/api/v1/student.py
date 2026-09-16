@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
-from app.core.config import OTP_EXPIRY_SECONDS
+from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS, OTP_MAX_ATTEMPTS
 from app.utils.otp import hash_otp_code, verify_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
@@ -275,6 +275,7 @@ async def send_otp(
 			code=otp_code,
 			name=req.name,
 			form_type="full-registration",
+			expires_in_minutes=OTP_EXPIRY_MINUTES,
 		)
 		if result.get("status") != "success":
 			raise RuntimeError(result.get("error", "Unknown Brevo error"))
@@ -312,8 +313,8 @@ async def verify_otp(
 	if otp["expires_at"] < datetime.now(timezone.utc):
 		raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
 
-	# 試行回数確認（最大3回）
-	if otp["attempt_count"] >= 3:
+	# 試行回数確認（最大試行回数超過チェック）
+	if otp["attempt_count"] >= OTP_MAX_ATTEMPTS:
 		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
 
 	# OTP コード確認（bcrypt によるハッシュ突合: CPU-bound 処理を別スレッドにオフロード）

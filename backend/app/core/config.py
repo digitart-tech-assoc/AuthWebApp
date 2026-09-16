@@ -21,7 +21,7 @@ class MembershipType:
 # OTP (One-Time Password) 設定
 # ============================================================================
 OTP_EXPIRY_SECONDS: int = 600
-OTP_EXPIRY_MINUTES: int = 15
+OTP_EXPIRY_MINUTES: int = OTP_EXPIRY_SECONDS // 60
 OTP_MAX_ATTEMPTS: int = 5
 OTP_CODE_LENGTH: int = 6
 
