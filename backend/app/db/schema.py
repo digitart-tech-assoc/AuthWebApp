@@ -147,11 +147,22 @@ def init_db() -> None:
 						assigned_by TEXT,
 						assigned_at TIMESTAMPTZ DEFAULT now(),
 						created_at TIMESTAMPTZ DEFAULT now(),
-						PRIMARY KEY (discord_id, membership_type),
-						FOREIGN KEY (discord_id) REFERENCES guild_members(user_id) ON DELETE CASCADE
+						PRIMARY KEY (discord_id, membership_type)
 					);
 					"""
 				)
+                # Migration: Drop foreign key to guild_members if exists to avoid cascade deletion
+                try:
+                    cur.execute("SAVEPOINT drop_fk_user_memberships;")
+                    cur.execute(
+                        """
+                        ALTER TABLE user_memberships DROP CONSTRAINT IF EXISTS user_memberships_discord_id_fkey;
+                        """
+                    )
+                    cur.execute("RELEASE SAVEPOINT drop_fk_user_memberships;")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT drop_fk_user_memberships;")
+
                 cur.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_user_memberships_discord_id 
@@ -193,13 +204,16 @@ def init_db() -> None:
                 # Migration: Drop app_role from users table (now calculated via v_users_with_app_role VIEW)
                 # This is a safe migration that preserves data
                 try:
+                    cur.execute("SAVEPOINT drop_app_role;")
                     cur.execute(
                         """
                         ALTER TABLE users DROP COLUMN IF EXISTS app_role;
                         """
                     )
+                    cur.execute("RELEASE SAVEPOINT drop_app_role;")
                 except Exception as e:
                     # Column may already be dropped or table may be in use
+                    cur.execute("ROLLBACK TO SAVEPOINT drop_app_role;")
                     pass
                 cur.execute(
                     """

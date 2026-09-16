@@ -14,7 +14,6 @@ def save_guild_members(members: list[dict[str, Any]]) -> None:
 	"""Discordから取得したギルドメンバーを保存/更新する。"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute("DELETE FROM guild_members")
 			for m in members:
 				cur.execute(
 					"""
