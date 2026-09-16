@@ -20,11 +20,13 @@ from app.core.config import (
 	PRE_MEMBER_ROLE_NAME,
 )
 from app.db.repository import (
+	add_user_to_role,
 	clear_all_role_assignments,
 	fetch_guild_members,
 	fetch_manifest,
 	fetch_role_assignments,
 	get_member_lists,
+	remove_user_from_role,
 	replace_roles_from_discord,
 	save_guild_members,
 	save_role_assignments,
@@ -551,15 +553,18 @@ async def self_assign_role(
 	except Exception as exc:
 		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
 
-	# DB のロール割り当ても更新
+	# DB のロール割り当てをアトミックに更新
 	try:
-		assignments = await asyncio.to_thread(fetch_role_assignments)
-		current = set(assignments.get(payload.role_id, []))
-		current.add(discord_id)
-		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
+		await asyncio.to_thread(add_user_to_role, discord_id, payload.role_id)
 	except Exception as exc:
 		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
-		raise HTTPException(status_code=500, detail="Discord role updated, but failed to persist assignment to database.") from exc
+		# 補償トランザクション: Discord 側の付与を取り消す
+		try:
+			await remove_role_from_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
+			logger.info("Compensating rollback succeeded for discord_id=%s role_id=%s", discord_id, payload.role_id)
+		except Exception as rollback_exc:
+			logger.critical("Compensating rollback failed for discord_id=%s role_id=%s: %s", discord_id, payload.role_id, rollback_exc)
+		raise HTTPException(status_code=500, detail="Failed to persist role assignment to database. Discord state was reverted.") from exc
 
 	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
@@ -577,15 +582,18 @@ async def self_remove_role(
 	except Exception as exc:
 		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
 
-	# DB のロール割り当ても更新
+	# DB のロール割り当てをアトミックに更新
 	try:
-		assignments = await asyncio.to_thread(fetch_role_assignments)
-		current = set(assignments.get(payload.role_id, []))
-		current.discard(discord_id)
-		await asyncio.to_thread(save_role_assignments, {payload.role_id: list(current)})
+		await asyncio.to_thread(remove_user_from_role, discord_id, payload.role_id)
 	except Exception as exc:
 		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
-		raise HTTPException(status_code=500, detail="Discord role removed, but failed to persist assignment to database.") from exc
+		# 補償トランザクション: Discord 側で解除したロールを再付与する
+		try:
+			await add_role_to_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
+			logger.info("Compensating rollback succeeded for discord_id=%s role_id=%s", discord_id, payload.role_id)
+		except Exception as rollback_exc:
+			logger.critical("Compensating rollback failed for discord_id=%s role_id=%s: %s", discord_id, payload.role_id, rollback_exc)
+		raise HTTPException(status_code=500, detail="Failed to persist role removal to database. Discord state was reverted.") from exc
 
 	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
