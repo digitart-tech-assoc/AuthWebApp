@@ -34,7 +34,14 @@ jobs:
           sudo mv /tmp/gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
-        run: gitleaks detect --verbose --redact
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Scanning PR changes against origin/${{ github.base_ref }}..."
+            gitleaks detect --log-opts="origin/${{ github.base_ref }}..HEAD" --verbose --redact
+          else
+            echo "Scanning branch/commits..."
+            gitleaks detect --verbose --redact
+          fi
 
   # ==========================================
   # 2. Dependency Vulnerability Audit
@@ -55,10 +62,10 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Run pip-audit (Backend)
-        uses: pypa/gh-action-pip-audit@v1.1.0
-        continue-on-error: true
-        with:
-          inputs: backend/requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt || echo "::warning::pip-audit found vulnerabilities in Python packages"
 
       # Frontend (Node.js) Audit
       - name: Set up Node.js
@@ -68,5 +75,5 @@ jobs:
 
       - name: Run npm audit (Frontend)
         working-directory: frontend
-        continue-on-error: true
-        run: npm audit --audit-level=critical
+        run: |
+          npm audit || echo "::warning::npm audit found vulnerabilities in Node packages"
