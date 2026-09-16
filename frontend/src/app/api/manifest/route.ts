@@ -6,7 +6,7 @@ import { fetchBackend } from "@/lib/backendFetch";
 export async function PUT(request: Request) {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin" && role !== "member") {
+		if (role !== "admin") {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 
@@ -35,7 +35,7 @@ export async function PUT(request: Request) {
 export async function PATCH(request: Request) {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin" && role !== "member") {
+		if (role !== "admin") {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 
