@@ -27,11 +27,31 @@ concurrency:
 
 jobs:
   # ==========================================
-  # 1. Docker Build Check
+  # 1. Docker Build Check (Parallel Matrix)
   # ==========================================
   docker-build:
-    name: Docker Build Check
+    name: Docker Build (${{ matrix.service }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            build-args: ""
+          - service: discord-bot
+            context: ./discord-bot
+            dockerfile: ./discord-bot/Dockerfile
+            build-args: ""
+          - service: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            build-args: |
+              NEXT_PUBLIC_SUPABASE_URL=https://dummy.supabase.co
+              NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy-anon-key
+              NEXT_PUBLIC_BACKEND_URL=http://localhost:5174
+              NEXT_PUBLIC_SITE_URL=http://localhost:5173
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,40 +59,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Backend Image
+      - name: Build ${{ matrix.service }} Image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: false
-          tags: authwebapp-backend:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Discord Bot Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./discord-bot
-          file: ./discord-bot/Dockerfile
-          push: false
-          tags: authwebapp-discord-bot:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build Frontend Image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: false
-          tags: authwebapp-frontend:test
-          build-args: |
-            NEXT_PUBLIC_SUPABASE_URL=https://dummy.supabase.co
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy-anon-key
-            NEXT_PUBLIC_BACKEND_URL=http://localhost:5174
-            NEXT_PUBLIC_SITE_URL=http://localhost:5173
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: authwebapp-${{ matrix.service }}:test
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ==========================================
   # 2. Kubernetes Manifest Check (Kustomize)
