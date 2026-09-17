@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/student-registration";
 import OTPInput from "@/components/OTPInput";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
 interface FormData {
   student_number: string;

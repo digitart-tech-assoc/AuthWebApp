@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
 import type { SurveyAnswers } from "@/types/join";
 

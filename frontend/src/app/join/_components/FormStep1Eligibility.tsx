@@ -1,7 +1,7 @@
 "use client";
 
 import type { EligibilityCheckResult } from "@/types/join";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
 interface FormStep1Props {
   eligibility: EligibilityCheckResult | null;

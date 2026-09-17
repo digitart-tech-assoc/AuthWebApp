@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
 interface FormStep5Props {
   studentNumber: string;

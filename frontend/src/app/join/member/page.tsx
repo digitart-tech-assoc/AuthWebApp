@@ -11,11 +11,11 @@ import type {
   EligibilityCheckResult,
   StudentProfile,
 } from "@/types/join";
-import FormStep1Eligibility from "../form-step-1";
-import FormStep2Input from "../form-step-2";
-import FormStep3Survey from "../form-step-3";
-import FormStep4OTP from "../form-step-4";
-import FormStep5Complete from "../form-step-5";
+import FormStep1Eligibility from "../_components/FormStep1Eligibility";
+import FormStep2Input from "../_components/FormStep2Input";
+import FormStep3Survey from "../_components/FormStep3Survey";
+import FormStep4OTP from "../_components/FormStep4OTP";
+import FormStep5Complete from "../_components/FormStep5Complete";
 import { fetchBackend } from "@/lib/backendFetch";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;

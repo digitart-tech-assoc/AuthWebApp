@@ -1,7 +1,7 @@
 "use client";
 
 import StudentProfileForm from "@/components/forms/StudentProfileForm";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
 interface FormData {
   student_number: string;
