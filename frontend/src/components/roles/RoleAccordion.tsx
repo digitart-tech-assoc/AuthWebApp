@@ -19,6 +19,12 @@ import SortableCategoryItem from "./SortableCategoryItem";
 import RoleDiffModal from "./RoleDiffModal";
 import { useRoleModals } from "./useRoleModals";
 import { calculateDifferences, buildManifestPatchPayload } from "./roleDiff";
+import {
+  fetchRoleMembers,
+  patchManifest,
+  pushRolesToDiscord,
+  selfAssignRole,
+} from "@/lib/api/roles";
 import styles from "./roles.module.css";
 import type { Category, Role, Member, PermissionTarget, RoleDiffData } from "@/types/roles";
 
@@ -134,15 +140,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
   const fetchMembers = useCallback(async () => {
     try {
-      const res = await fetch("/api/roles/members");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.members) setAllMembers(data.members);
-        if (data.assignments) {
-          setMembersByRole(data.assignments);
-          setBaseMembersByRole(JSON.parse(JSON.stringify(data.assignments))); // Deep copy for diff calculation
-          initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments)); // Deep copy for payload creation
-        }
+      const data = await fetchRoleMembers();
+      if (data.members) setAllMembers(data.members);
+      if (data.assignments) {
+        setMembersByRole(data.assignments);
+        setBaseMembersByRole(JSON.parse(JSON.stringify(data.assignments))); // Deep copy for diff calculation
+        initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments)); // Deep copy for payload creation
       }
     } catch (e) {
       console.error("Failed to fetch members", e);
@@ -227,11 +230,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
       // 2. DB保存（PATCH /api/manifest）
       showStatus({ kind: "info", msg: "DBに保存中..." });
-      const res = await fetch("/api/manifest", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await patchManifest(payload);
 
       if (!res.ok) {
         setSaveState("error");
@@ -252,20 +251,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
       // 4. Discord同期（POST /api/roles/push）
       showStatus({ kind: "info", msg: "Discordへ同期中..." });
-      const pushRes = await fetch("/api/roles/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const pushBody = (await pushRes.json()) as {
-        ok?: boolean;
-        updated?: number;
-        created?: number;
-        deleted?: number;
-        reordered?: number;
-        errors?: string[];
-      };
+      const pushBody = await pushRolesToDiscord();
 
-      if (!pushRes.ok || !pushBody.ok) {
+      if (!pushBody.ok) {
         const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
         showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
         return;
@@ -485,14 +473,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       return;
     }
     try {
-      const res = await fetch("/api/roles/self-assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role_id: role.role_id }),
-      });
-      const data = await res.json();
+      const res = await selfAssignRole(role.role_id);
       if (!res.ok) {
-        showStatus({ kind: "error", msg: data.detail ?? "ロールの付与に失敗しました" });
+        showStatus({ kind: "error", msg: res.detail ?? "ロールの付与に失敗しました" });
         return;
       }
       showStatus({ kind: "success", msg: `ロール「${role.name}」を自分に付与しました` });

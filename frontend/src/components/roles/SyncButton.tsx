@@ -3,6 +3,7 @@
 "use client";
 
 import { useState } from "react";
+import { refreshRolesFromDiscord } from "@/lib/api/roles";
 import styles from "./roles.module.css";
 
 type Props = {
@@ -16,12 +17,8 @@ export default function SyncButton({ onSuccess, onError }: Props) {
   async function handleSync() {
     setIsPending(true);
     try {
-      const res = await fetch("/api/roles/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const body = (await res.json()) as { ok?: boolean; roles?: number };
-      if (!res.ok || !body.ok) {
+      const body = await refreshRolesFromDiscord();
+      if (!body.ok) {
         onError?.();
         return;
       }
