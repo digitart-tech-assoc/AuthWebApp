@@ -85,3 +85,8 @@ app.include_router(contact_router)
 app.include_router(student_router)
 app.include_router(members_router)
 app.include_router(survey_router)
+
+# 開発環境専用: ロール切替API（本番では無効）
+if not _is_prod:
+	from app.api.v1.dev import router as dev_router
+	app.include_router(dev_router)

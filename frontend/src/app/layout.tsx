@@ -2,7 +2,14 @@ import type { Metadata } from "next";
 import { createSupabaseServer } from "@/lib/supabase";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import "./globals.css";
+
+// 開発環境でのみ DevRoleSwitcher をロード（本番バンドルには含まれない）
+const DevRoleSwitcher =
+  process.env.NODE_ENV === "development"
+    ? dynamic(() => import("@/components/dev/DevRoleSwitcher"), { ssr: false })
+    : () => null;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -91,7 +98,9 @@ export default async function RootLayout({
           </div>
         </header>
         {children}
+        <DevRoleSwitcher />
       </body>
     </html>
   );
 }
+
