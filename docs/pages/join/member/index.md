@@ -96,7 +96,7 @@
 ## 仕様API
 
 ### Server Action: checkEligibility
-**ファイル**: `/frontend/src/actions/student-registration.ts`
+**ファイル**: `/frontend/src/actions/studentRegistration.ts`
 
 ```typescript
 async function checkEligibility(): Promise<EligibilityCheckResult>

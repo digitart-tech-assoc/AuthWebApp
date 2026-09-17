@@ -68,7 +68,7 @@
 ```
 
 ### サーバーアクション：getStudentProfile
-**ファイル**: `/frontend/src/actions/student-registration.ts`
+**ファイル**: `/frontend/src/actions/studentRegistration.ts`
 
 ```typescript
 async function getStudentProfile(): Promise<StudentProfile | null>
