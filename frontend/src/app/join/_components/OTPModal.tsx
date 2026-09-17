@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import OTPInput from "./OTPInput";
-import { requestOtp, verifyOtp } from "../lib/join";
+import OTPInput from "@/components/OTPInput";
+import { requestOtp, verifyOtp } from "@/lib/join";
 import styles from "./OTPModal.module.css";
 
 type Props = {
