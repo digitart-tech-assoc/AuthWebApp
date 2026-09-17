@@ -129,7 +129,8 @@ def find_candidates() -> list[dict]:
                         "current_role": "unknown"
                     })
             return candidates
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ ユーザー候補の検索中にエラーが発生しました: {e}", file=sys.stderr)
         return []
     finally:
         conn.close()

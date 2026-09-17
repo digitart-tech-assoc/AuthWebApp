@@ -19,10 +19,14 @@ from app.api.v1.survey import router as survey_router
 from app.db.repository import init_db
 
 
-# 環境判定（本番環境では OpenAPI docs や開発用APIを遮断）
+from app.core.constants import DEV_ENVS
+
+# 環境判定（Fail-Closed / ホワイトリスト方式）
+# FASTAPI_ENV が未設定、空文字、または開発用値 ("development", "dev", "local") 以外の場合は
+# 本番相当として扱い、OpenAPI docs や開発用APIを遮断する。
 _fastapi_env = os.getenv("FASTAPI_ENV", "").strip().lower()
 _is_prod = _fastapi_env == "production"
-_is_dev = _fastapi_env in ("development", "dev", "local")
+_is_dev = _fastapi_env in DEV_ENVS
 
 app = FastAPI(
 	title="AuthWebApp Backend",
