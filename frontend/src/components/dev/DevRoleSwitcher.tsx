@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchBackend } from "@/lib/backendFetch";
 
 /* ─── 型定義 ─── */
 type DevState = {
@@ -107,7 +106,7 @@ export default function DevRoleSwitcher() {
 	const fetchState = useCallback(async () => {
 		try {
 			setLoading(true);
-			const res = await fetchBackend("/api/v1/dev/state");
+			const res = await fetch("/api/dev/state");
 			if (res.ok) {
 				const data: DevState = await res.json();
 				setState(data);
@@ -132,7 +131,7 @@ export default function DevRoleSwitcher() {
 		setSwitching(key);
 		setMessage(null);
 		try {
-			const res = await fetchBackend("/api/v1/dev/switch-role", {
+			const res = await fetch("/api/dev/switch-role", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ role: preset.role, is_paid: preset.is_paid }),
