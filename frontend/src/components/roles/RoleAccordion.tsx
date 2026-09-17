@@ -3,21 +3,12 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { DndContext } from "@dnd-kit/core";
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
+import { useCategoryDnd } from "./useCategoryDnd";
 import RoleList from "./RoleList";
 import MembersPanel from "./MembersPanel";
 import PermissionEditorPanel from "./PermissionEditor";
@@ -168,11 +159,19 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     return allRoles.filter((r) => r.name.toLowerCase().includes(normalizedQuery));
   }, [allRoles, normalizedQuery]);
 
-  // DnD sensors for category reorder
-  const useCatDndSensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  // Category DnD
+  const {
+    sensors: useCatDndSensors,
+    collisionDetection: catCollisionDetection,
+    handleDragEnd: handleCategoryDragEnd,
+  } = useCategoryDnd({
+    categories: localCategories,
+    setCategories: setLocalCategories,
+    onReorder: () => {
+      setHasUnsaved(true);
+      setSaveState("idle");
+    },
+  });
 
   // ===== Persist (with diff confirmation) =====
   async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
@@ -405,15 +404,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     showStatus({ kind: "info", msg: "ロールを削除しました。「変更を確定」で保存してDiscordに同期します" });
   }
 
-  // カテゴリの並び替え（DnD完了時）
-  function reorderCategories(oldIndex: number, newIndex: number) {
-    setLocalCategories((prev) => {
-      const next = arrayMove(prev, oldIndex, newIndex);
-      return next.map((c, i) => ({ ...c, display_order: i }));
-    });
-    setHasUnsaved(true);
-    setSaveState("idle");
-  }
 
 
   function handlePermissionSave(newPermissions: number) {
@@ -611,14 +601,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         {/* ===== Categorized groups with DnD reordering ===== */}
         <DndContext
           sensors={useCatDndSensors}
-          collisionDetection={closestCenter}
-          onDragEnd={(event: DragEndEvent) => {
-            const { active, over } = event;
-            if (!over || active.id === over.id) return;
-            const oldIdx = localCategories.findIndex((c) => c.id === active.id);
-            const newIdx = localCategories.findIndex((c) => c.id === over.id);
-            if (oldIdx !== -1 && newIdx !== -1) reorderCategories(oldIdx, newIdx);
-          }}
+          collisionDetection={catCollisionDetection}
+          onDragEnd={handleCategoryDragEnd}
         >
           <SortableContext items={localCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
             {localCategories.map((cat) => {
