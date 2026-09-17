@@ -26,6 +26,7 @@ import RoleMemberModal from "./RoleMemberModal";
 import EditCategoryModal from "./EditCategoryModal";
 import SortableCategoryItem from "./SortableCategoryItem";
 import RoleDiffModal from "./RoleDiffModal";
+import { useRoleModals } from "./useRoleModals";
 import styles from "./roles.module.css";
 import type { Category, Role, Member, PermissionTarget, RoleDiffData } from "@/types/roles";
 
@@ -63,25 +64,39 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [status, setStatus] = useState<Status | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ===== Permission panel =====
-  const [permTarget, setPermTarget] = useState<PermissionTarget | null>(null);
-
-  // ===== New role / edit role / edit category modal =====
-  const [showNewRole, setShowNewRole] = useState(false);
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  // ===== Modals state (via useRoleModals) =====
+  const {
+    permTarget,
+    setPermTarget,
+    openCategoryPermissions,
+    openRolePermissions,
+    showNewRole,
+    setShowNewRole,
+    editingRole,
+    setEditingRole,
+    openNewRoleModal,
+    openEditRoleModal,
+    editingCategory,
+    setEditingCategory,
+    memberModalRole,
+    setMemberModalRole,
+    memberModalReadOnly,
+    openMemberModal,
+    openMemberModalReadOnly,
+    showDiffModal,
+    setShowDiffModal,
+    diffData,
+    setDiffData,
+    openDiffModal,
+  } = useRoleModals(localCategories);
 
   // ===== Member management =====
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
   const initialAssignmentsRef = useRef<Record<string, string[]>>({});
-  const [memberModalRole, setMemberModalRole] = useState<Role | null>(null);
-  const [memberModalReadOnly, setMemberModalReadOnly] = useState(false);
   const [baseMembersByRole, setBaseMembersByRole] = useState<Record<string, string[]>>({});
 
-  // ===== Diff modal =====
-  const [showDiffModal, setShowDiffModal] = useState(false);
-  const [diffData, setDiffData] = useState<RoleDiffData | null>(null);
+  // ===== Diff pending state =====
   const [pendingRoles, setPendingRoles] = useState<Role[] | null>(null);
   const [pendingCats, setPendingCats] = useState<Category[] | null>(null);
   
@@ -503,27 +518,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setSaveState("idle");
   }
 
-  // ===== Permission panel callbacks =====
-  const openCategoryPermissions = useCallback((cat: Category) => {
-    setPermTarget({
-      kind: "category",
-      id: cat.id,
-      name: cat.name,
-      currentPermissions: cat.permissions,
-    });
-  }, []);
-
-  const openRolePermissions = useCallback((role: Role) => {
-    const cat = localCategories.find((c) => c.id === role.category_id);
-    setPermTarget({
-      kind: "role",
-      id: role.role_id,
-      name: role.name,
-      currentPermissions: role.permissions,
-      categoryPermissions: cat?.permissions ?? 0,
-      roleDotColor: role.color,
-    });
-  }, [localCategories]);
 
   function handlePermissionSave(newPermissions: number) {
     if (!permTarget) return;
@@ -580,23 +574,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setSaveState("idle");
   }
 
-  // ===== Edit role handler =====
-  const handleEditRole = useCallback((role: Role) => {
-    setEditingRole(role);
-    setShowNewRole(true);
-  }, []);
-
-  // ===== Member management callbacks =====
-  const handleOpenMemberModal = useCallback((role: Role) => {
-    setMemberModalReadOnly(false);
-    setMemberModalRole(role);
-  }, []);
-
-  // ロール一覧用: 閉覧のみで開く
-  const handleOpenMemberModalReadOnly = useCallback((role: Role) => {
-    setMemberModalReadOnly(true);
-    setMemberModalRole(role);
-  }, []);
 
   function handleMemberCommit(roleId: string, add: string[], remove: string[]) {
     setMembersByRole((prev) => {
@@ -775,13 +752,13 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   onOpenMemberModal={
                     !isSelectMode
                       ? isAdmin || memberCanManageCat
-                        ? handleOpenMemberModal
+                        ? openMemberModal
                         : isMember
-                        ? handleOpenMemberModalReadOnly
+                        ? openMemberModalReadOnly
                         : undefined
                       : undefined
                   }
-                  onEditRole={!isSelectMode && isAdmin ? handleEditRole : undefined}
+                  onEditRole={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
                   onEditCategory={!isSelectMode && isAdmin ? setEditingCategory : undefined}
                   styles={styles}
                 />
@@ -817,10 +794,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
               onMembers={
                 !isSelectMode && (isAdmin || isMember)
-                  ? handleOpenMemberModalReadOnly
+                  ? openMemberModalReadOnly
                   : undefined
               }
-              onEdit={!isSelectMode && isAdmin ? handleEditRole : undefined}
+              onEdit={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
               botPosition={botPosition}
             />
           )}
