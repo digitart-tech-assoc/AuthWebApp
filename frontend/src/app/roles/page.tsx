@@ -3,8 +3,8 @@
 import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { fetchManifest } from "@/actions/manifest";
-import RoleAccordion from "@/components/roles/RoleAccordion";
-import MemberSelfView from "@/components/roles/MemberSelfView";
+import RoleAccordion from "./_components/RoleAccordion";
+import MemberSelfView from "./_components/MemberSelfView";
 import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
