@@ -27,6 +27,7 @@ import EditCategoryModal from "./EditCategoryModal";
 import SortableCategoryItem from "./SortableCategoryItem";
 import RoleDiffModal from "./RoleDiffModal";
 import { useRoleModals } from "./useRoleModals";
+import { calculateDifferences, buildManifestPatchPayload } from "./roleDiff";
 import styles from "./roles.module.css";
 import type { Category, Role, Member, PermissionTarget, RoleDiffData } from "@/types/roles";
 
@@ -173,93 +174,17 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // ===== Diff calculation =====
-  function calculateDifferences(nextRoles: Role[], nextCats: Category[]) {
-    // Roles
-    const nextRoleIds = new Set(nextRoles.map(r => r.role_id));
-    const baseRoleIds = new Set(baseRoles.map(r => r.role_id));
-    
-    const addedRoles = nextRoles.filter(r => !baseRoleIds.has(r.role_id));
-    const deletedRoles = baseRoles.filter(r => !nextRoleIds.has(r.role_id));
-    
-    // Separate changed roles into permission, order, and member changes
-    const permissionEdited: { roleId: string, roleName: string, oldPermissions: string, newPermissions: string }[] = [];
-    const orderChanged: { roleId: string, roleName: string, oldPosition: number, newPosition: number }[] = [];
-    
-    for (const nextRole of nextRoles) {
-      if (!baseRoleIds.has(nextRole.role_id)) continue;
-      const baseRole = baseRoles.find(r => r.role_id === nextRole.role_id)!;
-      
-      if (baseRole.permissions !== nextRole.permissions) {
-        permissionEdited.push({
-          roleId: nextRole.role_id,
-          roleName: nextRole.name,
-          oldPermissions: String(baseRole.permissions || "0"),
-          newPermissions: String(nextRole.permissions || "0"),
-        });
-      }
-      
-      if (baseRole.position !== nextRole.position) {
-        orderChanged.push({
-          roleId: nextRole.role_id,
-          roleName: nextRole.name,
-          oldPosition: baseRole.position,
-          newPosition: nextRole.position,
-        });
-      }
-    }
-    
-    // Member assignments: separate added roles vs existing roles
-    const roleAdded: { role: Role, memberCount: number }[] = addedRoles.map(r => ({
-      role: r,
-      memberCount: (membersByRole[r.role_id] || []).length,
-    }));
-    
-    const memberAssigned: { roleId: string, roleName: string, added: string[], removed: string[] }[] = [];
-    const baseRoleMap = new Map(baseRoles.map(r => [r.role_id, r.name]));
-    
-    for (const roleId of baseRoleIds) {
-      const baseMemberIds = baseMembersByRole[roleId] || [];
-      const nextMemberIds = membersByRole[roleId] || [];
-      
-      const baseMemberSet = new Set(baseMemberIds);
-      const nextMemberSet = new Set(nextMemberIds);
-      
-      const addedMembers = nextMemberIds.filter(m => !baseMemberSet.has(m));
-      const removedMembers = baseMemberIds.filter(m => !nextMemberSet.has(m));
-      
-      if (addedMembers.length > 0 || removedMembers.length > 0) {
-        memberAssigned.push({
-          roleId,
-          roleName: baseRoleMap.get(roleId) || roleId,
-          added: addedMembers,
-          removed: removedMembers,
-        });
-      }
-    }
-    
-    // Categories
-    const nextCatIds = new Set(nextCats.map(c => c.id));
-    const baseCatIds = new Set(baseCategories.map(c => c.id));
-    
-    const categoriesAdded = nextCats.filter(c => !baseCatIds.has(c.id));
-    const categoriesDeleted = baseCategories.filter(c => !nextCatIds.has(c.id));
-
-    return {
-      roleAdded,
-      memberAssigned,
-      permissionEdited,
-      orderChanged,
-      roleDeleted: deletedRoles,
-      categoriesAdded,
-      categoriesDeleted,
-    };
-  }
-
   // ===== Persist (with diff confirmation) =====
   async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
     // Calculate differences
-    const diff = calculateDifferences(nextRoles, nextCats);
+    const diff = calculateDifferences(
+      nextRoles,
+      baseRoles,
+      nextCats,
+      baseCategories,
+      membersByRole,
+      baseMembersByRole
+    );
     setDiffData(diff);
     setPendingRoles(nextRoles);
     setPendingCats(nextCats);
@@ -278,48 +203,20 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
     setSaveState("saving");
     try {
-      // 1. Calculate Diff
-      const upsertCategories = pendingCats.filter(c => {
-        const init = baseCategories.find(i => i.id === c.id);
-        return !init || JSON.stringify(init) !== JSON.stringify(c);
-      });
-      const deleteCatIds = baseCategories.filter(c => !pendingCats.find(n => n.id === c.id)).map(c => c.id);
-
-      const upsertRoles = pendingRoles.filter(r => {
-        const init = baseRoles.find(i => i.role_id === r.role_id);
-        return !init || JSON.stringify(init) !== JSON.stringify(r);
-      });
-      const deleteRoleIds = baseRoles.filter(r => !pendingRoles.find(n => n.role_id === r.role_id)).map(r => r.role_id);
-
-      const upsertRoleAssignments: Record<string, string[]> = {};
-      const initAssignments = initialAssignmentsRef.current;
-      for (const roleId of Object.keys(membersByRole)) {
-        const curr = [...membersByRole[roleId]].sort();
-        const init = [...(initAssignments[roleId] || [])].sort();
-        if (JSON.stringify(curr) !== JSON.stringify(init)) {
-          upsertRoleAssignments[roleId] = membersByRole[roleId];
-        }
-      }
-
-      const payload = {
-        upsert_categories: upsertCategories,
-        delete_category_ids: deleteCatIds,
-        upsert_roles: upsertRoles,
-        delete_role_ids: deleteRoleIds,
-        upsert_role_assignments: upsertRoleAssignments,
-      };
+      // 1. Calculate Diff & Build Payload
+      const { payload, hasDiff } = buildManifestPatchPayload(
+        pendingRoles,
+        baseRoles,
+        pendingCats,
+        baseCategories,
+        membersByRole,
+        initialAssignmentsRef.current
+      );
 
       // デバッグ: 送信する差分をコンソールで確認できるようにする
       console.log("Sending payload (diff) to backend:", payload);
 
       // 差分が全く無い場合は早期リターン
-      const hasDiff =
-        upsertCategories.length > 0 ||
-        deleteCatIds.length > 0 ||
-        upsertRoles.length > 0 ||
-        deleteRoleIds.length > 0 ||
-        Object.keys(upsertRoleAssignments).length > 0;
-
       if (!hasDiff) {
         setHasUnsaved(false);
         setSaveState("idle");
