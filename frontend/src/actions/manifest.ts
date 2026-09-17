@@ -4,33 +4,7 @@
 import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
 
-const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
-const IS_PROD = process.env.NODE_ENV === "production";
-
-export type ManifestCategory = {
-	id: string;
-	name: string;
-	display_order: number;
-	is_collapsed: boolean;
-	permissions: number;
-	is_restricted: boolean;
-};
-
-export type ManifestRole = {
-	role_id: string;
-	name: string;
-	color: string;
-	hoist: boolean;
-	mentionable: boolean;
-	permissions: number;
-	position: number;
-	category_id: string | null;
-};
-
-export type Manifest = {
-	categories: ManifestCategory[];
-	roles: ManifestRole[];
-};
+import type { Manifest } from "@/types/roles";
 
 export async function fetchManifest(): Promise<Manifest> {
 	// role 判定はバックエンド側で行う（デュアル判定を避ける）

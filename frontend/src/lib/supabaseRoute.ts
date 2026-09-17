@@ -27,8 +27,8 @@ export function createSupabaseRouteClient(request: NextRequest) {
 								// Normalize domain option so browser will accept cookie when
 								// origin is served as 0.0.0.0 in dev but accessed via localhost
 								const opt = cookie.options ? { ...cookie.options } : undefined;
-								if (opt && (opt as any).domain === "0.0.0.0") {
-									(opt as any).domain = "127.0.0.1";
+								if (opt && opt.domain === "0.0.0.0") {
+									opt.domain = "127.0.0.1";
 								}
 								const normalized = { name: cookie.name, value: cookie.value, options: opt };
 								pendingCookies.set(cookie.name, normalized);

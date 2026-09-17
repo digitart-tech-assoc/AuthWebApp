@@ -214,13 +214,13 @@ export default function RoleList({
   onEdit,
   botPosition,
 }: RoleListProps) {
-  if (roles.length === 0) {
-    return <p className={styles.empty}>ロールがありません</p>;
-  }
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
   );
+
+  if (roles.length === 0) {
+    return <p className={styles.empty}>ロールがありません</p>;
+  }
   const enableDrag = typeof onReorder === "function" && !onToggleSelect;
 
   function handleDragEnd(event: DragEndEvent) {

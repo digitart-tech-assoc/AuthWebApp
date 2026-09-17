@@ -1,0 +1,728 @@
+// 役割: カテゴリアコーディオン（権限エディターパネル統合）
+
+"use client";
+
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { DndContext } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useCategoryDnd } from "./useCategoryDnd";
+import RoleList from "./RoleList";
+import MembersPanel from "./MembersPanel";
+import PermissionEditorPanel from "./PermissionEditor";
+import NewRoleModal from "./NewRoleModal";
+import RoleMemberModal from "./RoleMemberModal";
+import EditCategoryModal from "./EditCategoryModal";
+import SortableCategoryItem from "./SortableCategoryItem";
+import RoleDiffModal from "./RoleDiffModal";
+import { useRoleModals } from "./useRoleModals";
+import { calculateDifferences, buildManifestPatchPayload } from "./roleDiff";
+import {
+  fetchRoleMembers,
+  patchManifest,
+  pushRolesToDiscord,
+} from "@/lib/api/roles";
+import styles from "./roles.module.css";
+import type { Category, Role, Member } from "@/types/roles";
+
+type Props = {
+  categories: Category[];
+  roles: Role[];
+  accessRole: string;
+  myDiscordId?: string | null;
+};
+
+type Status = {
+  kind: "success" | "error" | "info";
+  msg: string;
+};
+
+import { ChevronRight } from "lucide-react";
+
+// ===== Component =====
+
+export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole, myDiscordId = null }: Props) {
+  const [query, setQuery] = useState("");
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [localCategories, setLocalCategories] = useState<Category[]>([]);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [hasUnsaved, setHasUnsaved] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  // Selection (category creation mode)
+  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryRestricted, setNewCategoryRestricted] = useState(false);
+
+  // Status banner
+  const [status, setStatus] = useState<Status | null>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ===== Modals state (via useRoleModals) =====
+  const {
+    permTarget,
+    setPermTarget,
+    openCategoryPermissions,
+    openRolePermissions,
+    showNewRole,
+    setShowNewRole,
+    editingRole,
+    setEditingRole,
+    openEditRoleModal,
+    editingCategory,
+    setEditingCategory,
+    memberModalRole,
+    setMemberModalRole,
+    memberModalReadOnly,
+    openMemberModal,
+    openMemberModalReadOnly,
+    showDiffModal,
+    setShowDiffModal,
+    diffData,
+    setDiffData,
+  } = useRoleModals(localCategories);
+
+  // ===== Member management =====
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [membersByRole, setMembersByRole] = useState<Record<string, string[]>>({});
+  const initialAssignmentsRef = useRef<Record<string, string[]>>({});
+  const [baseMembersByRole, setBaseMembersByRole] = useState<Record<string, string[]>>({});
+
+  // ===== Diff pending state =====
+  const [pendingRoles, setPendingRoles] = useState<Role[] | null>(null);
+  const [pendingCats, setPendingCats] = useState<Category[] | null>(null);
+  
+  // Store initial values for diff calculation
+  const [baseRoles, setBaseRoles] = useState<Role[]>(initRoles);
+  const [baseCategories, setBaseCategories] = useState<Category[]>(initCategories);
+
+  const isAdmin = accessRole === "admin";
+  const isMember = accessRole === "member";
+  const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
+  const canCreateCategory = isAdmin || isMember;
+  const canManageMembers = isAdmin;
+  const canEditManifest = isAdmin || isMember;
+
+  // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
+  const restrictedCategoryIds = useMemo(
+    () => new Set(localCategories.filter((c) => c.is_restricted).map((c) => c.id)),
+    [localCategories]
+  );
+
+  function showStatus(s: Status, durationMs = 5000) {
+    setStatus(s);
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    if (durationMs > 0) {
+      statusTimerRef.current = setTimeout(() => setStatus(null), durationMs);
+    }
+  }
+
+  useEffect(() => {
+    const sortedRoles = initRoles.slice().sort((a, b) => b.position - a.position);
+    const categoriesWithPerms = initCategories.map(c => ({ ...c, permissions: c.permissions ?? 0 }));
+    
+    setAllRoles(sortedRoles);
+    setLocalCategories(categoriesWithPerms);
+    setBaseRoles(initRoles);
+    setBaseCategories(initCategories);
+    setHasUnsaved(false);
+    setSaveState("idle");
+    setSelectedRoleIds(new Set());
+    setIsSelectMode(false);
+    setNewCategoryName("");
+    setPermTarget(null);
+  }, [initRoles, initCategories, setPermTarget]);
+
+  const fetchMembers = useCallback(async () => {
+    try {
+      const data = await fetchRoleMembers();
+      if (data.members) setAllMembers(data.members);
+      if (data.assignments) {
+        setMembersByRole(data.assignments);
+        setBaseMembersByRole(JSON.parse(JSON.stringify(data.assignments))); // Deep copy for diff calculation
+        initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments)); // Deep copy for payload creation
+      }
+    } catch (e) {
+      console.error("Failed to fetch members", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredRoles = useMemo(() => {
+    if (!normalizedQuery) return allRoles;
+    return allRoles.filter((r) => r.name.toLowerCase().includes(normalizedQuery));
+  }, [allRoles, normalizedQuery]);
+
+  // Category DnD
+  const {
+    sensors: useCatDndSensors,
+    collisionDetection: catCollisionDetection,
+    handleDragEnd: handleCategoryDragEnd,
+  } = useCategoryDnd({
+    categories: localCategories,
+    setCategories: setLocalCategories,
+    onReorder: () => {
+      setHasUnsaved(true);
+      setSaveState("idle");
+    },
+  });
+
+  // ===== Persist (with diff confirmation) =====
+  async function persistRoles(nextRoles: Role[], nextCats: Category[]) {
+    // Calculate differences
+    const diff = calculateDifferences(
+      nextRoles,
+      baseRoles,
+      nextCats,
+      baseCategories,
+      membersByRole,
+      baseMembersByRole
+    );
+    setDiffData(diff);
+    setPendingRoles(nextRoles);
+    setPendingCats(nextCats);
+    setShowDiffModal(true);
+  }
+
+  // ===== Execute save + Discord push (called after diff confirmation) =====
+  async function executeSave() {
+    if (!pendingRoles || !pendingCats) return;
+    
+    setShowDiffModal(false);
+    if (!canEditManifest) {
+      showStatus({ kind: "error", msg: "アクセス権限がありません。" });
+      return;
+    }
+
+    setSaveState("saving");
+    try {
+      // 1. Calculate Diff & Build Payload
+      const { payload, hasDiff } = buildManifestPatchPayload(
+        pendingRoles,
+        baseRoles,
+        pendingCats,
+        baseCategories,
+        membersByRole,
+        initialAssignmentsRef.current
+      );
+
+      // デバッグ: 送信する差分をコンソールで確認できるようにする
+      console.log("Sending payload (diff) to backend:", payload);
+
+      // 差分が全く無い場合は早期リターン
+      if (!hasDiff) {
+        setHasUnsaved(false);
+        setSaveState("idle");
+        showStatus({ kind: "info", msg: "変更点はありませんでした" });
+        setPendingRoles(null);
+        setPendingCats(null);
+        return;
+      }
+
+      // 2. DB保存（PATCH /api/manifest）
+      showStatus({ kind: "info", msg: "DBに保存中..." });
+      const res = await patchManifest(payload);
+
+      if (!res.ok) {
+        setSaveState("error");
+        showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
+        setPendingRoles(null);
+        setPendingCats(null);
+        return;
+      }
+
+      // 3. 保存成功: ベースラインをリセット（重複保存防止）
+      setBaseRoles(pendingRoles);
+      setBaseCategories(pendingCats);
+      initialAssignmentsRef.current = JSON.parse(JSON.stringify(membersByRole));
+      setHasUnsaved(false);
+      setSaveState("saved");
+      setPendingRoles(null);
+      setPendingCats(null);
+
+      // 4. Discord同期（POST /api/roles/push）
+      showStatus({ kind: "info", msg: "Discordへ同期中..." });
+      const pushBody = await pushRolesToDiscord();
+
+      if (!pushBody.ok) {
+        const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
+        showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
+        return;
+      }
+
+      // 5. 全て成功 → ページリロード
+      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&t=${Date.now()}`;
+    } catch {
+      setSaveState("error");
+      showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
+      setPendingRoles(null);
+      setPendingCats(null);
+    }
+  }
+
+  // ===== Reorder =====
+  function reorderGroup(orderedRoleIds: string[]) {
+    const targetIds = new Set(orderedRoleIds);
+    const roleMap = new Map(allRoles.map((r) => [r.role_id, r]));
+    const reorderedGroup = orderedRoleIds.map((id) => roleMap.get(id)).filter((r): r is Role => Boolean(r));
+    if (reorderedGroup.length !== orderedRoleIds.length) return;
+    let pointer = 0;
+    const reordered = allRoles.map((r) => {
+      if (!targetIds.has(r.role_id)) return r;
+      return reorderedGroup[pointer++];
+    });
+    const total = reordered.length;
+    const withPos = reordered.map((r, i) => ({ ...r, position: total - i }));
+    setAllRoles(withPos);
+    setHasUnsaved(true);
+    setSaveState("idle");
+  }
+
+  // ===== Accordion =====
+  function toggleCollapse(id: string) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ===== Selection / Category creation =====
+  function toggleSelectMode() {
+    setIsSelectMode((v) => !v);
+    setSelectedRoleIds(new Set());
+    setNewCategoryName("");
+    setNewCategoryRestricted(false);
+  }
+
+  function toggleSelectRole(id: string) {
+    setSelectedRoleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function createCategory() {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    const newCatId = `cat_${Date.now()}`;
+    const newCat: Category = {
+      id: newCatId,
+      name,
+      display_order: localCategories.length,
+      is_collapsed: false,
+      permissions: 0,
+      is_restricted: newCategoryRestricted,
+    };
+    const updatedRoles = allRoles.map((r) => selectedRoleIds.has(r.role_id) ? { ...r, category_id: newCatId } : r);
+    const nextCats = [...localCategories, newCat];
+    setLocalCategories(nextCats);
+    setAllRoles(updatedRoles);
+    setSelectedRoleIds(new Set());
+    setIsSelectMode(false);
+    setNewCategoryName("");
+    setNewCategoryRestricted(false);
+    setHasUnsaved(true);
+    setSaveState("idle");
+    const restrictedLabel = newCategoryRestricted ? "（管理者専用）" : "";
+    showStatus({ kind: "info", msg: `カテゴリ「${name}」${restrictedLabel}を作成しました。「変更を確定」で保存してDiscordに同期します` });
+  }
+
+  function handleEditCategorySaved(catId: string, newName: string, newIsRestricted: boolean) {
+    setLocalCategories((prev) =>
+      prev.map((c) =>
+        c.id === catId
+          ? { ...c, name: newName, is_restricted: newIsRestricted }
+          : c
+      )
+    );
+    setEditingCategory(null);
+    setHasUnsaved(true);
+    setSaveState("idle");
+    showStatus({ kind: "info", msg: `カテゴリ「${newName}」を更新しました。「変更を確定」で保存してDiscordに同期します` });
+  }
+
+  function deleteCategory(catId: string) {
+    // 削除確認ダイアログ
+    const category = localCategories.find(c => c.id === catId);
+    if (!confirm(`カテゴリ「${category?.name}」を削除してもよろしいですか？`)) {
+      return;
+    }
+    
+    const nextCats = localCategories.filter((c) => c.id !== catId);
+    setLocalCategories(nextCats);
+    // Uncategorize roles (don't delete them)
+    setAllRoles((prev) => prev.map((r) => r.category_id === catId ? { ...r, category_id: null } : r));
+    setHasUnsaved(true);
+    setSaveState("idle");
+    showStatus({ kind: "info", msg: "カテゴリを削除しました。属していたロールは「未分類」に移動しました。「変更を確定」で保存してDiscordに同期します" });
+  }
+
+  function deleteRole(roleId: string) {
+    // 削除確認ダイアログ
+    const role = allRoles.find(r => r.role_id === roleId);
+    if (!confirm(`ロール「${role?.name}」を削除してもよろしいですか？`)) {
+      return;
+    }
+    
+    // member がロール削除する場合、割り当てられたメンバーがいないか確認
+    if (isMember) {
+      const assignedMembers = membersByRole[roleId] || [];
+      if (assignedMembers.length > 0) {
+        showStatus({ kind: "error", msg: `ロール削除失敗: このロールに${assignedMembers.length}人のメンバーが割り当てられています。先にメンバーを解除してください。` });
+        return;
+      }
+    }
+    
+    setAllRoles((prev) => prev.filter((r) => r.role_id !== roleId));
+    setHasUnsaved(true);
+    setSaveState("idle");
+    showStatus({ kind: "info", msg: "ロールを削除しました。「変更を確定」で保存してDiscordに同期します" });
+  }
+
+
+
+  function handlePermissionSave(newPermissions: number) {
+    if (!permTarget) return;
+    if (permTarget.kind === "category") {
+      // 1. Update the category's permissions
+      setLocalCategories((prev) =>
+        prev.map((c) => c.id === permTarget.id ? { ...c, permissions: newPermissions } : c)
+      );
+      // 2. AUTO-SYNC: propagate to all roles in this category
+      setAllRoles((prev) =>
+        prev.map((r) => r.category_id === permTarget.id ? { ...r, permissions: newPermissions } : r)
+      );
+      showStatus({ kind: "info", msg: `カテゴリ「${permTarget.name}」の権限をカテゴリ内ロールに適用しました。「変更を確定」で保存してDiscordに同期します` });
+    } else {
+      setAllRoles((prev) =>
+        prev.map((r) => r.role_id === permTarget.id ? { ...r, permissions: newPermissions } : r)
+      );
+      showStatus({ kind: "info", msg: `ロール「${permTarget.name}」の権限を更新しました。「変更を確定」で保存してDiscordに同期します` });
+    }
+    setHasUnsaved(true);
+    setSaveState("idle");
+    setPermTarget(null);
+  }
+
+  // ===== New Role creation / edit callback =====
+  function handleRoleSaved(role: {
+    role_id: string; name: string; color: string;
+    hoist: boolean; mentionable: boolean; permissions: number;
+    position: number; category_id: string | null; is_our_bot?: boolean;
+  }) {
+    if (editingRole) {
+      // 編集モード: 既存ロールを更新
+      setAllRoles((prev) =>
+        prev.map((r) => r.role_id === role.role_id ? { ...r, ...role } : r)
+      );
+      setEditingRole(null);
+      setShowNewRole(false);
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を更新しました。「変更を確定」で保存してDiscordに同期します` });
+    } else {
+      // 新規作成モード
+      const editableRoles = botPosition !== undefined
+        ? allRoles.filter((r) => r.position < botPosition)
+        : allRoles;
+      const lowestEditablePos = editableRoles.length > 0
+        ? Math.min(...editableRoles.map((r) => r.position))
+        : 1;
+      const newPos = Math.max(1, lowestEditablePos - 1);
+      const roleWithPos = { ...role, position: newPos };
+      setAllRoles((prev) => [...prev, roleWithPos]);
+      setShowNewRole(false);
+      showStatus({ kind: "success", msg: `ロール「${role.name}」を追加しました。「変更を確定」で保存してDiscordに同期します` });
+    }
+    setHasUnsaved(true);
+    setSaveState("idle");
+  }
+
+
+  function handleMemberCommit(roleId: string, add: string[], remove: string[]) {
+    setMembersByRole((prev) => {
+      const current = new Set(prev[roleId] ?? []);
+      add.forEach((id) => current.add(id));
+      remove.forEach((id) => current.delete(id));
+      return { ...prev, [roleId]: [...current] };
+    });
+    setMemberModalRole(null);
+    setHasUnsaved(true);
+    setSaveState("idle");
+    const detail = `付与 ${add.length}名 / 削除 ${remove.length}名`;
+    showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）。「変更を確定」で保存してDiscordに同期します` });
+  }
+
+
+  // Determine the bot role: prefer is_our_bot flag, fall back to name 'bot' as a safety net
+  const botRole = allRoles.find((r) => r.is_our_bot) ?? allRoles.find((r) => r.name.toLowerCase() === "bot");
+  const botPosition = botRole ? botRole.position : undefined;
+  const botPermissions = botRole ? BigInt(botRole.permissions) : 0n;
+
+  return (
+    <div className={styles.page}>
+      {/* Page header */}
+      <div className={styles.pageHeader}>
+        <h1 className={styles.pageTitle}>ロール管理</h1>
+        <p className={styles.pageSubtitle}>Discord サーバーのロールとカテゴリ、権限を管理できます</p>
+      </div>
+
+      {/* Status banner */}
+      {status && (
+        <div className={`${styles.statusBanner} ${styles[status.kind]}`}>
+          {status.kind === "success" && "✓ "}
+          {status.kind === "error" && "✕ "}
+          {status.kind === "info" && "ℹ "}
+          {status.msg}
+        </div>
+      )}
+
+      {/* Top action bar */}
+      <div className={styles.topBar}>
+        <div className={styles.searchWrap}>
+          <span className={styles.searchIcon}>⌕</span>
+          <input
+            type="search"
+            className={styles.search}
+            placeholder="ロールを検索..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        {/* PushButton は executeSave() 内で自動呼出しされるため非表示 */}
+        {canCreateRole ? (
+          <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
+            + ロール作成
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={isSelectMode ? styles.btnDanger : styles.btnSecondary}
+          onClick={toggleSelectMode}
+          disabled={!canCreateCategory}
+          title={canCreateCategory ? "カテゴリ作成" : "カテゴリ作成は admin/member のみ可能"}
+        >
+          {isSelectMode ? "戻る" : "⊙ カテゴリ作成"}
+        </button>
+      </div>
+
+      <div className={`${styles.statusBanner} ${styles.info}`}>
+        {isAdmin
+          ? "adminモード: すべての管理操作が有効です。"
+          : isMember
+          ? "memberモード: ロール・カテゴリの作成および自分へのロール付与ができます。会員全体のロール管理は無効です。"
+          : "obogモード: ロール作成のみ可能です。"}
+      </div>
+
+      {/* Category creation selection bar */}
+      {isSelectMode && (
+        <div className={styles.selectionBar}>
+          <span className={styles.selectionBarLabel}>
+            チェックしたロールをカテゴリに追加します（選択数: {selectedRoleIds.size}）
+          </span>
+          <input
+            type="text"
+            className={styles.categoryNameInput}
+            placeholder="カテゴリ名を入力"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") createCategory(); }}
+          />
+          {isAdmin && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={newCategoryRestricted}
+                onChange={(e) => setNewCategoryRestricted(e.target.checked)}
+              />
+              管理者専用
+            </label>
+          )}
+          <button type="button" className={styles.btnPrimary} onClick={createCategory}
+            disabled={!newCategoryName.trim()}>
+            作成
+          </button>
+        </div>
+      )}
+
+      {/* Role board */}
+      <div className={styles.board}>
+
+        {/* ===== Categorized groups with DnD reordering ===== */}
+        <DndContext
+          sensors={useCatDndSensors}
+          collisionDetection={catCollisionDetection}
+          onDragEnd={handleCategoryDragEnd}
+        >
+          <SortableContext items={localCategories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            {localCategories.map((cat) => {
+              const catRoles = filteredRoles.filter((r) => r.category_id === cat.id);
+              const isOpen = !collapsedIds.has(cat.id);
+              const isRestrictedCat = cat.is_restricted;
+              const memberCanManageCat = isMember && !isRestrictedCat;
+              return (
+                <SortableCategoryItem
+                  key={cat.id}
+                  cat={cat}
+                  catRoles={catRoles}
+                  isOpen={isOpen}
+                  memberCanManageCat={memberCanManageCat}
+                  isAdmin={isAdmin}
+                  isMember={isMember}
+                  isSelectMode={isSelectMode}
+                  selectedRoleIds={selectedRoleIds}
+                  botPosition={botPosition}
+                  onToggleCollapse={toggleCollapse}
+                  onOpenCategoryPermissions={openCategoryPermissions}
+                  onDeleteCategory={deleteCategory}
+                  onToggleSelect={toggleSelectRole}
+                  onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+                  onOpenRolePermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+                  onDeleteRole={!isSelectMode && (isAdmin || memberCanManageCat) ? deleteRole : undefined}
+                  onOpenMemberModal={
+                    !isSelectMode
+                      ? isAdmin || memberCanManageCat
+                        ? openMemberModal
+                        : isMember
+                        ? openMemberModalReadOnly
+                        : undefined
+                      : undefined
+                  }
+                  onEditRole={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
+                  onEditCategory={!isSelectMode && isAdmin ? setEditingCategory : undefined}
+                  styles={styles}
+                />
+              );
+            })}
+          </SortableContext>
+        </DndContext>
+
+        {/* ===== Master All Roles ===== */}
+        <div className={styles.group}>
+          <div
+            className={styles.groupHeader}
+            onClick={() => toggleCollapse("__all_roles__")}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__all_roles__"); }}
+          >
+            <ChevronRight
+              className={`${styles.chevron} ${!collapsedIds.has("__all_roles__") ? styles.open : ""}`}
+              size={16}
+            />
+            <span className={styles.groupName}>ロール一覧</span>
+            <span className={styles.groupCount}>{filteredRoles.length}</span>
+          </div>
+          {!collapsedIds.has("__all_roles__") && (
+            <RoleList
+              roles={filteredRoles}
+              showHeader={false}
+              selectedIds={isSelectMode ? selectedRoleIds : undefined}
+              onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
+              onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
+              onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
+              onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
+              onMembers={
+                !isSelectMode && (isAdmin || isMember)
+                  ? openMemberModalReadOnly
+                  : undefined
+              }
+              onEdit={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
+              botPosition={botPosition}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Floating save bar */}
+      {hasUnsaved && (
+        <div className={styles.unsavedBar}>
+          <span>未送信の変更があります</span>
+          <button
+            type="button"
+            className={styles.unsavedBarBtn}
+            disabled={saveState === "saving" || !canEditManifest}
+            onClick={() => persistRoles(allRoles, localCategories)}
+          >
+            {saveState === "saving" ? "処理中..." : canEditManifest ? "変更を確定" : "操作不可"}
+          </button>
+        </div>
+      )}
+
+      {/* Permission editor panel */}
+      {permTarget && (
+        <PermissionEditorPanel
+          target={permTarget}
+          botPermissions={botPermissions}
+          onSave={handlePermissionSave}
+          onClose={() => setPermTarget(null)}
+        />
+      )}
+
+      {/* New role / edit role modal */}
+      {showNewRole && (
+        <NewRoleModal
+          categories={localCategories}
+          botPermissions={botPermissions}
+          onSaved={handleRoleSaved}
+          onClose={() => { setShowNewRole(false); setEditingRole(null); }}
+          isMember={isMember}
+          restrictedCategoryIds={restrictedCategoryIds}
+          editingRole={editingRole}
+        />
+      )}
+
+      {/* Edit Category Modal */}
+      {editingCategory && (
+        <EditCategoryModal
+          category={editingCategory}
+          isAdmin={isAdmin}
+          onSaved={handleEditCategorySaved}
+          onClose={() => setEditingCategory(null)}
+        />
+      )}
+
+      {/* Member management modal */}
+      {memberModalRole && (
+        <RoleMemberModal
+          roleName={memberModalRole.name}
+          roleId={memberModalRole.role_id}
+          allMembers={allMembers}
+          currentMemberIds={membersByRole[memberModalRole.role_id] ?? []}
+          onCommit={(add, remove) => handleMemberCommit(memberModalRole.role_id, add, remove)}
+          onClose={() => setMemberModalRole(null)}
+          isLocked={botPosition !== undefined && memberModalRole.position >= botPosition}
+          readOnly={memberModalReadOnly}
+          selfDiscordId={(!memberModalReadOnly && isMember) ? myDiscordId : null}
+        />
+      )}
+
+      {/* Members management panel */}
+      {canManageMembers ? (
+        <MembersPanel />
+      ) : (
+        <div className={styles.lockedPanel}>
+          会員情報カテゴリの操作・会員管理は admin のみ利用できます。
+        </div>
+      )}
+
+      {/* Diff confirmation modal */}
+      {showDiffModal && diffData && (
+        <RoleDiffModal
+          diffData={diffData}
+          onClose={() => setShowDiffModal(false)}
+          onConfirm={executeSave}
+        />
+      )}
+    </div>
+  );
+}

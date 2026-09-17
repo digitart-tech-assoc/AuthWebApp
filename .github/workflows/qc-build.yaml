@@ -70,8 +70,6 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Lint Check
-        # 既存のエラーが解消されるまでは `continue-on-error: true` または修正後に厳格化
-        continue-on-error: true
         run: npm run lint
 
       - name: Build Next.js

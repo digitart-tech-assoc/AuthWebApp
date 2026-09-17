@@ -12,50 +12,35 @@ type Props = {
 };
 
 export default function OTPInput({ length = 6, onComplete, autoFocus = true, value, onChange, disabled = false }: Props) {
-  const [values, setValues] = useState<string[]>(Array(length).fill("") );
+  const [internalValues, setInternalValues] = useState<string[]>(() => Array(length).fill(""));
   const inputs = useRef<Array<HTMLInputElement | null>>([]);
+
+  const isControlled = typeof value === "string";
+  const values = isControlled
+    ? Array.from({ length }, (_, i) => {
+        const c = value[i] ?? "";
+        return /[0-9]/.test(c) ? c : "";
+      })
+    : internalValues;
 
   useEffect(() => {
     if (autoFocus && inputs.current[0]) inputs.current[0].focus();
   }, [autoFocus]);
 
-  // Notify parent when fully filled
-  useEffect(() => {
-    const filled = values.every((v) => v !== "");
-    const code = values.join("");
-    if (filled) {
+  const handleChange = (idx: number, v: string) => {
+    const ch = v ? v.replace(/[^0-9]/g, "").slice(-1) : "";
+    const next = [...values];
+    next[idx] = ch;
+
+    if (!isControlled) {
+      setInternalValues(next);
+    }
+    const code = next.join("");
+    onChange?.(code);
+    if (next.every((slot) => slot !== "")) {
       onComplete?.(code);
     }
-    onChange?.(code);
-  }, [values, onComplete, onChange]);
 
-  // Sync external controlled `value` -> internal values
-  useEffect(() => {
-    if (typeof value === "string") {
-      // Build an array of exact `length`, filling missing slots with empty string
-      const arr = Array.from({ length }).map((_, i) => {
-        const c = value[i] ?? "";
-        return /[0-9]/.test(c) ? c : "";
-      });
-      setValues(arr);
-    }
-  }, [value, length]);
-
-  const handleChange = (idx: number, v: string) => {
-    if (!v) {
-      setValues((s) => {
-        const next = [...s];
-        next[idx] = "";
-        return next;
-      });
-      return;
-    }
-    const ch = v.replace(/[^0-9]/g, "").slice(-1);
-    setValues((s) => {
-      const next = [...s];
-      next[idx] = ch;
-      return next;
-    });
     // move focus
     if (ch && idx < length - 1) inputs.current[idx + 1]?.focus();
   };

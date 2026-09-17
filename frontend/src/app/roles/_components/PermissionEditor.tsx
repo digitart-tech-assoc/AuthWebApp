@@ -59,18 +59,8 @@ export const DISCORD_PERMISSIONS = [
   },
 ] as const;
 
-// ===== Types =====
-
-export type PermissionTarget = {
-  /** "category" | "role" */
-  kind: "category" | "role";
-  id: string;
-  name: string;
-  /** For roles: the parent category permissions (for inheritance display) */
-  categoryPermissions?: number;
-  currentPermissions: number;
-  roleDotColor?: string;
-};
+import type { PermissionTarget } from "@/types/roles";
+export type { PermissionTarget };
 
 type Props = {
   target: PermissionTarget;
@@ -80,11 +70,6 @@ type Props = {
 };
 
 // ===== Utility =====
-
-function hasBit(perms: bigint, bit: bigint): boolean {
-  // Administrator grants everything
-  return Boolean((perms >> bit) & 1n) || Boolean((perms >> 3n) & 1n && bit !== 3n);
-}
 
 function hasBitExact(perms: bigint, bit: bigint): boolean {
   return Boolean((perms >> bit) & 1n);

@@ -3,18 +3,11 @@
 "use client";
 
 import { useState } from "react";
+import { pushRolesToDiscord, type PushRolesResponse } from "@/lib/api/roles";
 import styles from "./roles.module.css";
 
-type PushResult = {
-  updated?: number;
-  created?: number;
-  deleted?: number;
-  reordered?: number;
-  errors?: string[];
-};
-
 type Props = {
-  onSuccess?: (result: PushResult) => void;
+  onSuccess?: (result: PushRolesResponse) => void;
   onError?: (errors?: string[]) => void;
 };
 
@@ -24,19 +17,8 @@ export default function PushButton({ onSuccess, onError }: Props) {
   async function handlePush() {
     setIsPending(true);
     try {
-      const res = await fetch("/api/roles/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const body = (await res.json()) as {
-        ok?: boolean;
-        updated?: number;
-        created?: number;
-        deleted?: number;
-        reordered?: number;
-        errors?: string[];
-      };
-      if (!res.ok || !body.ok) {
+      const body = await pushRolesToDiscord();
+      if (!body.ok) {
         onError?.(body.errors);
         return;
       }

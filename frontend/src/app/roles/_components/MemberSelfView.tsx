@@ -4,6 +4,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
+import { fetchRoleMembers, selfAssignRole, selfRemoveRole } from "@/lib/api/roles";
 import styles from "./memberself.module.css";
 
 type Category = {
@@ -62,13 +64,10 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
   // Fetch all member assignments
   const fetchMembers = useCallback(async () => {
     try {
-      const res = await fetch("/api/roles/members");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.assignments) {
-          setMembersByRole(data.assignments);
-          initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments));
-        }
+      const data = await fetchRoleMembers();
+      if (data.assignments) {
+        setMembersByRole(data.assignments);
+        initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments));
       }
     } catch {
       // ignore
@@ -146,16 +145,11 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       // 追加リクエスト
       for (const roleId of rolesToAdd) {
         try {
-          const res = await fetch("/api/roles/self-assign", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role_id: roleId }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.ok) {
+          const data = await selfAssignRole(roleId);
+          if (!data.ok) {
             const roleObj = roles.find((r) => r.role_id === roleId);
             const roleName = roleObj ? roleObj.name : roleId;
-            errors.push(`${roleName}の付与失敗: ${data.detail || res.statusText}`);
+            errors.push(`${roleName}の付与失敗: ${data.detail || "エラーが発生しました"}`);
           }
         } catch {
           errors.push(`通信エラー (${roleId})`);
@@ -165,16 +159,11 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       // 削除リクエスト
       for (const roleId of rolesToRemove) {
         try {
-          const res = await fetch("/api/roles/self-remove", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role_id: roleId }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.ok) {
+          const data = await selfRemoveRole(roleId);
+          if (!data.ok) {
             const roleObj = roles.find((r) => r.role_id === roleId);
             const roleName = roleObj ? roleObj.name : roleId;
-            errors.push(`${roleName}の解除失敗: ${data.detail || res.statusText}`);
+            errors.push(`${roleName}の解除失敗: ${data.detail || "エラーが発生しました"}`);
           }
         } catch {
           errors.push(`通信エラー (${roleId})`);
@@ -265,7 +254,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         <div className={styles.profileHeader}>
           <div className={styles.avatar}>
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} />
+              <Image src={avatarUrl} alt={displayName} width={48} height={48} unoptimized />
             ) : (
               "👤"
             )}

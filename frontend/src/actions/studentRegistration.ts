@@ -3,23 +3,7 @@
 import { backendFetch } from "@/lib/backendFetch";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 
-export interface EligibilityCheckResult {
-  is_discord_linked: boolean;
-  is_pre_member: boolean;
-  is_paid: boolean;
-  can_register: boolean;
-  reason: string;
-}
-
-export interface StudentProfile {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
-  email_aoyama: string;
-}
+import type { EligibilityCheckResult, StudentProfile } from "@/types/join";
 
 export async function checkEligibility(): Promise<EligibilityCheckResult> {
   const headerResult = await getBackendAuthorizationHeader();
@@ -41,7 +25,7 @@ export async function checkEligibility(): Promise<EligibilityCheckResult> {
     }
 
     return response.json();
-  } catch (err) {
+  } catch {
     // If backend is unreachable, return a safe failure so the UI can render an informative message
     return {
       is_discord_linked: false,

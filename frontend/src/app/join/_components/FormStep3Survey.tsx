@@ -1,20 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./join.module.css";
+import styles from "../join.module.css";
 
-interface SurveyAnswers {
-  digitart_channels: string[];
-  digitart_channels_other: string;
-  circle_search_channels: string[];
-  circle_search_other: string;
-  discord_invite_other: string;
-  discord_invite_source: string | null;
-  interested_fields: string[];
-  interested_fields_other: string;
-  motivations: string[];
-  motivations_other: string;
-}
+import type { SurveyAnswers } from "@/types/join";
 
 interface Props {
   onBack: () => void;

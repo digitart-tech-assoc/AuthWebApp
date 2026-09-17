@@ -1,21 +1,13 @@
 "use client";
 
 import StudentProfileForm from "@/components/forms/StudentProfileForm";
-import styles from "./join.module.css";
-
-interface FormData {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
-}
+import styles from "../join.module.css";
+import type { StudentProfileInput } from "@/types/join";
 
 interface FormStep2Props {
-  initialData: FormData;
+  initialData: StudentProfileInput;
   hasExistingProfile: boolean;
-  onContinue: (data: FormData) => void;
+  onContinue: (data: StudentProfileInput) => void;
   onBack: () => void;
 }
 
@@ -25,7 +17,7 @@ export default function FormStep2Input({
   onContinue,
   onBack,
 }: FormStep2Props) {
-  const handleSubmit = async (data: FormData) => {
+  const handleSubmit = async (data: StudentProfileInput) => {
     onContinue(data);
   };
 

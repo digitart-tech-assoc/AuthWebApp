@@ -6,33 +6,27 @@ import { useRouter } from "next/navigation";
 import {
   checkEligibility,
   getStudentProfile,
-  type EligibilityCheckResult,
-  type StudentProfile,
-} from "@/actions/student-registration";
-import FormStep1Eligibility from "../form-step-1";
-import FormStep2Input from "../form-step-2";
-import FormStep3Survey from "../form-step-3";
-import FormStep4OTP from "../form-step-4";
-import FormStep5Complete from "../form-step-5";
-import { fetchBackend } from "@/lib/backendFetch";
+} from "@/actions/studentRegistration";
+import type {
+  EligibilityCheckResult,
+  StudentProfile,
+  StudentProfileInput,
+  SurveyAnswers,
+} from "@/types/join";
+import FormStep1Eligibility from "../_components/FormStep1Eligibility";
+import FormStep2Input from "../_components/FormStep2Input";
+import FormStep3Survey from "../_components/FormStep3Survey";
+import FormStep4OTP from "../_components/FormStep4OTP";
+import FormStep5Complete from "../_components/FormStep5Complete";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;
-
-interface FormState {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
-}
 
 export default function JoinMemberPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<FormStep>(1);
   const [eligibility, setEligibility] = useState<EligibilityCheckResult | null>(null);
   const [existingProfile, setExistingProfile] = useState<StudentProfile | null>(null);
-  const [formData, setFormData] = useState<FormState>({
+  const [formData, setFormData] = useState<StudentProfileInput>({
     student_number: "",
     name: "",
     furigana: "",
@@ -100,7 +94,7 @@ export default function JoinMemberPage() {
     }
   };
 
-  const handleStep2Continue = (newFormData: FormState) => {
+  const handleStep2Continue = (newFormData: StudentProfileInput) => {
     setFormData(newFormData);
     setCurrentStep(3);
     setError(null);
@@ -108,7 +102,7 @@ export default function JoinMemberPage() {
 
   const handleStep2Back = () => setCurrentStep(1);
   const handleStep3Back = () => setCurrentStep(2);
-  const persistSurvey = async (answers?: any) => {
+  const persistSurvey = async (answers?: SurveyAnswers) => {
     try {
       const res = await fetch('/api/survey', {
         method: 'POST',
@@ -126,7 +120,7 @@ export default function JoinMemberPage() {
     }
   };
 
-  const handleStep3Complete = async (answers?: any) => {
+  const handleStep3Complete = async (answers?: SurveyAnswers) => {
     setError(null);
     try {
       await persistSurvey(answers);
@@ -137,7 +131,6 @@ export default function JoinMemberPage() {
   };
   const handleStep4Back = () => setCurrentStep(3);
   const handleStep4Complete = () => { setCurrentStep(5); setError(null); };
-  const handleStep5Complete = () => router.push("/roles");
 
   if (loading) {
     return (
@@ -209,7 +202,7 @@ export default function JoinMemberPage() {
           )}
 
           {currentStep === 5 && (
-            <FormStep5Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep5Complete} />
+            <FormStep5Complete studentNumber={formData.student_number} name={formData.name} />
           )}
 
           {error && currentStep > 1 && (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import styles from "@/app/join/join.module.css";
+import styles from "./StudentProfileForm.module.css";
 import StudentNumberInput from "@/components/forms/StudentNumberInput";
 import NameInput from "@/components/forms/NameInput";
 import FuriganaInput from "@/components/forms/FuriganaInput";
@@ -9,7 +9,7 @@ import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
 import PhoneInput from "@/components/forms/PhoneInput";
 import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "@/lib/validation";
-import type { StudentProfile } from "@/actions/student-registration";
+import type { StudentProfile } from "@/types/join";
 
 interface Props {
   // Accept partial so caller doesn't need to include backend-only fields like `email_aoyama`.
@@ -20,7 +20,7 @@ interface Props {
   submitLabel?: string;
 }
 
-export default function StudentProfileForm({ initialData, hasExistingProfile, onSubmit, onBack, submitLabel = "保存" }: Props) {
+export default function StudentProfileForm({ initialData, onSubmit, onBack, submitLabel = "保存" }: Props) {
   const [formData, setFormData] = useState<StudentProfile>({
     student_number: initialData?.student_number ?? "",
     name: initialData?.name ?? "",
@@ -29,7 +29,7 @@ export default function StudentProfileForm({ initialData, hasExistingProfile, on
     gender: (initialData?.gender as string) ?? null,
     phone: initialData?.phone ?? "",
     // email_aoyama is populated by OTP send response; default to empty string here.
-    email_aoyama: (initialData as any)?.email_aoyama ?? "",
+    email_aoyama: initialData?.email_aoyama ?? "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
