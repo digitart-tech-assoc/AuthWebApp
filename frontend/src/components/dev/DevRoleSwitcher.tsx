@@ -4,8 +4,10 @@
  * DevRoleSwitcher — 開発環境専用のロール切替モーダル
  *
  * 画面右下のフローティングボタンをクリックするとモーダルが開き、
- * ワンクリックで user_memberships + paid_invitations を操作してロールを切り替えられる。
+ * 7つの権限（admin / member / pre_member / pre_member+paid / none / obog / sub_user）
+ * をワンクリックで切り替えることができる。
  *
+ * 既存のWebページに合わせた、白基調でシンプルなデザイン。
  * NODE_ENV === "development" の場合のみマウントされる（layout.tsx で制御）。
  */
 
@@ -27,7 +29,7 @@ type Preset = {
 	description: string;
 };
 
-/* ─── プリセット（指定された7つのペルソナ） ─── */
+/* ─── プリセット ─── */
 const PRESETS: Preset[] = [
 	{
 		label: "admin",
@@ -80,14 +82,14 @@ const PRESETS: Preset[] = [
 	},
 ];
 
-/* ─── ロール表示色マッピング ─── */
+/* ─── ロール表示色マッピング（白背景用） ─── */
 const ROLE_COLORS: Record<string, string> = {
-	admin: "#ef4444",
-	member: "#22c55e",
-	pre_member: "#eab308",
-	none: "#a1a1aa",
-	obog: "#3b82f6",
-	sub_user: "#a855f7",
+	admin: "#dc2626",
+	member: "#16a34a",
+	pre_member: "#d97706",
+	none: "#64748b",
+	obog: "#2563eb",
+	sub_user: "#7c3aed",
 };
 
 export default function DevRoleSwitcher() {
@@ -140,7 +142,7 @@ export default function DevRoleSwitcher() {
 				const data = await res.json();
 				setMessage(data.message);
 				await fetchState();
-				// 1秒後にリロードして反映
+				// 反映のためリロード
 				setTimeout(() => {
 					window.location.reload();
 				}, 800);
@@ -161,7 +163,7 @@ export default function DevRoleSwitcher() {
 		return state.current_role === preset.role && state.is_paid === preset.is_paid;
 	};
 
-	const currentColor = state ? (ROLE_COLORS[state.current_role] ?? "#a1a1aa") : "#a1a1aa";
+	const currentColor = state ? (ROLE_COLORS[state.current_role] ?? "#64748b") : "#64748b";
 
 	if (!mounted) return null;
 
@@ -191,6 +193,14 @@ export default function DevRoleSwitcher() {
 					boxShadow: `0 4px 24px ${currentColor}40, 0 0 0 1px rgba(255,255,255,0.08)`,
 					transition: "all 0.2s ease",
 				}}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.transform = "scale(1.06)";
+					e.currentTarget.style.borderColor = "rgba(49, 49, 56, 0.9)";
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.transform = "scale(1)";
+					e.currentTarget.style.borderColor = "rgba(24, 24, 27, 0.9)";
+				}}
 				title="Dev Role Switcher"
 			>
 				🔑
@@ -215,74 +225,85 @@ export default function DevRoleSwitcher() {
 						style={{
 							position: "absolute",
 							inset: 0,
-							background: "rgba(0,0,0,0.3)",
-							backdropFilter: "blur(2px)",
+							background: "rgba(0, 0, 0, 0.3)",
+							backdropFilter: "blur(3px)",
 						}}
 					/>
 
-					{/* モーダル本体 */}
+					{/* モーダル本体（白基調・シンプル） */}
 					<div
 						id="dev-role-switcher-modal"
 						style={{
 							position: "relative",
 							width: "360px",
-							maxHeight: "80vh",
+							maxHeight: "82vh",
 							overflowY: "auto",
-							background: "linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
-							borderRadius: "16px",
-							border: "1px solid rgba(255,255,255,0.1)",
-							boxShadow: "0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)",
-							padding: "24px",
-							fontFamily: "'Inter', -apple-system, sans-serif",
-							color: "#e4e4e7",
-							marginBottom: "60px",
+							background: "#ffffff",
+							borderRadius: "12px",
+							border: "1px solid #e2e8f0",
+							boxShadow: "0 20px 40px -8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)",
+							padding: "20px",
+							fontFamily: "inherit",
+							color: "#0f172a",
+							marginBottom: "55px",
 						}}
 					>
 						{/* ヘッダー */}
 						<div
 							style={{
 								display: "flex",
-								alignItems: "center",
+								alignItems: "flex-start",
 								justifyContent: "space-between",
-								marginBottom: "16px",
+								paddingBottom: "12px",
+								marginBottom: "14px",
+								borderBottom: "1px solid #f1f5f9",
 							}}
 						>
 							<div>
 								<h3
 									style={{
 										margin: 0,
-										fontSize: "16px",
+										fontSize: "15px",
 										fontWeight: 700,
-										letterSpacing: "-0.02em",
-										color: "#fff",
+										letterSpacing: "-0.01em",
+										color: "#0f172a",
 									}}
 								>
 									🛠️ Dev Role Switcher
 								</h3>
 								<p
 									style={{
-										margin: "4px 0 0",
+										margin: "2px 0 0",
 										fontSize: "11px",
-										color: "#71717a",
+										color: "#64748b",
 									}}
 								>
-									開発環境専用 — ロール切替ツール
+									開発環境専用 — 権限切替
 								</p>
 							</div>
 							<button
 								onClick={() => setIsOpen(false)}
 								style={{
-									background: "rgba(255,255,255,0.08)",
-									border: "none",
-									borderRadius: "8px",
-									width: "28px",
-									height: "28px",
+									background: "#f8fafc",
+									border: "1px solid #e2e8f0",
+									borderRadius: "6px",
+									width: "26px",
+									height: "26px",
 									display: "flex",
 									alignItems: "center",
 									justifyContent: "center",
 									cursor: "pointer",
-									color: "#a1a1aa",
-									fontSize: "14px",
+									color: "#64748b",
+									fontSize: "13px",
+									transition: "all 0.15s ease",
+								}}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.background = "#f1f5f9";
+									e.currentTarget.style.color = "#0f172a";
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = "#f8fafc";
+									e.currentTarget.style.color = "#64748b";
 								}}
 							>
 								✕
@@ -293,11 +314,11 @@ export default function DevRoleSwitcher() {
 						{state && (
 							<div
 								style={{
-									background: "rgba(255,255,255,0.05)",
-									borderRadius: "10px",
-									padding: "12px",
-									marginBottom: "16px",
-									border: "1px solid rgba(255,255,255,0.06)",
+									background: "#f8fafc",
+									borderRadius: "8px",
+									padding: "10px 12px",
+									marginBottom: "14px",
+									border: "1px solid #e2e8f0",
 								}}
 							>
 								<div
@@ -306,22 +327,22 @@ export default function DevRoleSwitcher() {
 										alignItems: "center",
 										gap: "8px",
 										fontSize: "12px",
-										color: "#a1a1aa",
+										color: "#475569",
 									}}
 								>
-									<span>現在のロール:</span>
+									<span style={{ fontSize: "12px" }}>現在のロール:</span>
 									<span
 										style={{
 											display: "inline-flex",
 											alignItems: "center",
-											gap: "4px",
-											padding: "2px 10px",
+											gap: "5px",
+											padding: "2px 8px",
 											borderRadius: "9999px",
-											background: `${currentColor}20`,
+											background: `${currentColor}12`,
 											color: currentColor,
 											fontWeight: 600,
 											fontSize: "12px",
-											border: `1px solid ${currentColor}40`,
+											border: `1px solid ${currentColor}30`,
 										}}
 									>
 										<span
@@ -337,11 +358,12 @@ export default function DevRoleSwitcher() {
 									{state.is_paid && (
 										<span
 											style={{
-												padding: "2px 8px",
+												padding: "2px 7px",
 												borderRadius: "9999px",
-												background: "rgba(234,179,8,0.15)",
-												color: "#eab308",
-												fontSize: "10px",
+												background: "#fef3c7",
+												border: "1px solid #fde68a",
+												color: "#b45309",
+												fontSize: "11px",
 												fontWeight: 600,
 											}}
 										>
@@ -349,27 +371,37 @@ export default function DevRoleSwitcher() {
 										</span>
 									)}
 								</div>
-								{state.discord_id && (
+								{state.discord_id ? (
 									<div
 										style={{
-											fontSize: "10px",
-											color: "#52525b",
-											marginTop: "6px",
+											fontSize: "11px",
+											color: "#94a3b8",
+											marginTop: "5px",
 											fontFamily: "monospace",
 										}}
 									>
 										Discord ID: {state.discord_id}
 									</div>
+								) : (
+									<div
+										style={{
+											fontSize: "11px",
+											color: "#d97706",
+											marginTop: "5px",
+										}}
+									>
+										⚠️ 未ログイン（ロール切替にはDiscordログインが必要です）
+									</div>
 								)}
 							</div>
 						)}
 
-						{loading && (
+						{loading && !state && (
 							<div
 								style={{
 									textAlign: "center",
-									padding: "20px",
-									color: "#71717a",
+									padding: "18px",
+									color: "#64748b",
 									fontSize: "13px",
 								}}
 							>
@@ -377,7 +409,7 @@ export default function DevRoleSwitcher() {
 							</div>
 						)}
 
-						{/* プリセットボタン */}
+						{/* プリセット一覧 */}
 						<div
 							style={{
 								display: "flex",
@@ -389,7 +421,7 @@ export default function DevRoleSwitcher() {
 								const key = `${preset.role}-${preset.is_paid}`;
 								const isCurrent = isCurrentPreset(preset);
 								const isLoading = switching === key;
-								const color = ROLE_COLORS[preset.role] ?? "#a1a1aa";
+								const color = ROLE_COLORS[preset.role] ?? "#64748b";
 
 								return (
 									<button
@@ -402,36 +434,35 @@ export default function DevRoleSwitcher() {
 											alignItems: "center",
 											gap: "10px",
 											width: "100%",
-											padding: "10px 14px",
-											borderRadius: "10px",
+											padding: "9px 12px",
+											borderRadius: "8px",
 											border: isCurrent
 												? `1.5px solid ${color}`
-												: "1px solid rgba(255,255,255,0.06)",
+												: "1px solid #e2e8f0",
 											background: isCurrent
-												? `${color}15`
-												: "rgba(255,255,255,0.03)",
-											color: isCurrent ? color : "#d4d4d8",
+												? `${color}0c`
+												: "#ffffff",
+											color: "#0f172a",
 											cursor: isCurrent ? "default" : "pointer",
 											opacity: isLoading ? 0.6 : 1,
 											transition: "all 0.15s ease",
 											textAlign: "left",
 											fontFamily: "inherit",
-											fontSize: "13px",
 										}}
 										onMouseEnter={(e) => {
 											if (!isCurrent) {
-												(e.currentTarget as HTMLButtonElement).style.background =
-													"rgba(255,255,255,0.07)";
+												e.currentTarget.style.background = "#f8fafc";
+												e.currentTarget.style.borderColor = "#cbd5e1";
 											}
 										}}
 										onMouseLeave={(e) => {
 											if (!isCurrent) {
-												(e.currentTarget as HTMLButtonElement).style.background =
-													"rgba(255,255,255,0.03)";
+												e.currentTarget.style.background = "#ffffff";
+												e.currentTarget.style.borderColor = "#e2e8f0";
 											}
 										}}
 									>
-										<span style={{ fontSize: "16px", flexShrink: 0 }}>
+										<span style={{ fontSize: "15px", flexShrink: 0 }}>
 											{preset.emoji}
 										</span>
 										<div style={{ flex: 1, minWidth: 0 }}>
@@ -440,16 +471,20 @@ export default function DevRoleSwitcher() {
 													fontWeight: 600,
 													fontSize: "13px",
 													lineHeight: "1.3",
+													display: "flex",
+													alignItems: "center",
+													gap: "6px",
 												}}
 											>
-												{preset.label}
+												<span style={{ color: isCurrent ? color : "#0f172a" }}>
+													{preset.label}
+												</span>
 												{isCurrent && (
 													<span
 														style={{
-															marginLeft: "6px",
-															fontSize: "10px",
-															fontWeight: 400,
-															opacity: 0.7,
+															fontSize: "11px",
+															fontWeight: 600,
+															color: color,
 														}}
 													>
 														✓ 現在
@@ -458,10 +493,10 @@ export default function DevRoleSwitcher() {
 											</div>
 											<div
 												style={{
-													fontSize: "10px",
-													color: "#71717a",
-													lineHeight: "1.4",
-													marginTop: "1px",
+													fontSize: "11px",
+													color: "#64748b",
+													lineHeight: "1.3",
+													marginTop: "2px",
 												}}
 											>
 												{preset.description}
@@ -482,24 +517,24 @@ export default function DevRoleSwitcher() {
 							})}
 						</div>
 
-						{/* メッセージ */}
+						{/* 通知メッセージ */}
 						{message && (
 							<div
 								style={{
 									marginTop: "12px",
-									padding: "10px 12px",
+									padding: "9px 12px",
 									borderRadius: "8px",
 									background: message.startsWith("エラー") || message.startsWith("通信エラー")
-										? "rgba(239,68,68,0.1)"
-										: "rgba(34,197,94,0.1)",
+										? "#fef2f2"
+										: "#f0fdf4",
 									border: `1px solid ${
 										message.startsWith("エラー") || message.startsWith("通信エラー")
-											? "rgba(239,68,68,0.2)"
-											: "rgba(34,197,94,0.2)"
+											? "#fecaca"
+											: "#bbf7d0"
 									}`,
 									color: message.startsWith("エラー") || message.startsWith("通信エラー")
-										? "#fca5a5"
-										: "#86efac",
+										? "#991b1b"
+										: "#166534",
 									fontSize: "12px",
 									lineHeight: "1.4",
 								}}
@@ -511,11 +546,11 @@ export default function DevRoleSwitcher() {
 						{/* フッター */}
 						<div
 							style={{
-								marginTop: "16px",
-								paddingTop: "12px",
-								borderTop: "1px solid rgba(255,255,255,0.06)",
-								fontSize: "10px",
-								color: "#3f3f46",
+								marginTop: "14px",
+								paddingTop: "10px",
+								borderTop: "1px solid #f1f5f9",
+								fontSize: "11px",
+								color: "#94a3b8",
 								textAlign: "center",
 							}}
 						>
