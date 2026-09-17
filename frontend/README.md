@@ -43,29 +43,36 @@ npm run build
 frontend/src/
 ├── actions/             # Server Actions（"use server"）
 │   └── studentRegistration.ts  # 学生情報登録・OTP送信等のサーバー処理
-├── app/                 # Next.js App Router（ルーティング・ページ定義）
+├── app/                 # Next.js App Router（ルーティング & Colocation）
 │   ├── layout.tsx       # 全体レイアウト（ヘッダー・ナビゲーション）
 │   ├── page.tsx         # トップページ
 │   ├── roles/           # ロール管理画面（/roles）
+│   │   ├── page.tsx
+│   │   └── _components/ # 【Colocation】ロール管理専用コンポーネント・Hooks
+│   │       ├── RoleAccordion.tsx       # ロール一覧・アコーディオン
+│   │       ├── SortableCategoryItem.tsx # カテゴリ個別行（DnD対応）
+│   │       ├── RoleDiffModal.tsx       # 差分確認モーダル
+│   │       ├── useRoleModals.ts        # モーダル状態管理カスタムフック
+│   │       ├── useCategoryDnd.ts       # 並び替えDnDカスタムフック
+│   │       └── roleDiff.ts             # 差分検知・ペイロード構築純粋関数
 │   ├── join/            # 入会・参加申請フロー（/join）
-│   │   ├── _components/ # 【規約】join専用ステップコンポーネント
+│   │   ├── page.tsx
+│   │   ├── _components/ # 【Colocation】join専用ステップ・モーダルコンポーネント
 │   │   │   ├── FormStep1Eligibility.tsx
 │   │   │   ├── FormStep2Input.tsx
 │   │   │   ├── FormStep3Survey.tsx
 │   │   │   ├── FormStep4OTP.tsx
-│   │   │   └── FormStep5Complete.tsx
+│   │   │   ├── FormStep5Complete.tsx
+│   │   │   └── OTPModal.tsx
 │   │   └── form/        # フォームルーティング
+│   ├── profile/         # プロフィール編集画面（/profile）
+│   │   ├── page.tsx
+│   │   └── _components/ # 【Colocation】profile専用コンポーネント
+│   │       └── ProfileForm.tsx
 │   └── api/             # Route Handlers（Next.js バックエンドプロキシAPI）
-├── components/          # 再利用可能なUIコンポーネント
-│   ├── common/          # アプリ全体で使い回す汎用UI（ボタン、ローディング等）
-│   ├── forms/           # フォームパーツ（StudentProfileForm等）
-│   └── roles/           # ロール管理専用コンポーネント・Hooks
-│       ├── RoleAccordion.tsx       # ロール一覧・アコーディオン
-│       ├── SortableCategoryItem.tsx # カテゴリ個別行（DnD対応）
-│       ├── RoleDiffModal.tsx       # 差分確認モーダル
-│       ├── useRoleModals.ts        # モーダル状態管理カスタムフック
-│       ├── useCategoryDnd.ts       # 並び替えDnDカスタムフック
-│       └── roleDiff.ts             # 差分検知・ペイロード構築純粋関数
+├── components/          # 複数画面で使い回す共通UIパーツ（共通ライブラリ）
+│   ├── forms/           # 汎用フォームパーツ（StudentProfileForm, NameInput等）
+│   └── OTPInput.tsx     # 汎用OTP入力フィールド
 ├── lib/                 # ユーティリティ・APIクライアント・基盤ロジック
 │   ├── api/             # クライアント向けAPI通信関数
 │   │   └── roles.ts     # ロール・マニフェスト関連通信（fetch関数群）
