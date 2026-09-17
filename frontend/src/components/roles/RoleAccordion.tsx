@@ -41,23 +41,7 @@ type Status = {
   msg: string;
 };
 
-// ===== Icons =====
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg className={`${styles.chevron} ${open ? styles.open : ""}`} viewBox="0 0 16 16" fill="currentColor">
-      <path d="M5.5 3.5L10.5 8l-5 4.5" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M8 1L2 4v4c0 3.5 2.5 6.5 6 7.5C12.5 14.5 14 11.5 14 8V4L8 1z" />
-    </svg>
-  );
-}
+import { ChevronRight } from "lucide-react";
 
 // ===== Component =====
 
@@ -815,7 +799,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__all_roles__"); }}
           >
-            <ChevronIcon open={!collapsedIds.has("__all_roles__")} />
+            <ChevronRight
+              className={`${styles.chevron} ${!collapsedIds.has("__all_roles__") ? styles.open : ""}`}
+              size={16}
+            />
             <span className={styles.groupName}>ロール一覧</span>
             <span className={styles.groupCount}>{filteredRoles.length}</span>
           </div>

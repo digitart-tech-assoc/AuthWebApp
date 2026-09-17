@@ -6,23 +6,7 @@ import RoleList from "./RoleList";
 import styles from "./roles.module.css";
 import type { Category, Role } from "@/types/roles";
 
-// ===== Icons =====
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg className={`${styles.chevron} ${open ? styles.open : ""}`} viewBox="0 0 16 16" fill="currentColor">
-      <path d="M5.5 3.5L10.5 8l-5 4.5" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M8 1L2 4v4c0 3.5 2.5 6.5 6 7.5C12.5 14.5 14 11.5 14 8V4L8 1z" />
-    </svg>
-  );
-}
+import { ChevronRight, Shield } from "lucide-react";
 
 // ===== SortableCategoryItem Props =====
 
@@ -91,7 +75,10 @@ export default function SortableCategoryItem({
           if (e.key === "Enter" || e.key === " ") onToggleCollapse(cat.id);
         }}
       >
-        <ChevronIcon open={isOpen} />
+        <ChevronRight
+          className={`${styles.chevron} ${isOpen ? styles.open : ""}`}
+          size={16}
+        />
         {/* Drag handle */}
         {(isAdmin || isMember) && (
           <span
@@ -132,7 +119,7 @@ export default function SortableCategoryItem({
               title="カテゴリ権限設定"
               aria-label={`${cat.name} の権限設定`}
             >
-              <ShieldIcon />
+              <Shield size={11} />
               権限
             </button>
           </>
