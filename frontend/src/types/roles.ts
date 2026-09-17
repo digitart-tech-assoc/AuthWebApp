@@ -46,3 +46,14 @@ export type PermissionTarget = {
   currentPermissions: number;
   roleDotColor?: string;
 };
+
+export type RoleDiffData = {
+  roleAdded: { role: Role; memberCount: number }[];
+  memberAssigned: { roleId: string; roleName: string; added: string[]; removed: string[] }[];
+  permissionEdited: { roleId: string; roleName: string; oldPermissions: string; newPermissions: string }[];
+  orderChanged: { roleId: string; roleName: string; oldPosition: number; newPosition: number }[];
+  roleDeleted: Role[];
+  categoriesAdded: Category[];
+  categoriesDeleted: Category[];
+};
+
