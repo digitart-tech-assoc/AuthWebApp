@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/student-registration";
+import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/studentRegistration";
 import OTPInput from "@/components/OTPInput";
 import styles from "../join.module.css";
 

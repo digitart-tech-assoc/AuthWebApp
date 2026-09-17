@@ -1,6 +1,6 @@
 import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
-import { getStudentProfile } from "@/actions/student-registration";
+import { getStudentProfile } from "@/actions/studentRegistration";
 import ProfileForm from "./ProfileForm";
 import styles from "../join/join.module.css";
 import { redirect } from "next/navigation";

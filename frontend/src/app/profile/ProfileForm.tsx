@@ -2,7 +2,7 @@
 
 import StudentProfileForm from "@/components/forms/StudentProfileForm";
 import styles from "../join/join.module.css";
-import { submitStudentProfile } from "@/actions/student-registration";
+import { submitStudentProfile } from "@/actions/studentRegistration";
 import type { StudentProfile } from "@/types/join";
 
 interface Props {

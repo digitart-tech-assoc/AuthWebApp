@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   checkEligibility,
   getStudentProfile,
-} from "@/actions/student-registration";
+} from "@/actions/studentRegistration";
 import type {
   EligibilityCheckResult,
   StudentProfile,
