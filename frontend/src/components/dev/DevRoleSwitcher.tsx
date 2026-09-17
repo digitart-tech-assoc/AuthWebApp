@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import styles from "./DevRoleSwitcher.module.css";
 
 /* ─── 型定義 ─── */
 type DevState = {
@@ -173,33 +174,10 @@ export default function DevRoleSwitcher() {
 			<button
 				id="dev-role-switcher-trigger"
 				onClick={() => setIsOpen(!isOpen)}
+				className={styles.trigger}
 				style={{
-					position: "fixed",
-					bottom: "20px",
-					right: "20px",
-					zIndex: 99999,
-					width: "48px",
-					height: "48px",
-					borderRadius: "50%",
 					border: `3px solid ${currentColor}`,
-					background: "rgba(24, 24, 27, 0.9)",
-					backdropFilter: "blur(12px)",
-					color: "#fff",
-					fontSize: "18px",
-					cursor: "pointer",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
 					boxShadow: `0 4px 24px ${currentColor}40, 0 0 0 1px rgba(255,255,255,0.08)`,
-					transition: "all 0.2s ease",
-				}}
-				onMouseEnter={(e) => {
-					e.currentTarget.style.transform = "scale(1.06)";
-					e.currentTarget.style.borderColor = "rgba(49, 49, 56, 0.9)";
-				}}
-				onMouseLeave={(e) => {
-					e.currentTarget.style.transform = "scale(1)";
-					e.currentTarget.style.borderColor = "rgba(24, 24, 27, 0.9)";
 				}}
 				title="Dev Role Switcher"
 			>
@@ -208,188 +186,45 @@ export default function DevRoleSwitcher() {
 
 			{/* モーダル */}
 			{isOpen && (
-				<div
-					style={{
-						position: "fixed",
-						inset: 0,
-						zIndex: 99998,
-						display: "flex",
-						alignItems: "flex-end",
-						justifyContent: "flex-end",
-						padding: "20px",
-					}}
-				>
+				<div className={styles.overlayWrapper}>
 					{/* オーバーレイ */}
-					<div
-						onClick={() => setIsOpen(false)}
-						style={{
-							position: "absolute",
-							inset: 0,
-							background: "rgba(0, 0, 0, 0.3)",
-							backdropFilter: "blur(3px)",
-						}}
-					/>
+					<div className={styles.overlay} onClick={() => setIsOpen(false)} />
 
 					{/* モーダル本体（白基調・シンプル） */}
-					<div
-						id="dev-role-switcher-modal"
-						style={{
-							position: "relative",
-							width: "360px",
-							maxHeight: "82vh",
-							overflowY: "auto",
-							background: "#ffffff",
-							borderRadius: "12px",
-							border: "1px solid #e2e8f0",
-							boxShadow: "0 20px 40px -8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)",
-							padding: "20px",
-							fontFamily: "inherit",
-							color: "#0f172a",
-							marginBottom: "55px",
-						}}
-					>
+					<div id="dev-role-switcher-modal" className={styles.modal}>
 						{/* ヘッダー */}
-						<div
-							style={{
-								display: "flex",
-								alignItems: "flex-start",
-								justifyContent: "space-between",
-								paddingBottom: "12px",
-								marginBottom: "14px",
-								borderBottom: "1px solid #f1f5f9",
-							}}
-						>
+						<div className={styles.header}>
 							<div>
-								<h3
-									style={{
-										margin: 0,
-										fontSize: "15px",
-										fontWeight: 700,
-										letterSpacing: "-0.01em",
-										color: "#0f172a",
-									}}
-								>
-									🛠️ Dev Role Switcher
-								</h3>
-								<p
-									style={{
-										margin: "2px 0 0",
-										fontSize: "11px",
-										color: "#64748b",
-									}}
-								>
-									開発環境専用 — 権限切替
-								</p>
+								<h3 className={styles.headerTitle}>🛠️ Dev Role Switcher</h3>
+								<p className={styles.headerSubtitle}>開発環境専用 — 権限切替</p>
 							</div>
-							<button
-								onClick={() => setIsOpen(false)}
-								style={{
-									background: "#f8fafc",
-									border: "1px solid #e2e8f0",
-									borderRadius: "6px",
-									width: "26px",
-									height: "26px",
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
-									cursor: "pointer",
-									color: "#64748b",
-									fontSize: "13px",
-									transition: "all 0.15s ease",
-								}}
-								onMouseEnter={(e) => {
-									e.currentTarget.style.background = "#f1f5f9";
-									e.currentTarget.style.color = "#0f172a";
-								}}
-								onMouseLeave={(e) => {
-									e.currentTarget.style.background = "#f8fafc";
-									e.currentTarget.style.color = "#64748b";
-								}}
-							>
+							<button onClick={() => setIsOpen(false)} className={styles.closeButton}>
 								✕
 							</button>
 						</div>
 
 						{/* 現在の状態 */}
 						{state && (
-							<div
-								style={{
-									background: "#f8fafc",
-									borderRadius: "8px",
-									padding: "10px 12px",
-									marginBottom: "14px",
-									border: "1px solid #e2e8f0",
-								}}
-							>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: "8px",
-										fontSize: "12px",
-										color: "#475569",
-									}}
-								>
-									<span style={{ fontSize: "12px" }}>現在のロール:</span>
+							<div className={styles.stateBox}>
+								<div className={styles.stateRow}>
+									<span className={styles.stateLabel}>現在のロール:</span>
 									<span
+										className={styles.roleBadge}
 										style={{
-											display: "inline-flex",
-											alignItems: "center",
-											gap: "5px",
-											padding: "2px 8px",
-											borderRadius: "9999px",
 											background: `${currentColor}12`,
 											color: currentColor,
-											fontWeight: 600,
-											fontSize: "12px",
 											border: `1px solid ${currentColor}30`,
 										}}
 									>
-										<span
-											style={{
-												width: "6px",
-												height: "6px",
-												borderRadius: "50%",
-												background: currentColor,
-											}}
-										/>
+										<span className={styles.roleBadgeDot} style={{ background: currentColor }} />
 										{state.current_role}
 									</span>
-									{state.is_paid && (
-										<span
-											style={{
-												padding: "2px 7px",
-												borderRadius: "9999px",
-												background: "#fef3c7",
-												border: "1px solid #fde68a",
-												color: "#b45309",
-												fontSize: "11px",
-												fontWeight: 600,
-											}}
-										>
-											💰 支払済
-										</span>
-									)}
+									{state.is_paid && <span className={styles.paidBadge}>💰 支払済</span>}
 								</div>
 								{state.discord_id ? (
-									<div
-										style={{
-											fontSize: "11px",
-											color: "#94a3b8",
-											marginTop: "5px",
-											fontFamily: "monospace",
-										}}
-									>
-										Discord ID: {state.discord_id}
-									</div>
+									<div className={styles.discordId}>Discord ID: {state.discord_id}</div>
 								) : (
-									<div
-										style={{
-											fontSize: "11px",
-											color: "#d97706",
-											marginTop: "5px",
-										}}
-									>
+									<div className={styles.notLoggedIn}>
 										⚠️ 未ログイン（ロール切替にはDiscordログインが必要です）
 									</div>
 								)}
@@ -397,26 +232,11 @@ export default function DevRoleSwitcher() {
 						)}
 
 						{loading && !state && (
-							<div
-								style={{
-									textAlign: "center",
-									padding: "18px",
-									color: "#64748b",
-									fontSize: "13px",
-								}}
-							>
-								読み込み中...
-							</div>
+							<div className={styles.loadingBox}>読み込み中...</div>
 						)}
 
 						{/* プリセット一覧 */}
-						<div
-							style={{
-								display: "flex",
-								flexDirection: "column",
-								gap: "6px",
-							}}
-						>
+						<div className={styles.presetList}>
 							{PRESETS.map((preset) => {
 								const key = `${preset.role}-${preset.is_paid}`;
 								const isCurrent = isCurrentPreset(preset);
@@ -429,89 +249,30 @@ export default function DevRoleSwitcher() {
 										id={`dev-switch-${preset.role}${preset.is_paid ? "-paid" : ""}`}
 										onClick={() => handleSwitch(preset)}
 										disabled={isLoading || isCurrent}
+										className={styles.presetButton}
 										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: "10px",
-											width: "100%",
-											padding: "9px 12px",
-											borderRadius: "8px",
-											border: isCurrent
-												? `1.5px solid ${color}`
-												: "1px solid #e2e8f0",
-											background: isCurrent
-												? `${color}0c`
-												: "#ffffff",
+											border: isCurrent ? `1.5px solid ${color}` : "1px solid #e2e8f0",
+											background: isCurrent ? `${color}0c` : "#ffffff",
 											color: "#0f172a",
 											cursor: isCurrent ? "default" : "pointer",
 											opacity: isLoading ? 0.6 : 1,
-											transition: "all 0.15s ease",
-											textAlign: "left",
-											fontFamily: "inherit",
-										}}
-										onMouseEnter={(e) => {
-											if (!isCurrent) {
-												e.currentTarget.style.background = "#f8fafc";
-												e.currentTarget.style.borderColor = "#cbd5e1";
-											}
-										}}
-										onMouseLeave={(e) => {
-											if (!isCurrent) {
-												e.currentTarget.style.background = "#ffffff";
-												e.currentTarget.style.borderColor = "#e2e8f0";
-											}
 										}}
 									>
-										<span style={{ fontSize: "15px", flexShrink: 0 }}>
-											{preset.emoji}
-										</span>
-										<div style={{ flex: 1, minWidth: 0 }}>
-											<div
-												style={{
-													fontWeight: 600,
-													fontSize: "13px",
-													lineHeight: "1.3",
-													display: "flex",
-													alignItems: "center",
-													gap: "6px",
-												}}
-											>
+										<span className={styles.presetEmoji}>{preset.emoji}</span>
+										<div className={styles.presetContent}>
+											<div className={styles.presetLabelRow}>
 												<span style={{ color: isCurrent ? color : "#0f172a" }}>
 													{preset.label}
 												</span>
 												{isCurrent && (
-													<span
-														style={{
-															fontSize: "11px",
-															fontWeight: 600,
-															color: color,
-														}}
-													>
+													<span className={styles.currentBadge} style={{ color }}>
 														✓ 現在
 													</span>
 												)}
 											</div>
-											<div
-												style={{
-													fontSize: "11px",
-													color: "#64748b",
-													lineHeight: "1.3",
-													marginTop: "2px",
-												}}
-											>
-												{preset.description}
-											</div>
+											<div className={styles.presetDescription}>{preset.description}</div>
 										</div>
-										{isLoading && (
-											<span
-												style={{
-													fontSize: "12px",
-													animation: "spin 1s linear infinite",
-												}}
-											>
-												⏳
-											</span>
-										)}
+										{isLoading && <span style={{ fontSize: "12px" }}>⏳</span>}
 									</button>
 								);
 							})}
@@ -520,40 +281,18 @@ export default function DevRoleSwitcher() {
 						{/* 通知メッセージ */}
 						{message && (
 							<div
-								style={{
-									marginTop: "12px",
-									padding: "9px 12px",
-									borderRadius: "8px",
-									background: message.startsWith("エラー") || message.startsWith("通信エラー")
-										? "#fef2f2"
-										: "#f0fdf4",
-									border: `1px solid ${
-										message.startsWith("エラー") || message.startsWith("通信エラー")
-											? "#fecaca"
-											: "#bbf7d0"
-									}`,
-									color: message.startsWith("エラー") || message.startsWith("通信エラー")
-										? "#991b1b"
-										: "#166534",
-									fontSize: "12px",
-									lineHeight: "1.4",
-								}}
+								className={`${styles.messageBox} ${
+									message.startsWith("エラー") || message.startsWith("通信エラー")
+										? styles.messageError
+										: styles.messageSuccess
+								}`}
 							>
 								{message}
 							</div>
 						)}
 
 						{/* フッター */}
-						<div
-							style={{
-								marginTop: "14px",
-								paddingTop: "10px",
-								borderTop: "1px solid #f1f5f9",
-								fontSize: "11px",
-								color: "#94a3b8",
-								textAlign: "center",
-							}}
-						>
+						<div className={styles.footer}>
 							このツールは開発環境でのみ表示されます
 						</div>
 					</div>
