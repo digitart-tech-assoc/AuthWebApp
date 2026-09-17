@@ -22,32 +22,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import RoleList from "./RoleList";
 import MembersPanel from "./MembersPanel";
-import PermissionEditorPanel, { type PermissionTarget } from "./PermissionEditor";
+import PermissionEditorPanel from "./PermissionEditor";
 import NewRoleModal from "./NewRoleModal";
-import RoleMemberModal, { type Member } from "./RoleMemberModal";
+import RoleMemberModal from "./RoleMemberModal";
 import EditCategoryModal from "./EditCategoryModal";
 import styles from "./roles.module.css";
-
-type Category = {
-  id: string;
-  name: string;
-  display_order: number;
-  is_collapsed: boolean;
-  permissions: number;
-  is_restricted: boolean;
-};
-
-type Role = {
-  role_id: string;
-  name: string;
-  hoist: boolean;
-  mentionable: boolean;
-  permissions: number;
-  position: number;
-  color: string;
-  category_id: string | null;
-  is_our_bot?: boolean;
-};
+import type { Category, Role, Member, PermissionTarget } from "@/types/roles";
 
 type Props = {
   categories: Category[];

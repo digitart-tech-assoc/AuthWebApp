@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   checkEligibility,
   getStudentProfile,
-  type EligibilityCheckResult,
-  type StudentProfile,
 } from "@/actions/student-registration";
+import type {
+  EligibilityCheckResult,
+  StudentProfile,
+} from "@/types/join";
 import FormStep1Eligibility from "../form-step-1";
 import FormStep2Input from "../form-step-2";
 import FormStep3Survey from "../form-step-3";

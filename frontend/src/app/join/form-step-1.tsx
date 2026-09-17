@@ -1,6 +1,6 @@
 "use client";
 
-import { type EligibilityCheckResult } from "@/actions/student-registration";
+import type { EligibilityCheckResult } from "@/types/join";
 import styles from "./join.module.css";
 
 interface FormStep1Props {

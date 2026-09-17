@@ -59,18 +59,8 @@ export const DISCORD_PERMISSIONS = [
   },
 ] as const;
 
-// ===== Types =====
-
-export type PermissionTarget = {
-  /** "category" | "role" */
-  kind: "category" | "role";
-  id: string;
-  name: string;
-  /** For roles: the parent category permissions (for inheritance display) */
-  categoryPermissions?: number;
-  currentPermissions: number;
-  roleDotColor?: string;
-};
+import type { PermissionTarget } from "@/types/roles";
+export type { PermissionTarget };
 
 type Props = {
   target: PermissionTarget;

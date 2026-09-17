@@ -9,7 +9,7 @@ import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
 import PhoneInput from "@/components/forms/PhoneInput";
 import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "@/lib/validation";
-import type { StudentProfile } from "@/actions/student-registration";
+import type { StudentProfile } from "@/types/join";
 
 interface Props {
   // Accept partial so caller doesn't need to include backend-only fields like `email_aoyama`.

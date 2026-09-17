@@ -5,12 +5,8 @@
 import { useState, useMemo } from "react";
 import styles from "./rolemember.module.css";
 
-export type Member = {
-  user_id: string;
-  username: string;
-  display_name: string | null;
-  avatar: string | null;
-};
+import type { Member } from "@/types/roles";
+export type { Member };
 
 type Props = {
   roleName: string;
