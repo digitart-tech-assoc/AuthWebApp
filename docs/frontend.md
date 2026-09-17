@@ -1,14 +1,18 @@
-# Frontend 要件定義
+# Frontend 要件定義・開発ガイド
 
 ## 概要
-Next.js 15 (App Router) を採用する。フロントは UI と「宣言（Desired State）」の編集に専念し、データの読み書きはすべて FastAPI 経由で行う。
+Next.js 16 (App Router / React 19 / TypeScript) を採用。フロントは UI と「宣言（Desired State）」の編集に専念し、データの読み書きは FastAPI および Route Handlers 経由で行う。
+
+> [!TIP]
+> **新人向け開発ガイド・コーディング規約**:
+> 詳細なディレクトリ構造、コンポーネント分割指針、型定義ルールは [frontend/README.md](../frontend/README.md) を参照してください。
 
 ## 主要要件
-- 認証: Discord OAuth2 によるサインイン。
-- 表示: `role_categories` ごとにロールをグルーピングし、アコーディオンで展開/収納する（shadcn/ui 推奨）。
-- 編集: ドラッグ&ドロップでロールの並び替え・カテゴリ移動（@dnd-kit/core 推奨）。
+- 認証: Discord OAuth2 によるサインイン（Supabase Auth）。
+- 表示: `role_categories` ごとにロールをグルーピングし、アコーディオンで展開/収納する。
+- 編集: ドラッグ&ドロップでロールの並び替え・カテゴリ移動（`@dnd-kit/core`, `@dnd-kit/sortable`）。
 - プロパティ操作: ロール名、カラー、hoist、mentionable、permissions の編集。
-- 同期: 保存後に FastAPI の API を呼び出して Bot に同期（`POST /api/v1/sync`）を依頼。
+- 同期: 保存後にマニフェスト PATCH 保存および Discord への同期（Push）を実行。
 
 ## 非機能要件
 - 大量ロールでも操作が滑らか（必要に応じ仮想化を導入）。
@@ -21,8 +25,8 @@ Next.js 15 (App Router) を採用する。フロントは UI と「宣言（Desi
 - `POST /api/v1/sync` — 同期トリガー（FastAPI が Bot に指示を送る）。
 
 ## 開発・運用
-- ローカルは docker-compose で起動（frontend:3000）。
-- UI コンポーネントは再利用可能に設計、README に使用方法を記載する。
+- ローカルは `npm run dev` または docker-compose で起動（frontend:3000）。
+- コード改修時は必ず `npx tsc --noEmit` および `npm run build` を実行する。
 
 ## 実装メモ（2026-03-24）
 - Frontend は Supabase Auth を用いてサインインを処理します。
