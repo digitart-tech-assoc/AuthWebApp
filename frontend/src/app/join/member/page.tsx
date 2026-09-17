@@ -10,6 +10,7 @@ import {
 import type {
   EligibilityCheckResult,
   StudentProfile,
+  StudentProfileInput,
 } from "@/types/join";
 import FormStep1Eligibility from "../_components/FormStep1Eligibility";
 import FormStep2Input from "../_components/FormStep2Input";
@@ -20,21 +21,12 @@ import { fetchBackend } from "@/lib/backendFetch";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;
 
-interface FormState {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
-}
-
 export default function JoinMemberPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<FormStep>(1);
   const [eligibility, setEligibility] = useState<EligibilityCheckResult | null>(null);
   const [existingProfile, setExistingProfile] = useState<StudentProfile | null>(null);
-  const [formData, setFormData] = useState<FormState>({
+  const [formData, setFormData] = useState<StudentProfileInput>({
     student_number: "",
     name: "",
     furigana: "",
@@ -102,7 +94,7 @@ export default function JoinMemberPage() {
     }
   };
 
-  const handleStep2Continue = (newFormData: FormState) => {
+  const handleStep2Continue = (newFormData: StudentProfileInput) => {
     setFormData(newFormData);
     setCurrentStep(3);
     setError(null);

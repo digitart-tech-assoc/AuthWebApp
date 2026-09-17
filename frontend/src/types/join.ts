@@ -23,6 +23,8 @@ export interface StudentProfile {
   email_aoyama: string;
 }
 
+export type StudentProfileInput = Omit<StudentProfile, "email_aoyama">;
+
 export interface EligibilityCheckResult {
   is_discord_linked: boolean;
   is_pre_member: boolean;

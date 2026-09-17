@@ -4,22 +4,14 @@ import { useState, useEffect } from "react";
 import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/studentRegistration";
 import OTPInput from "@/components/OTPInput";
 import styles from "../join.module.css";
-
-interface FormData {
-  student_number: string;
-  name: string;
-  furigana: string;
-  department: string;
-  gender: string | null;
-  phone: string;
-}
+import type { StudentProfileInput } from "@/types/join";
 
 interface FormStep4Props {
   studentNumber: string;
   name: string;
   onComplete: () => void;
   onBack: () => void;
-  formData: FormData;
+  formData: StudentProfileInput;
 }
 
 export default function FormStep4OTP({
