@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import styles from "@/app/join/join.module.css";
+import styles from "./StudentProfileForm.module.css";
 import StudentNumberInput from "@/components/forms/StudentNumberInput";
 import NameInput from "@/components/forms/NameInput";
 import FuriganaInput from "@/components/forms/FuriganaInput";
