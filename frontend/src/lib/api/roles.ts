@@ -1,5 +1,4 @@
-import type { Member } from "@/types/roles";
-import type { ManifestPatchPayload } from "@/components/roles/roleDiff";
+import type { Member, ManifestPatchPayload } from "@/types/roles";
 
 export interface RoleMembersResponse {
   members?: Member[];

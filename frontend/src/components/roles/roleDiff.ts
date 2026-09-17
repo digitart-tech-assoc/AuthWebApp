@@ -1,12 +1,5 @@
-import type { Role, Category, RoleDiffData } from "@/types/roles";
-
-export interface ManifestPatchPayload {
-  upsert_categories: Category[];
-  delete_category_ids: string[];
-  upsert_roles: Role[];
-  delete_role_ids: string[];
-  upsert_role_assignments: Record<string, string[]>;
-}
+import type { Role, Category, RoleDiffData, ManifestPatchPayload } from "@/types/roles";
+export type { ManifestPatchPayload };
 
 /**
  * 初期状態（ベース）と現在の変更状態を比較し、モーダル表示用の差分オブジェクトを生成する
