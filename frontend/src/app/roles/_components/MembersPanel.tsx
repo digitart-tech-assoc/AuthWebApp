@@ -4,7 +4,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { syncMembers, getMembers, type MemberListsData, type MemberItem } from "@/actions/members";
-import styles from "./roles.module.css";
 
 export default function MembersPanel() {
 	const [loading, setLoading] = useState(false);

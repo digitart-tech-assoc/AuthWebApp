@@ -71,11 +71,6 @@ type Props = {
 
 // ===== Utility =====
 
-function hasBit(perms: bigint, bit: bigint): boolean {
-  // Administrator grants everything
-  return Boolean((perms >> bit) & 1n) || Boolean((perms >> 3n) & 1n && bit !== 3n);
-}
-
 function hasBitExact(perms: bigint, bit: bigint): boolean {
   return Boolean((perms >> bit) & 1n);
 }

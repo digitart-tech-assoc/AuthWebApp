@@ -20,7 +20,7 @@ interface Props {
   submitLabel?: string;
 }
 
-export default function StudentProfileForm({ initialData, hasExistingProfile, onSubmit, onBack, submitLabel = "保存" }: Props) {
+export default function StudentProfileForm({ initialData, onSubmit, onBack, submitLabel = "保存" }: Props) {
   const [formData, setFormData] = useState<StudentProfile>({
     student_number: initialData?.student_number ?? "",
     name: initialData?.name ?? "",
@@ -29,7 +29,7 @@ export default function StudentProfileForm({ initialData, hasExistingProfile, on
     gender: (initialData?.gender as string) ?? null,
     phone: initialData?.phone ?? "",
     // email_aoyama is populated by OTP send response; default to empty string here.
-    email_aoyama: (initialData as any)?.email_aoyama ?? "",
+    email_aoyama: initialData?.email_aoyama ?? "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Info, CheckCircle, FileText, AlertCircle, Loader } from "lucide-react";
 import OTPModal from "@/app/join/_components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
@@ -10,12 +10,11 @@ import { validateFullName } from "../../../../lib/validation";
 import { isProspectiveFormOpen } from "../../../../lib/join";
 
 export default function ProspectiveStudentFormPage() {
-  const [isFormOpen, setIsFormOpen] = useState(true);
+  const isFormOpen = isProspectiveFormOpen();
   const [year, setYear] = useState("");
   const [yearTouched, setYearTouched] = useState(false);
 
   const [name, setName] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
 
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
@@ -26,13 +25,6 @@ export default function ProspectiveStudentFormPage() {
   const [showOtp, setShowOtp] = useState(false);
   const [otpEmail, setOtpEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-
-  // ページ読み込み時に期間チェック実行
-  useEffect(() => {
-    if (!isProspectiveFormOpen()) {
-      setIsFormOpen(false);
-    }
-  }, []);
 
   const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
   const isNameValid = validateFullName(name);
@@ -48,7 +40,7 @@ export default function ProspectiveStudentFormPage() {
       if (!res.ok) return null;
       const json = await res.json();
       return Array.isArray(json.Answer) && json.Answer.length > 0;
-    } catch (e) {
+    } catch {
       return null;
     }
   }
@@ -121,7 +113,6 @@ export default function ProspectiveStudentFormPage() {
                   placeholder="例: 山田 花子"
                   value={name}
                   onChange={(v) => setName(v)}
-                  onBlur={() => setNameTouched(true)}
                 />
               </div>
 
@@ -263,7 +254,6 @@ export default function ProspectiveStudentFormPage() {
                     setFormError(null);
                     setEmailTouched(true);
                     setConfirmEmailTouched(true);
-                    setNameTouched(true);
                     if (!isNameValid) {
                       setFormError("氏名は「姓<半角スペース>名」の形式で入力してください。");
                       return;

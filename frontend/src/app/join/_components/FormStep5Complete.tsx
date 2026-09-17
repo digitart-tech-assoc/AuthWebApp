@@ -6,13 +6,11 @@ import styles from "../join.module.css";
 interface FormStep5Props {
   studentNumber: string;
   name: string;
-  onComplete: () => void;
 }
 
 export default function FormStep5Complete({
   studentNumber,
   name,
-  onComplete,
 }: FormStep5Props) {
   return (
     <div className={styles.card}>

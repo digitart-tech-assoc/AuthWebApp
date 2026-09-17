@@ -33,8 +33,8 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
       setStatus("sent");
       // start resend cooldown
       setResendSeconds(30);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
       setStatus(null);
     }
   }
@@ -55,8 +55,8 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
       const res = await verifyOtp(joinId, code);
       setInviteUrl(res.discord_invite_url ?? null);
       setStatus("verified");
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
       setStatus("sent");
     }
   }
@@ -88,7 +88,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
       await navigator.clipboard.writeText(text);
       setCopyStatus("コピーしました");
       setTimeout(() => setCopyStatus(null), 2000);
-    } catch (_) {
+    } catch {
       setCopyStatus("コピーに失敗しました");
       setTimeout(() => setCopyStatus(null), 2000);
     }
