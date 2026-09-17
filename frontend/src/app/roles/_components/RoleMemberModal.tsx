@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Image from "next/image";
 import styles from "./rolemember.module.css";
 
 import type { Member } from "@/types/roles";
@@ -30,10 +31,13 @@ function MemberAvatar({ member }: { member: Member }) {
     ? `https://cdn.discordapp.com/avatars/${member.user_id}/${member.avatar}.webp?size=32`
     : `https://cdn.discordapp.com/embed/avatars/${Number(member.user_id) % 5}.png`;
   return (
-    <img
+    <Image
       src={avatarUrl}
       alt={member.display_name || member.username}
       className={styles.avatar}
+      width={32}
+      height={32}
+      unoptimized
       onError={(e) => {
         (e.target as HTMLImageElement).src = `https://cdn.discordapp.com/embed/avatars/0.png`;
       }}
@@ -59,11 +63,6 @@ export default function RoleMemberModal({
   const [selectedForGrant, setSelectedForGrant] = useState<Set<string>>(new Set());
   const [selectedForRevoke, setSelectedForRevoke] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
-
-  const memberById = useMemo(
-    () => new Map(allMembers.map((m) => [m.user_id, m])),
-    [allMembers]
-  );
 
   const currentMembers = useMemo(
     () => allMembers.filter((m) => localMemberIds.has(m.user_id)),

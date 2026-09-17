@@ -25,7 +25,7 @@ export async function checkEligibility(): Promise<EligibilityCheckResult> {
     }
 
     return response.json();
-  } catch (err) {
+  } catch {
     // If backend is unreachable, return a safe failure so the UI can render an informative message
     return {
       is_discord_linked: false,

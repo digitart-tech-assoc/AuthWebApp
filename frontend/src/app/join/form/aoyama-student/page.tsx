@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Info, CheckCircle, FileText, AlertCircle } from "lucide-react";
-import OTPModal from "../../../../components/OTPModal";
+import OTPModal from "@/app/join/_components/OTPModal";
 import NameInput from "../../../../components/forms/NameInput";
 import StudentNumberInput from "../../../../components/forms/StudentNumberInput";
 import { validateFullName } from "../../../../lib/validation";

@@ -23,10 +23,9 @@ import {
   fetchRoleMembers,
   patchManifest,
   pushRolesToDiscord,
-  selfAssignRole,
 } from "@/lib/api/roles";
 import styles from "./roles.module.css";
-import type { Category, Role, Member, PermissionTarget, RoleDiffData } from "@/types/roles";
+import type { Category, Role, Member } from "@/types/roles";
 
 type Props = {
   categories: Category[];
@@ -72,7 +71,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setShowNewRole,
     editingRole,
     setEditingRole,
-    openNewRoleModal,
     openEditRoleModal,
     editingCategory,
     setEditingCategory,
@@ -85,7 +83,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setShowDiffModal,
     diffData,
     setDiffData,
-    openDiffModal,
   } = useRoleModals(localCategories);
 
   // ===== Member management =====
@@ -110,8 +107,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const canEditManifest = isAdmin || isMember;
 
   // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
-  const restrictedCategoryIds = new Set(
-    localCategories.filter(c => c.is_restricted).map(c => c.id)
+  const restrictedCategoryIds = useMemo(
+    () => new Set(localCategories.filter((c) => c.is_restricted).map((c) => c.id)),
+    [localCategories]
   );
 
   function showStatus(s: Status, durationMs = 5000) {
@@ -136,7 +134,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     setIsSelectMode(false);
     setNewCategoryName("");
     setPermTarget(null);
-  }, [initRoles, initCategories]);
+  }, [initRoles, initCategories, setPermTarget]);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -464,28 +462,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     showStatus({ kind: "success", msg: `メンバー割り当てを変更しました（${detail}）。「変更を確定」で保存してDiscordに同期します` });
   }
 
-  // ===== Self-assign (member mode) =====
-  const handleSelfAssign = useCallback(async (role: Role) => {
-    // 禁止カテゴリチェック（is_restrictedフラグで判定）
-    if (role.category_id && restrictedCategoryIds.has(role.category_id)) {
-      const cat = localCategories.find((c) => c.id === role.category_id);
-      showStatus({ kind: "error", msg: `「${cat?.name ?? ""}」カテゴリのロールは付与できません` });
-      return;
-    }
-    try {
-      const res = await selfAssignRole(role.role_id);
-      if (!res.ok) {
-        showStatus({ kind: "error", msg: res.detail ?? "ロールの付与に失敗しました" });
-        return;
-      }
-      showStatus({ kind: "success", msg: `ロール「${role.name}」を自分に付与しました` });
-    } catch {
-      showStatus({ kind: "error", msg: "ロールの付与に失敗しました。接続を確認してください" });
-    }
-  }, [localCategories, restrictedCategoryIds]);
-
-  const categoryIds = new Set(localCategories.map((c) => c.id));
-  const uncategorizedRoles = filteredRoles.filter((r) => !r.category_id || !categoryIds.has(r.category_id));
 
   // Determine the bot role: prefer is_our_bot flag, fall back to name 'bot' as a safety net
   const botRole = allRoles.find((r) => r.is_our_bot) ?? allRoles.find((r) => r.name.toLowerCase() === "bot");
@@ -599,7 +575,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   cat={cat}
                   catRoles={catRoles}
                   isOpen={isOpen}
-                  isRestrictedCat={isRestrictedCat}
                   memberCanManageCat={memberCanManageCat}
                   isAdmin={isAdmin}
                   isMember={isMember}

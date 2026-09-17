@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Zap, Check, Plus, Users, Mail, ChevronRight } from "lucide-react";
+import { Check, Plus, Mail, ChevronRight } from "lucide-react";
 
 export default function JoinGuidePage() {
 	return (

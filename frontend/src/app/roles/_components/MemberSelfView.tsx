@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 import { fetchRoleMembers, selfAssignRole, selfRemoveRole } from "@/lib/api/roles";
 import styles from "./memberself.module.css";
 
@@ -253,7 +254,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         <div className={styles.profileHeader}>
           <div className={styles.avatar}>
             {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} />
+              <Image src={avatarUrl} alt={displayName} width={48} height={48} unoptimized />
             ) : (
               "👤"
             )}

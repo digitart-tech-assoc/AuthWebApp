@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     const body = await res.json().catch(() => ({}));
     return NextResponse.json(body, { status: res.status });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ ok: false, detail: "survey proxy failed" }, { status: 502 });
   }
 }

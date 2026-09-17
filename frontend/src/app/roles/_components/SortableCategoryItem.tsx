@@ -14,7 +14,6 @@ export type SortableCategoryItemProps = {
   cat: Category;
   catRoles: Role[];
   isOpen: boolean;
-  isRestrictedCat: boolean;
   memberCanManageCat: boolean;
   isAdmin: boolean;
   isMember: boolean;
@@ -38,7 +37,6 @@ export default function SortableCategoryItem({
   cat,
   catRoles,
   isOpen,
-  isRestrictedCat,
   memberCanManageCat,
   isAdmin,
   isMember,

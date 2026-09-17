@@ -35,7 +35,7 @@ export default function ContactPage() {
       if (!res.ok) return null;
       const json = await res.json();
       return Array.isArray(json.Answer) && json.Answer.length > 0;
-    } catch (e) {
+    } catch {
       return null;
     }
   }

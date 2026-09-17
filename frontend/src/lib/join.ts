@@ -50,12 +50,12 @@ export async function requestOtp(payload: JoinRequestPayload) {
   });
   if (!res.ok) {
     // try parse JSON body for structured error (e.g. { detail: "..." })
-    let bodyText = await res.text();
+    const bodyText = await res.text();
     try {
       const json = JSON.parse(bodyText);
       const detail = json.detail ?? json.message ?? JSON.stringify(json);
       throw new Error(`${res.status} ${detail}`);
-    } catch (_) {
+    } catch {
       throw new Error(`${res.status} ${bodyText}`);
     }
   }
@@ -69,12 +69,12 @@ export async function verifyOtp(join_request_id: string, otp_code: string) {
     body: JSON.stringify({ join_request_id, otp_code }),
   });
   if (!res.ok) {
-    let bodyText = await res.text();
+    const bodyText = await res.text();
     try {
       const json = JSON.parse(bodyText);
       const detail = json.detail ?? json.message ?? JSON.stringify(json);
       throw new Error(`${res.status} ${detail}`);
-    } catch (_) {
+    } catch {
       throw new Error(`${res.status} ${bodyText}`);
     }
   }

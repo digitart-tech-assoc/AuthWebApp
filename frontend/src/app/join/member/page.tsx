@@ -11,13 +11,13 @@ import type {
   EligibilityCheckResult,
   StudentProfile,
   StudentProfileInput,
+  SurveyAnswers,
 } from "@/types/join";
 import FormStep1Eligibility from "../_components/FormStep1Eligibility";
 import FormStep2Input from "../_components/FormStep2Input";
 import FormStep3Survey from "../_components/FormStep3Survey";
 import FormStep4OTP from "../_components/FormStep4OTP";
 import FormStep5Complete from "../_components/FormStep5Complete";
-import { fetchBackend } from "@/lib/backendFetch";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;
 
@@ -102,7 +102,7 @@ export default function JoinMemberPage() {
 
   const handleStep2Back = () => setCurrentStep(1);
   const handleStep3Back = () => setCurrentStep(2);
-  const persistSurvey = async (answers?: any) => {
+  const persistSurvey = async (answers?: SurveyAnswers) => {
     try {
       const res = await fetch('/api/survey', {
         method: 'POST',
@@ -120,7 +120,7 @@ export default function JoinMemberPage() {
     }
   };
 
-  const handleStep3Complete = async (answers?: any) => {
+  const handleStep3Complete = async (answers?: SurveyAnswers) => {
     setError(null);
     try {
       await persistSurvey(answers);
@@ -131,7 +131,6 @@ export default function JoinMemberPage() {
   };
   const handleStep4Back = () => setCurrentStep(3);
   const handleStep4Complete = () => { setCurrentStep(5); setError(null); };
-  const handleStep5Complete = () => router.push("/roles");
 
   if (loading) {
     return (
@@ -203,7 +202,7 @@ export default function JoinMemberPage() {
           )}
 
           {currentStep === 5 && (
-            <FormStep5Complete studentNumber={formData.student_number} name={formData.name} onComplete={handleStep5Complete} />
+            <FormStep5Complete studentNumber={formData.student_number} name={formData.name} />
           )}
 
           {error && currentStep > 1 && (
