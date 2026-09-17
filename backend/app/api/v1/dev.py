@@ -110,9 +110,10 @@ def _get_current_role(discord_id: str) -> str:
 				ORDER BY CASE membership_type
 					WHEN 'admin' THEN 1
 					WHEN 'member' THEN 2
-					WHEN 'sub_user' THEN 2
-					WHEN 'pre_member' THEN 3
-					WHEN 'obog' THEN 4
+					WHEN 'sub_user' THEN 3
+					WHEN 'pre_member' THEN 4
+					WHEN 'obog' THEN 5
+					ELSE 6
 				END LIMIT 1
 				""",
 				(discord_id,)
@@ -120,7 +121,7 @@ def _get_current_role(discord_id: str) -> str:
 			row = cur.fetchone()
 			if row is None:
 				return "none"
-			return "member" if row[0] == "sub_user" else row[0]
+			return row[0]
 
 
 def _is_paid(discord_id: str) -> bool:

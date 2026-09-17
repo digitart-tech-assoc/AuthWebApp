@@ -28,49 +28,56 @@ type Preset = {
 	description: string;
 };
 
-/* ─── プリセット ─── */
+/* ─── プリセット（指定された7つのペルソナ） ─── */
 const PRESETS: Preset[] = [
 	{
-		label: "Admin",
+		label: "admin",
 		emoji: "🔴",
 		role: "admin",
 		is_paid: false,
-		description: "管理者権限。全機能にアクセス可能",
+		description: "管理者権限。全機能・全管理画面にアクセス可能",
 	},
 	{
-		label: "Member",
+		label: "member",
 		emoji: "🟢",
 		role: "member",
 		is_paid: false,
-		description: "正会員。ロール管理等にアクセス可能",
+		description: "正会員。通常会員権限・ロール管理等にアクセス可能",
 	},
 	{
-		label: "OB/OG",
-		emoji: "🔵",
-		role: "obog",
-		is_paid: false,
-		description: "卒業生メンバー",
-	},
-	{
-		label: "Pre-member",
+		label: "pre_member",
 		emoji: "🟡",
 		role: "pre_member",
 		is_paid: false,
-		description: "Discord参加済み・未入会",
+		description: "Discord参加済み・入会費未払い",
 	},
 	{
-		label: "Pre-member (支払済)",
+		label: "pre_member+paid",
 		emoji: "🟠",
 		role: "pre_member",
 		is_paid: true,
-		description: "Discord参加済み・入会費支払い済み",
+		description: "Discord参加済み・入会費支払い完了者",
 	},
 	{
-		label: "None (新規)",
+		label: "none",
 		emoji: "⚪",
 		role: "none",
 		is_paid: false,
-		description: "新規接触者。メンバーシップなし",
+		description: "新規接触者。メンバーシップなし・未払い",
+	},
+	{
+		label: "obog",
+		emoji: "🔵",
+		role: "obog",
+		is_paid: false,
+		description: "卒業生メンバー（OB/OG）",
+	},
+	{
+		label: "sub_user",
+		emoji: "🟣",
+		role: "sub_user",
+		is_paid: false,
+		description: "サブユーザー（サブアカウント等）",
 	},
 ];
 
@@ -78,18 +85,23 @@ const PRESETS: Preset[] = [
 const ROLE_COLORS: Record<string, string> = {
 	admin: "#ef4444",
 	member: "#22c55e",
-	obog: "#3b82f6",
 	pre_member: "#eab308",
-	sub_user: "#22c55e",
 	none: "#a1a1aa",
+	obog: "#3b82f6",
+	sub_user: "#a855f7",
 };
 
 export default function DevRoleSwitcher() {
+	const [mounted, setMounted] = useState(false);
 	const [isOpen, setIsOpen] = useState(false);
 	const [state, setState] = useState<DevState | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [switching, setSwitching] = useState<string | null>(null);
 	const [message, setMessage] = useState<string | null>(null);
+
+	useEffect(() => {
+		setMounted(true);
+	}, []);
 
 	/* 現在の状態を取得 */
 	const fetchState = useCallback(async () => {
@@ -151,6 +163,8 @@ export default function DevRoleSwitcher() {
 	};
 
 	const currentColor = state ? (ROLE_COLORS[state.current_role] ?? "#a1a1aa") : "#a1a1aa";
+
+	if (!mounted) return null;
 
 	return (
 		<>
