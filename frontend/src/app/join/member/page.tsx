@@ -76,7 +76,7 @@ export default function JoinMemberPage() {
         // (profile fetching and step advancement handled above when allowed)
       } catch (err) {
         if (err instanceof Error && err.message === "Not authenticated") {
-          router.push("/login");
+          router.push("/login?callbackUrl=%2Fjoin%2Fmember");
           return;
         }
         setError(err instanceof Error ? err.message : "予期しないエラーが発生しました");
