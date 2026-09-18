@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createSupabaseServer } from "@/lib/supabase";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import DevRoleSwitcher from "@/components/dev/DevRoleSwitcher";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -91,7 +92,9 @@ export default async function RootLayout({
           </div>
         </header>
         {children}
+        {process.env.NODE_ENV === "development" && <DevRoleSwitcher />}
       </body>
     </html>
   );
 }
+

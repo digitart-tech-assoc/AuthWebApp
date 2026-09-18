@@ -19,8 +19,15 @@ from app.api.v1.survey import router as survey_router
 from app.db.repository import init_db
 
 
-# 本番環境では OpenAPI docs を無効化する
-_is_prod = os.getenv("FASTAPI_ENV", "").lower() == "production"
+from app.core.constants import DEV_ENVS
+
+# 環境判定（Fail-Closed / ホワイトリスト方式）
+# FASTAPI_ENV が未設定、空文字、または開発用値 ("development", "dev", "local") 以外の場合は
+# 本番相当として扱い、OpenAPI docs や開発用APIを遮断する。
+_fastapi_env = os.getenv("FASTAPI_ENV", "").strip().lower()
+_is_prod = _fastapi_env == "production"
+_is_dev = _fastapi_env in DEV_ENVS
+
 app = FastAPI(
 	title="AuthWebApp Backend",
 	version="0.1.0",
@@ -85,3 +92,8 @@ app.include_router(contact_router)
 app.include_router(student_router)
 app.include_router(members_router)
 app.include_router(survey_router)
+
+# 開発環境専用: ロール切替API（本番環境では無効化 / Fail-Closed: 開発環境のみ明示的に登録）
+if _is_dev and not _is_prod:
+	from app.api.v1.dev import router as dev_router
+	app.include_router(dev_router)

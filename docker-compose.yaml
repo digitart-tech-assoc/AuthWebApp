@@ -20,8 +20,12 @@ services:
       BREVO_API_KEY: ${BREVO_API_KEY}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
       BREVO_SENDER_NAME: ${BREVO_SENDER_NAME}
+      # 開発環境明示（本番以外でのみDev機能を有効化）
+      FASTAPI_ENV: ${FASTAPI_ENV:-development}
       # DBスキーマ初期化をスキップ (再デプロイ時に既存DBを更新しない)
       SKIP_DB_INIT: ${SKIP_DB_INIT:-true}
+    volumes:
+      - ./backend/app:/app/app
     ports:
       - "5174:5174"
     extra_hosts:
