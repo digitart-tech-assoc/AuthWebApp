@@ -10,6 +10,7 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         environment: [production, development]
 
