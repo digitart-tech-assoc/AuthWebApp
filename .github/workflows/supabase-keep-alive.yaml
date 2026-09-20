@@ -1,0 +1,41 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # 2日に1回、UTC 0:00 (JST 9:00) に実行
+    - cron: '0 0 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [production, development]
+
+    steps:
+      - name: Ping Supabase (${{ matrix.environment }})
+        env:
+          SUPABASE_URL: ${{ matrix.environment == 'production' && secrets.SUPABASE_URL_PROD || secrets.SUPABASE_URL_DEV }}
+          SUPABASE_ANON_KEY: ${{ matrix.environment == 'production' && secrets.SUPABASE_ANON_KEY_PROD || secrets.SUPABASE_ANON_KEY_DEV }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Error: Supabase credentials not found for ${{ matrix.environment }}."
+            echo "Please ensure SUPABASE_URL_PROD, SUPABASE_ANON_KEY_PROD, SUPABASE_URL_DEV, and SUPABASE_ANON_KEY_DEV are set in GitHub Secrets."
+            exit 1
+          fi
+
+          echo "Sending keep-alive ping to ${{ matrix.environment }} environment..."
+          
+          # Supabase REST API のルートエンドポイントにリクエストを送信
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${SUPABASE_URL}/rest/v1/")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "Successfully pinged ${{ matrix.environment }} Supabase instance. HTTP Status: $HTTP_STATUS"
+          else
+            echo "Failed to ping ${{ matrix.environment }} Supabase instance. HTTP Status: $HTTP_STATUS"
+            exit 1
+          fi
