@@ -28,7 +28,7 @@ jobs:
 
           echo "Sending keep-alive ping to ${{ matrix.environment }} environment..."
           
-         # DBアクティビティを発生させるため、テーブル（例: users）へクエリを送信
+          # DBアクティビティを発生させるため、テーブル（例: users）へクエリを送信
           HTTP_STATUS=$(curl -s -w "%{http_code}" \
             --max-time 15 \
             --retry 3 \
