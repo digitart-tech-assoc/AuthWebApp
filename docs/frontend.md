@@ -7,7 +7,7 @@ UI とユーザー操作に専念し、すべてのデータ永続化・認可�
 > [!TIP]
 > **開発ガイド・コーディング規約**:
 > 詳細なディレクトリ構造、Colocation パターン（`_components/`）、型定義ルールは [frontend/README.md](../frontend/README.md) を参照してください。
-> 各画面の個別仕様は [docs/pages/](./pages/index.md) を参照してください。
+> 各画面の個別仕様は [docs/pages/README.md](./pages/README.md) を参照してください。
 
 ---
 
