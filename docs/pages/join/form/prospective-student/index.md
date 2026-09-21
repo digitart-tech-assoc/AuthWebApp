@@ -67,6 +67,7 @@
 ```json
 {
   "email": "user@example.com",
+  "confirm_email": "user@example.com",
   "name": "青山 花子",
   "form_type": "prospective-student",
   "metadata": {
@@ -78,8 +79,12 @@
 **レスポンス**
 ```json
 {
+  "id": "req-uuid-1234-5678",
+  "email": "user@example.com",
+  "name": "青山 花子",
+  "form_type": "prospective-student",
   "status": "pending",
-  "message": "Verification code sent to email"
+  "message": "認証コードをメールアドレスに送信しました。"
 }
 ```
 
@@ -89,8 +94,8 @@ OTP コード検証・仮入会完了
 **リクエスト**
 ```json
 {
-  "email": "user@example.com",
-  "code": "123456"
+  "join_request_id": "req-uuid-1234-5678",
+  "otp_code": "123456"
 }
 ```
 
@@ -98,7 +103,8 @@ OTP コード検証・仮入会完了
 ```json
 {
   "status": "verified",
-  "invite_url": "https://discord.gg/xxxxxx"
+  "message": "メール認証が完了しました。以下のリンクからDiscordサーバーに参加してください。",
+  "discord_invite_url": "https://discord.gg/xxxxxx"
 }
 ```
 
