@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Digitart サークル認証システム",
-  description: "Digitartサークルのメンバー認証とロール管理を行うシステムです。",
+  description: "Digitartサークルのメンバー認証とロール管理を行うシステム",
 };
 
 export default async function RootLayout({
