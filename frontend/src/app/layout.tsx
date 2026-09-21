@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AuthWebApp",
+  title: "Digitart サークル認証システム",
   description: "Discord role management for your server",
 };
 
@@ -56,7 +56,7 @@ export default async function RootLayout({
         <header className="w-full border-b border-black/10 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-black/50">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="text-sm font-semibold tracking-wide">
-              AuthWebApp
+              Digitart サークル認証システム
             </Link>
             <div className="flex items-center gap-2">
               {user ? (
