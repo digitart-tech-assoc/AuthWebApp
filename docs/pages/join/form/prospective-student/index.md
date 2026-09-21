@@ -60,34 +60,53 @@
 
 ## 仕様API
 
-### POST /api/v1/members/pre_member/register
-仮入会登録（入学見込み）
+### 1. POST /api/v1/join/request
+仮入会申請・OTP コード発行送信
 
 **リクエスト**
 ```json
 {
-  "email": "string",
-  "name": "string",
-  "year": number,
-  "category": "prospective_student",
-  "otp_code": "string"
+  "email": "user@example.com",
+  "name": "青山 花子",
+  "form_type": "prospective-student",
+  "metadata": {
+    "year": 2026
+  }
 }
 ```
 
 **レスポンス**
 ```json
 {
-  "success": true,
-  "message": "仮入会しました",
-  "token_expires_at": "2025-06-30T00:00:00Z"
+  "status": "pending",
+  "message": "Verification code sent to email"
+}
+```
+
+### 2. POST /api/v1/join/verify
+OTP コード検証・仮入会完了
+
+**リクエスト**
+```json
+{
+  "email": "user@example.com",
+  "code": "123456"
+}
+```
+
+**レスポンス**
+```json
+{
+  "status": "verified",
+  "invite_url": "https://discord.gg/xxxxxx"
 }
 ```
 
 ## 関連DB
 
-- `pre_members` テーブル
-- OTP テーブル（一時トークン）
-- メール認証テーブル
+- `join_requests`: 仮入会申請レコード（`email`, `name`, `form_type`, `status`, `metadata`）
+- `otp_codes`: ハッシュ化（bcrypt）された OTP コード、有効期限（10分）、試行回数
+
 
 ## 備考
 

@@ -95,31 +95,27 @@
 
 ## 仕様API
 
-### Server Action: checkEligibility
+### 1. Server Action: checkEligibility
 **ファイル**: `/frontend/src/actions/studentRegistration.ts`
 
-```typescript
-async function checkEligibility(): Promise<EligibilityCheckResult>
-```
+バックエンド `POST /api/v1/student/validate-eligibility` を呼び出し、Discord 連携・仮入会・部費支払いの 3 条件を検証。
 
-**レスポンス**
 ```typescript
 interface EligibilityCheckResult {
+  is_discord_linked: boolean;
+  is_pre_member: boolean;
+  is_paid: boolean;
   can_register: boolean;
   reason?: string;
-  pre_member_info?: {
-    discord_id: string;
-    assigned_at: string;
-  };
 }
 ```
 
-### Server Action: getStudentProfile
-```typescript
-async function getStudentProfile(): Promise<StudentProfile | null>
-```
+### 2. Server Action: getStudentProfile / submitStudentProfile
+**ファイル**: `/frontend/src/actions/studentRegistration.ts`
 
-**レスポンス**
+- 取得: `GET /api/v1/student/profile`
+- 登録・更新: `POST /api/v1/student/profile`
+
 ```typescript
 interface StudentProfile {
   student_number: string;
@@ -131,72 +127,46 @@ interface StudentProfile {
 }
 ```
 
-### POST /api/survey
-アンケート回答保存
+### 3. Server Action: sendOTP / verifyOTP
+**ファイル**: `/frontend/src/actions/studentRegistration.ts`
+
+- OTP 送信: `POST /api/v1/student/otp/send`
+  - リクエスト: `{ student_number: string, name: string }`
+  - レスポンス: `{ email_aoyama: string, expires_in_seconds: number }`
+- OTP 検証: `POST /api/v1/student/otp/verify`
+  - リクエスト: `{ code: string }`
+  - レスポンス: `{ verified: boolean }`
+
+### 4. POST /api/survey
+アンケート回答保存（フロントエンド Route Handler 経由）
 
 **リクエスト**
 ```json
 {
   "answers": {
-    "interest_level": string,
-    "participation_willingness": string,
-    "skills": []
+    "q1": "...",
+    "q2": "..."
   }
-}
-```
-
-**レスポンス**
-```json
-{ "success": true }
-```
-
-### POST /api/v1/members/member/add
-本入会登録
-
-**リクエスト**
-```json
-{
-  "student_number": "string",
-  "name": "string",
-  "furigana": "string",
-  "department": "string",
-  "gender": "string | null",
-  "phone": "string",
-  "otp_code": "string"
-}
-```
-
-**レスポンス**
-```json
-{
-  "success": true,
-  "user_id": "string",
-  "message": "本入会が完了しました"
 }
 ```
 
 ## 関連DB
 
-- `student_profiles` テーブル
-- `survey_responses` テーブル
-- `members` テーブル
-- `pre_members` テーブル
-- OTP テーブル
+- `student_profiles`: 学生基本情報、大学メール認証状況、提出日時
+- `member_survey_responses`: アンケート回答データ（JSON）
+- `otp_records`: 在学生メール認証用 OTP コードと検証状態
+- `user_memberships`: 仮入会（pre_member）およびメンバーシップ管理
+- `paid_invitations`: 入会費支払い照合レコード
 
 ## 備考
 
-- 既に学生プロフィールがある場合は、フォームにプリフィル
-- OTP は 登録メールアドレスに送信
-- OTP 有効期限：15 分（推定）
-- ステップ間の状態は React State で管理
-- エラー時：エラーメッセージ表示、入力値保持
+- 既に学生プロフィールが登録済みの場合はフォームに初期値をプリフィル。
+- 適格性判定で 3 条件（Discord連携、仮入会ロール、入会費支払い）が揃っていない場合は Step 1 で詳細案内を表示。
+- 本入会完了後、Discord Bot の自動同期または次回ログインによって正式メンバーロールが付与されます。
 
 ## 実装メモ
 
-- `FormState` インターフェースで入力データ管理
-- `useRouter` で完了後に `/roles` へナビゲート
-- `useEffect` で初期化ロジック（適格性・プロフィール取得）
-- コンポーネント分割：`FormStep1Eligibility`, `FormStep2Input`, `FormStep3Survey`, `FormStep4OTP`, `FormStep5Complete`
-- `fetchBackend()` または `fetch()` で API 呼び出し
-- アンケートデータは `/api/survey` にPOST後、Step 4 へ進む
-- 最終登録は `/api/v1/members/member/add` でバックエンド 実行
+- `FormState` で各ステップの入力値・バリデーション状態を一元管理
+- ステップコンポーネント: `FormStep1Eligibility`, `FormStep2Input`, `FormStep3Survey`, `FormStep4OTP`, `FormStep5Complete`
+- 完了後は `/roles` への誘導ボタンを設置
+
