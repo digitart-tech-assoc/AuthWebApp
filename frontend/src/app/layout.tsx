@@ -57,6 +57,7 @@ export default async function RootLayout({
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="text-sm font-semibold tracking-wide">
               Digitart サークル認証システム
+              Digitart サークル認証システム
             </Link>
             <div className="flex items-center gap-2">
               {user ? (
