@@ -88,9 +88,29 @@ CREATE TABLE student_infos (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- member_survey_responses: 本入会アンケート回答
+CREATE TABLE member_survey_responses (
+  id BIGSERIAL PRIMARY KEY,
+  student_number VARCHAR(32) NOT NULL,
+  digitart_channels JSONB DEFAULT '[]'::jsonb,
+  digitart_channels_other TEXT,
+  circle_search_channels JSONB DEFAULT '[]'::jsonb,
+  circle_search_other TEXT,
+  discord_invite_source TEXT,
+  interested_fields JSONB DEFAULT '[]'::jsonb,
+  interested_fields_other TEXT,
+  motivations JSONB DEFAULT '[]'::jsonb,
+  motivations_other TEXT,
+  raw_payload JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- インデックス
 CREATE INDEX idx_events_status_priority ON events(status, priority, created_at);
 CREATE INDEX idx_audit_logs_target ON audit_logs(target_type, target_id);
+CREATE INDEX idx_member_survey_student_number ON member_survey_responses(student_number);
+CREATE INDEX idx_member_survey_created_at ON member_survey_responses(created_at);
 ```
 
 ## 運用ルール（DB）
