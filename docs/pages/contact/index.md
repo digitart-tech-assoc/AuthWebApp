@@ -55,7 +55,7 @@
 **ファイル**: `/frontend/src/actions/contact.ts`
 
 ```typescript
-interface SubmitContactPayload {
+export interface ContactPayload {
   email: string;
   name: string;
   subject?: string | null;
@@ -63,18 +63,24 @@ interface SubmitContactPayload {
   message?: string | null;
 }
 
-async function submitContact(payload: SubmitContactPayload): Promise<{ success: boolean }>
+export interface ContactResponse {
+  status: string;
+  message: string;
+  message_id?: string;
+}
+
+async function submitContact(payload: ContactPayload): Promise<ContactResponse>
 ```
 
 **処理内容**
-- バックエンド `/api/v1/contact` へPOST送信
-- メール形式再検証
-- メール配信またはDB保存
+- バックエンド `POST /api/v1/contact/submit` へ JSON 送信
+- バックエンド側で Discord API を直接呼び出し、環境変数 `CONTACT_CHANNEL_ID` で指定されたチャンネルへ Embed 形式でお問い合わせ内容を通知（DB 保存は行わない）
 
-## 関連DB
+## 関連DB / 外部連携
 
-- 問い合わせテーブル（バックエンド）：contactテーブル（推定）
-- メール配信ログ
+- **DB 保存**: なし（DB テーブルには永続化せず、Discord チャンネルへの通知のみ）
+- **Discord Bot / Webhook**: 指定チャンネルへの Embed メッセージ投稿
+
 
 ## 備考
 

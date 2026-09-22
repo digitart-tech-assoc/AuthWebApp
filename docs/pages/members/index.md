@@ -112,8 +112,9 @@ async function registerPaidInvitation(
 
 ## 関連DB
 
-- `pre_members` テーブル（仮入会者情報）
-- `paid_invitations` テーブル（入会費清算記録）
+- `user_memberships` テーブル（`role = 'pre_member'` の仮入会者レコード）
+- `paid_invitations` テーブル（入会費清算・照合記録）
+
 
 ## 備考
 

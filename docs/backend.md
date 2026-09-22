@@ -1,30 +1,64 @@
-# Backend 要件定義 (FastAPI)
+# Backend 要件定義・アーキテクチャ (FastAPI)
 
-## 概要
-FastAPI を唯一の DB アクセス層として集約する。Frontend はすべての読み書きをこの Backend 経由で行い、Bot への指示（同期トリガー）も Backend が発行する。
+## 1. 概要
+FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロジックおよびデータベースアクセス層を集約するバックエンドサーバーです。
+フロントエンド（Next.js）および Discord Bot は、すべてこのバックエンドが提供する REST API（`/api/v1`）を介して安全にデータ操作・同期を行います。
 
-## 主要責務
-- DB 操作の集中管理: PostgreSQL (k8s 上) への全クエリを担う。
-- 認証/認可: Discord OAuth2 によるユーザー検証、サーバー内の Administrator 権限判定。
-- Bot ブリッジ: Frontend からの同期要求を受け、Bot の受信用エンドポイントへ HTTP POST で指示を送る。
-- 監査ログ: 変更操作を `audit_logs` に保存。
+> [!TIP]
+> **API 仕様書・DB スキーマ**:
+> - API エンドポイント詳細仕様: [docs/api/README.md](./api/README.md)
+> - データベーススキーマ仕様: [docs/db.md](./db.md)
 
-## 推奨 API（抜粋）
-- `GET /api/v1/manifest` — マニフェスト取得。
-- `PUT /api/v1/manifest` — マニフェスト一括保存。
-- `POST /api/v1/sync` — Bot に同期命令を発行。
-- `POST /internal/bot/notify` — (認証付き) Bot 指示用エンドポイント呼び出しのラッパー。
+---
 
-## 認証・セキュリティ
-- Frontend / Bot 間は `Authorization: Bearer <SHARED_SECRET>` を必須とする（K8s Secret で管理）。
-- Discord トークン等の機密は K8s Secret / environment で注入。
+## 2. 主要責務
 
-## DB スキーマ（要旨）
-- role_categories: id, name, display_order, is_collapsed
-- role_manifests: role_id, name, color, hoist, mentionable, permissions (BigInt), position, category_id, is_managed_by_app
-- events: id, event_type, payload, status(pending|claimed|processed|failed), claimed_by, retry_count
-- audit_logs: id, action, actor_id, target_id, target_type, details, created_at
+1. **データベース操作の集中管理**:
+   - PostgreSQL (Supabase) への全クエリ・トランザクション処理を一元管理。
+   - Alembic によるマイグレーション管理。
+2. **認証・動的 RBAC 認可**:
+   - Supabase Auth の JWT（RS256 / ES256 / HS256）を署名検証。
+   - `v_users_with_app_role` ビューによるロール（`admin`, `member`, `obog`, `pre_member`, `none`）の動的判定。
+   - 内部連携用 `SHARED_SECRET` によるベアラートークン認証。
+3. **入会・認証ロジック**:
+   - ワンタイムパスワード（OTP）の生成、bcrypt ハッシュ化、試行回数制限（最大5回）、有効期限管理。
+   - 青山学院大学の学生メールアドレス自動導出および在学生所有権の検証。
+   - Brevo（メール配信 API）による OTP 送信。
+4. **Discord Bot・外部サービス連携**:
+   - Discord Bot 受信用エンドポイント（`POST /internal/sync`）への同期要求発行。
+   - Discord API 直接呼び出し（ギルドメンバー情報・ロール一覧の取得、チャンネルへの Embed 通知）。
+   - 期限切れ仮入会ロールの自動クリーンアップ（`pre_member_removal_log`）。
+5. **開発環境用サポート**:
+   - ローカル検証用ロール切替 API（`FASTAPI_ENV` ホワイトリスト判定により、本番環境では自動遮断）。
 
-## 運用要件
-- ローカル開発は docker-compose を想定。CI/CD では k8s マニフェストを用いる。
-- DB マイグレーションは Flyway や Alembic 等で管理。
+---
+
+## 3. 必要な環境変数（Backend）
+
+環境変数は [`.env.example`](../.env.example) に準拠します：
+
+| 環境変数 | 必須 | 説明 |
+| :--- | :---: | :--- |
+| `DATABASE_URL` | ○ | PostgreSQL 接続文字列（Supabase Pooler / Transaction mode） |
+| `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット |
+| `SUPABASE_JWT_SECRET` | ○ | Supabase JWT 署名検証シークレット（HS256用） |
+| `NEXT_PUBLIC_SUPABASE_URL` | ○ | Supabase プロジェクト URL（JWKS 公開鍵取得用） |
+| `DISCORD_TOKEN` | ○ | Discord Bot トークン（メンバー取得・ロール操作用） |
+| `DISCORD_GUILD_ID` | ○ | 対象 Discord サーバー（ギルド）の ID |
+| `DISCORD_BOT_URL` | - | Discord Bot サーバーの内部 URL（デフォルト: `http://discord-bot:8000`） |
+| `BREVO_API_KEY` | ○ | Brevo メール送信 API キー |
+| `BREVO_SENDER_EMAIL` | ○ | 送信元メールアドレス |
+| `BREVO_SENDER_NAME` | ○ | 送信元表示名 |
+| `CONTACT_CHANNEL_ID` | - | お問い合わせ通知先 Discord チャンネル ID |
+| `FASTAPI_ENV` | - | 稼働環境（`production`, `development`, `local` 等） |
+
+---
+
+## 4. 開発・検証コマンド
+- サーバー起動: `uvicorn app.main:app --host 0.0.0.0 --port 5174 --reload`
+- テスト実行: `pytest`
+- DB マイグレーション適用: `alembic upgrade head`
+- マイグレーション作成: `alembic revision -m "<message>"`
+- 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
+
+

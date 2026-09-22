@@ -104,31 +104,31 @@
 }
 ```
 
-### POST /api/v1/roles/members/sync
-ロール同期実行（バックエンド処理）
+### POST /api/v1/sync
+ロール同期実行指示（FastAPI から Discord Bot への同期命令発行）
 
 **リクエスト**
 ```json
 {
-  "action": "sync"
+  "action": "sync_roles"
 }
 ```
 
 **レスポンス**
 ```json
 {
-  "synced": true,
-  "roles_updated": number,
-  "errors": []
+  "status": "ok",
+  "result": { ... }
 }
 ```
 
 ## 関連DB
 
-- `roles` テーブル（Discord ロール情報）
-- `role_categories` テーブル（ロール分類）
-- `user_roles` テーブル（ユーザーへの付与ロール）
-- `role_manifest` テーブル（ロール構成マニフェスト）
+- `role_manifests` テーブル（ロールマニフェスト：ロール名、色、権限、位置、カテゴリ等）
+- `role_categories` テーブル（ロール分類カテゴリ）
+- `user_memberships` テーブル（ユーザーの権限・所属ロール）
+- `v_users_with_app_role` VIEW（Supabase ユーザーと紐付けた動的 RBAC 判定）
+
 
 ## 備考
 
