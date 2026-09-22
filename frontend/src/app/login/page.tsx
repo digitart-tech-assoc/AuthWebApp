@@ -18,17 +18,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 					: null;
 
 	return (
-		<main className="p-6">
-			<h1>Sign in</h1>
+		<main className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
+			<h1 className="mb-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Sign in</h1>
 			{errorMessage && (
-				<p className="text-[#b91c1c] mb-3">
+				<div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
 					{errorMessage}
-				</p>
+				</div>
 			)}
-			<p className="mb-3">Discord アカウントでログインしてください。</p>
+			<p className="mb-6 text-sm text-slate-600">Discord アカウントでログインしてください。</p>
 			<a
 				href={`/auth/login/discord?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-				className="inline-block px-5 py-2.5 bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-[6px] no-underline font-semibold transition-colors"
+				className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4752C4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2 no-underline"
 			>
 				Discord でログイン
 			</a>
