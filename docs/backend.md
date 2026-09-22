@@ -14,7 +14,7 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 ## 2. 主要責務
 
 1. **データベース操作の集中管理**:
-   - PostgreSQL (Supabase / local) への全クエリ・トランザクション処理を一元管理。
+   - PostgreSQL (Supabase) への全クエリ・トランザクション処理を一元管理。
    - Alembic によるマイグレーション管理。
 2. **認証・動的 RBAC 認可**:
    - Supabase Auth の JWT（RS256 / ES256 / HS256）を署名検証。
