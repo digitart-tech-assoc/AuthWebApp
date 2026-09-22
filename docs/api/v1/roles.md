@@ -113,22 +113,6 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ---
 
-## 【廃止】POST `/api/v1/roles/self-assign` / `/api/v1/roles/self-remove`
-
-旧セルフロール単一操作 API です。本 API は廃止されており、常に `410 Gone` を返却します。
-一括更新 API（`POST /api/v1/roles/self-batch`）を使用してください。
-
-* **ステータスコード**: `410 Gone`
-* **レスポンス**:
-```json
-{
-  "detail": "This endpoint has been deprecated and removed. Please use POST /api/v1/roles/self-batch instead."
-}
-```
-
-
----
-
 ## GET `/api/v1/roles/lists`
 
 環境変数で設定された管理対象ロール（`member`, `admin`, `pre_member`, `obog`）の名前設定およびメンバー一覧を取得します。

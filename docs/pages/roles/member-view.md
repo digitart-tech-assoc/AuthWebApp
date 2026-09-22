@@ -61,5 +61,4 @@ UI上で変更をトグル選択し、「変更を保存してDiscordへ反映�
     "removed": ["234567890123456789"]
   }
   ```
-- **【廃止】セルフロール個別操作**: `POST /api/roles/self-assign`, `POST /api/roles/self-remove`（常に `410 Gone` を返却）
 

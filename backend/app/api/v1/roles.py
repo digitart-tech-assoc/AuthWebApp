@@ -645,16 +645,6 @@ async def self_batch_roles(
 	}
 
 
-@router.post("/self-assign", status_code=410, deprecated=True)
-@router.post("/self-remove", status_code=410, deprecated=True)
-async def deprecated_self_role_endpoints() -> None:
-	"""旧セルフロール単一操作API（廃止済み）。一括更新API (/api/v1/roles/self-batch) を使用してください。"""
-	raise HTTPException(
-		status_code=410,
-		detail="This endpoint has been deprecated and removed. Please use POST /api/v1/roles/self-batch instead.",
-	)
-
-
 @router.get("/lists")
 async def get_lists(_principal: dict = Depends(require_member)) -> dict:
 	"""member_list / admin_list / pre_member_list を取得."""

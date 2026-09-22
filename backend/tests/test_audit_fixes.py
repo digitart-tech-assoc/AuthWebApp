@@ -109,15 +109,3 @@ class TestRolesCompensationTransactions:
 
         assert exc_info.value.status_code == 400
 
-    @pytest.mark.asyncio
-    async def test_deprecated_self_role_endpoints_return_410(self):
-        """旧エンドポイント（self-assign, self-remove）が 410 Gone を返すことを確認"""
-        from app.api.v1.roles import deprecated_self_role_endpoints
-        from fastapi import HTTPException
-
-        with pytest.raises(HTTPException) as exc_info:
-            await deprecated_self_role_endpoints()
-
-        assert exc_info.value.status_code == 410
-        assert "deprecated" in exc_info.value.detail.lower()
-
