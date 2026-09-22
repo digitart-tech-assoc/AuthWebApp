@@ -19,9 +19,16 @@ export interface RefreshRolesResponse {
   roles?: number;
 }
 
-export interface SelfAssignResponse {
+export interface SelfBatchPayload {
+  roles_to_add: string[];
+  roles_to_remove: string[];
+}
+
+export interface SelfBatchResponse {
   ok?: boolean;
   detail?: string;
+  added?: string[];
+  removed?: string[];
 }
 
 /**
@@ -84,15 +91,15 @@ export async function refreshRolesFromDiscord(): Promise<RefreshRolesResponse> {
 }
 
 /**
- * 自身にロールを付与する
+ * 自身のロールを一括で付与・解除する（バッチ処理）
  */
-export async function selfAssignRole(roleId: string): Promise<SelfAssignResponse> {
-  const res = await fetch("/api/roles/self-assign", {
+export async function selfBatchRoles(payload: SelfBatchPayload): Promise<SelfBatchResponse> {
+  const res = await fetch("/api/roles/self-batch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId }),
+    body: JSON.stringify(payload),
   });
-  const data = (await res.json().catch(() => ({}))) as SelfAssignResponse;
+  const data = (await res.json().catch(() => ({}))) as SelfBatchResponse;
   if (!res.ok) {
     return {
       ok: false,
@@ -101,28 +108,8 @@ export async function selfAssignRole(roleId: string): Promise<SelfAssignResponse
   }
   return {
     ok: true,
-    detail: data.detail,
-  };
-}
-
-/**
- * 自身からロールを解除する
- */
-export async function selfRemoveRole(roleId: string): Promise<SelfAssignResponse> {
-  const res = await fetch("/api/roles/self-remove", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId }),
-  });
-  const data = (await res.json().catch(() => ({}))) as SelfAssignResponse;
-  if (!res.ok) {
-    return {
-      ok: false,
-      detail: data.detail || res.statusText,
-    };
-  }
-  return {
-    ok: true,
+    added: data.added,
+    removed: data.removed,
     detail: data.detail,
   };
 }

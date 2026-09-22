@@ -7,7 +7,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +20,12 @@ from app.core.config import (
 	PRE_MEMBER_ROLE_NAME,
 )
 from app.db.repository import (
-	add_user_to_role,
+	batch_update_user_roles,
 	clear_all_role_assignments,
 	fetch_guild_members,
 	fetch_manifest,
 	fetch_role_assignments,
 	get_member_lists,
-	remove_user_from_role,
 	replace_roles_from_discord,
 	save_guild_members,
 	save_role_assignments,
@@ -42,10 +41,12 @@ from app.services.discord_client import (
 	edit_guild_role,
 	fetch_all_guild_members,
 	fetch_bot_guilds,
+	fetch_guild_member,
 	fetch_guild_members_with_role,
 	fetch_guild_roles,
 	remove_role_from_member,
 	reorder_guild_roles,
+	set_member_roles,
 )
 
 
@@ -500,28 +501,38 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		raise HTTPException(status_code=502, detail=f"Discord sync failed: {exc}") from exc
 
 
-class SelfAssignPayload(BaseModel):
-	role_id: str
+class SelfBatchPayload(BaseModel):
+	roles_to_add: list[str] = Field(default_factory=list, max_length=50)
+	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
-# NOTE: MEMBER_RESTRICTED_CATEGORY_NAMES は app.core.config からインポート済み
+@router.post("/self-batch")
+async def self_batch_roles(
+	payload: SelfBatchPayload,
+	_principal: dict = Depends(require_member),
+) -> dict:
+	"""memberが自分自身のロールを一括で付与・解除する。
 
-
-async def _validate_self_role_operation(
-	payload: SelfAssignPayload,
-	principal: dict,
-	operation_name: str = "操作",
-) -> tuple[dict, str, str]:
-	"""セルフロール操作（付与/解除）の共通バリデーション。
-	Returns:
-		(role_info, discord_id, token)
+	1. 全ロールを一括バリデーション（禁止カテゴリ）
+	2. 現在の Discord ロール一覧を取得
+	3. Discord の PATCH /members/{user_id} で1回の API 呼び出しで一括更新
+	4. DB を一括更新
+	5. Discord 更新後に DB 更新が失敗した場合はロールバック
 	"""
-	manifest = await asyncio.to_thread(fetch_manifest)
-	role_info = next((r for r in manifest.get("roles", []) if r["role_id"] == payload.role_id), None)
-	if role_info is None:
-		raise HTTPException(status_code=404, detail="指定されたロールが見つかりません")
+	roles_to_add = set(payload.roles_to_add)
+	roles_to_remove = set(payload.roles_to_remove)
+	conflicting_role_ids = roles_to_add & roles_to_remove
+	if conflicting_role_ids:
+		raise HTTPException(
+			status_code=400,
+			detail=f"同じロールを付与と解除の両方に指定できません: {sorted(conflicting_role_ids)}",
+		)
 
-	discord_id: str | None = principal.get("discord_id")
+	all_role_ids = list(roles_to_add | roles_to_remove)
+	if not all_role_ids:
+		return {"ok": True, "added": [], "removed": [], "detail": "変更点はありませんでした"}
+
+	discord_id: str | None = _principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
 
@@ -529,73 +540,120 @@ async def _validate_self_role_operation(
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
-	# 禁止カテゴリチェック（静的制限カテゴリ名 + 動的 is_restricted フラグ）
+	# --- 1. 一括バリデーション ---
+	manifest = await asyncio.to_thread(fetch_manifest)
+	roles_in_manifest = {r["role_id"]: r for r in manifest.get("roles", [])}
 	restricted_cat_ids = {
 		c["id"] for c in manifest.get("categories", [])
 		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES or c.get("is_restricted", False)
 	}
-	if role_info.get("category_id") in restricted_cat_ids:
-		raise HTTPException(status_code=403, detail=f"このロールは{operation_name}できません（禁止カテゴリ）")
 
-	return role_info, discord_id, token
+	for role_id in all_role_ids:
+		role_info = roles_in_manifest.get(role_id)
+		if role_info is None:
+			raise HTTPException(status_code=404, detail=f"指定されたロール {role_id} が見つかりません")
+		if role_info.get("category_id") in restricted_cat_ids:
+			raise HTTPException(
+				status_code=403,
+				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（禁止カテゴリ）",
+			)
 
-
-@router.post("/self-assign")
-async def self_assign_role(
-	payload: SelfAssignPayload,
-	_principal: dict = Depends(require_member),
-) -> dict:
-	"""memberが自分自身にロールを付与する。禁止カテゴリに属するロールは拒否。"""
-	_role_info, discord_id, token = await _validate_self_role_operation(payload, _principal, "付与")
-
+	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
 	try:
-		await add_role_to_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
+		discord_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
+	except Exception as exc:
+		raise HTTPException(status_code=502, detail=f"Discord API error (fetch roles): {exc}") from exc
+
+	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
+	bot_role = next((role for role in discord_roles if role.get("is_our_bot")), None)
+	for role_id in all_role_ids:
+		role_info = roles_in_manifest[role_id]
+		discord_role = discord_roles_by_id.get(role_id)
+		if discord_role is None:
+			raise HTTPException(status_code=404, detail=f"Discord上にロール {role_id} が見つかりません")
+		if discord_role.get("managed") or role_id == DISCORD_GUILD_ID:
+			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' は変更できません")
+		if bot_role and discord_role.get("position", 0) >= bot_role.get("position", 0):
+			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
+
+	# --- 2. 現在のメンバーロール取得 ---
+	try:
+		member_info = await fetch_guild_member(DISCORD_GUILD_ID, discord_id, token)
+	except Exception as exc:
+		raise HTTPException(status_code=502, detail=f"Discord API error (fetch member): {exc}") from exc
+
+	if member_info is None:
+		raise HTTPException(status_code=404, detail="ギルドメンバーが見つかりません。Discordサーバーに参加しているか確認してください。")
+
+	current_role_ids: set[str] = set(member_info.get("role_ids", []))
+
+	# --- 3. 新しいロール一覧を計算 ---
+	new_role_ids = (current_role_ids | roles_to_add) - roles_to_remove
+
+	# 実際に変化がなければスキップ
+	actually_added = list(roles_to_add - current_role_ids)
+	actually_removed = list(current_role_ids & roles_to_remove)
+	if not actually_added and not actually_removed:
+		return {"ok": True, "added": [], "removed": [], "detail": "変更点はありませんでした"}
+
+	# --- 4. Discord 一括更新（1回の API 呼び出し）---
+	try:
+		await set_member_roles(DISCORD_GUILD_ID, discord_id, list(new_role_ids), token)
 	except Exception as exc:
 		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
 
-	# DB のロール割り当てをアトミックに更新
+	# --- 5. DB 一括更新 ---
 	try:
-		await asyncio.to_thread(add_user_to_role, discord_id, payload.role_id)
+		await asyncio.to_thread(
+			batch_update_user_roles,
+			discord_id,
+			list(roles_to_add),
+			list(roles_to_remove),
+		)
 	except Exception as exc:
-		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
-		# 補償トランザクション: Discord 側の付与を取り消す
+		logger.error(
+			"Failed to batch update role_member_assignments in DB for user_id=%s: %s",
+			discord_id, exc,
+		)
+		# 補償トランザクション: Discord 側を元のロール一覧にロールバック
+		rollback_succeeded = False
 		try:
-			await remove_role_from_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
-			logger.info("Compensating rollback succeeded for discord_id=%s role_id=%s", discord_id, payload.role_id)
+			await set_member_roles(DISCORD_GUILD_ID, discord_id, list(current_role_ids), token)
+			rollback_succeeded = True
+			logger.info(
+				"Compensating rollback succeeded for discord_id=%s", discord_id
+			)
 		except Exception as rollback_exc:
-			logger.critical("Compensating rollback failed for discord_id=%s role_id=%s: %s", discord_id, payload.role_id, rollback_exc)
-		raise HTTPException(status_code=500, detail="Failed to persist role assignment to database. Discord state was reverted.") from exc
+			logger.critical(
+				"Compensating rollback FAILED for discord_id=%s: %s", discord_id, rollback_exc
+			)
+		detail = (
+			"Failed to persist role assignments to database. Discord state was reverted."
+			if rollback_succeeded
+			else "Failed to persist role assignments and Discord rollback failed; states may be inconsistent."
+		)
+		raise HTTPException(
+			status_code=500,
+			detail=detail,
+		) from exc
 
-	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
+	return {
+		"ok": True,
+		"discord_id": discord_id,
+		"added": actually_added,
+		"removed": actually_removed,
+	}
 
 
-@router.post("/self-remove")
-async def self_remove_role(
-	payload: SelfAssignPayload,
-	_principal: dict = Depends(require_member),
-) -> dict:
-	"""memberが自分自身からロールを解除する。禁止カテゴリに属するロールは拒否。"""
-	_role_info, discord_id, token = await _validate_self_role_operation(payload, _principal, "解除")
+@router.post("/self-assign", status_code=410, deprecated=True)
+@router.post("/self-remove", status_code=410, deprecated=True)
+async def deprecated_self_role_endpoints() -> None:
+	"""旧セルフロール単一操作API（廃止済み）。一括更新API (/api/v1/roles/self-batch) を使用してください。"""
+	raise HTTPException(
+		status_code=410,
+		detail="This endpoint has been deprecated and removed. Please use POST /api/v1/roles/self-batch instead.",
+	)
 
-	try:
-		await remove_role_from_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
-	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
-
-	# DB のロール割り当てをアトミックに更新
-	try:
-		await asyncio.to_thread(remove_user_from_role, discord_id, payload.role_id)
-	except Exception as exc:
-		logger.error("Failed to update role_member_assignments in DB for role_id=%s user_id=%s: %s", payload.role_id, discord_id, exc)
-		# 補償トランザクション: Discord 側で解除したロールを再付与する
-		try:
-			await add_role_to_member(DISCORD_GUILD_ID, discord_id, payload.role_id, token)
-			logger.info("Compensating rollback succeeded for discord_id=%s role_id=%s", discord_id, payload.role_id)
-		except Exception as rollback_exc:
-			logger.critical("Compensating rollback failed for discord_id=%s role_id=%s: %s", discord_id, payload.role_id, rollback_exc)
-		raise HTTPException(status_code=500, detail="Failed to persist role removal to database. Discord state was reverted.") from exc
-
-	return {"ok": True, "role_id": payload.role_id, "discord_id": discord_id}
 
 @router.get("/lists")
 async def get_lists(_principal: dict = Depends(require_member)) -> dict:

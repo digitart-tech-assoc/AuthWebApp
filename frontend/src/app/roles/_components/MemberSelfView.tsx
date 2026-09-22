@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
-import { fetchRoleMembers, selfAssignRole, selfRemoveRole } from "@/lib/api/roles";
+import { fetchRoleMembers, selfBatchRoles } from "@/lib/api/roles";
 import styles from "./memberself.module.css";
 
 type Category = {
@@ -103,7 +103,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     setSaveState("idle");
   }
 
-  // --- 確定時に自己ロールの付与・解除APIを呼び出す ---
+  // --- 確定時に自己ロールの付与・解除バッチAPIを呼び出す ---
   async function handleSave() {
     if (!myDiscordId) {
       showStatus({ kind: "error", msg: "Discord ID が特定できません。再ログインしてください。" });
@@ -140,39 +140,16 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       }
 
       showStatus({ kind: "info", msg: "ロールの変更を適用中..." });
-      const errors: string[] = [];
 
-      // 追加リクエスト
-      for (const roleId of rolesToAdd) {
-        try {
-          const data = await selfAssignRole(roleId);
-          if (!data.ok) {
-            const roleObj = roles.find((r) => r.role_id === roleId);
-            const roleName = roleObj ? roleObj.name : roleId;
-            errors.push(`${roleName}の付与失敗: ${data.detail || "エラーが発生しました"}`);
-          }
-        } catch {
-          errors.push(`通信エラー (${roleId})`);
-        }
-      }
+      // バッチAPIを1回呼び出しで一括更新
+      const result = await selfBatchRoles({
+        roles_to_add: rolesToAdd,
+        roles_to_remove: rolesToRemove,
+      });
 
-      // 削除リクエスト
-      for (const roleId of rolesToRemove) {
-        try {
-          const data = await selfRemoveRole(roleId);
-          if (!data.ok) {
-            const roleObj = roles.find((r) => r.role_id === roleId);
-            const roleName = roleObj ? roleObj.name : roleId;
-            errors.push(`${roleName}の解除失敗: ${data.detail || "エラーが発生しました"}`);
-          }
-        } catch {
-          errors.push(`通信エラー (${roleId})`);
-        }
-      }
-
-      if (errors.length > 0) {
+      if (!result.ok) {
         setSaveState("error");
-        showStatus({ kind: "error", msg: `一部のロール変更に失敗しました: ${errors.join(", ")}` });
+        showStatus({ kind: "error", msg: `ロール変更に失敗しました: ${result.detail || "エラーが発生しました"}` });
         await fetchMembers();
         return;
       }

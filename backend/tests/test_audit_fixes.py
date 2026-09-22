@@ -73,45 +73,51 @@ class TestRolesCompensationTransactions:
     """セルフロール操作での DB 失敗時補償ロールバックのテスト"""
 
     @pytest.mark.asyncio
-    async def test_self_assign_compensates_on_db_failure(self):
-        """DB 保存失敗時に Discord のロール付与を取り消す"""
-        from app.api.v1.roles import self_assign_role, SelfAssignPayload
+    async def test_self_batch_compensates_on_db_failure(self):
+        """DB 保存失敗時に Discord のロール一覧を元に戻す"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
         from fastapi import HTTPException
 
-        payload = SelfAssignPayload(role_id="role-123")
+        payload = SelfBatchPayload(roles_to_add=["role-123"], roles_to_remove=[])
         principal = {"discord_id": "user-456", "app_role": "member"}
 
-        with patch("app.api.v1.roles._validate_self_role_operation", return_value=({"role_id": "role-123"}, "user-456", "token")):
-            with patch("app.api.v1.roles.add_role_to_member", new_callable=AsyncMock) as mock_add:
-                with patch("app.api.v1.roles.remove_role_from_member", new_callable=AsyncMock) as mock_remove:
-                    with patch("app.api.v1.roles.add_user_to_role", side_effect=Exception("DB connection error")):
-                        with pytest.raises(HTTPException) as exc_info:
-                            await self_assign_role(payload, principal)
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value={"roles": [{"role_id": "role-123", "name": "Test"}], "categories": []}):
+                with patch("app.api.v1.roles.fetch_guild_roles", new_callable=AsyncMock, return_value=[{"role_id": "role-123", "position": 1, "managed": False}, {"role_id": "role-existing", "position": 1, "managed": False}]):
+                    with patch("app.api.v1.roles.fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-existing"]}):
+                        with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
+                            with patch("app.api.v1.roles.batch_update_user_roles", side_effect=Exception("DB connection error")):
+                                with pytest.raises(HTTPException) as exc_info:
+                                    await self_batch_roles(payload, principal)
 
-                        assert exc_info.value.status_code == 500
-                        # Discord に一旦付与されたが
-                        mock_add.assert_awaited_once()
-                        # DB エラーにより取り消し（補償）が呼ばれた
-                        mock_remove.assert_awaited_once()
+                                assert exc_info.value.status_code == 500
+                                assert "Discord state was reverted" in str(exc_info.value.detail)
+                                assert mock_set.await_count == 2
+                                assert mock_set.await_args_list[1].args[2] == ["role-existing"]
 
     @pytest.mark.asyncio
-    async def test_self_remove_compensates_on_db_failure(self):
-        """DB 削除失敗時に Discord のロール解除を元に戻す"""
-        from app.api.v1.roles import self_remove_role, SelfAssignPayload
+    async def test_self_batch_rejects_conflicting_role_operations(self):
+        """同じロールの付与と解除を同時に受け付けない"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
         from fastapi import HTTPException
 
-        payload = SelfAssignPayload(role_id="role-123")
-        principal = {"discord_id": "user-456", "app_role": "member"}
+        with pytest.raises(HTTPException) as exc_info:
+            await self_batch_roles(
+                SelfBatchPayload(roles_to_add=["role-123"], roles_to_remove=["role-123"]),
+                {"discord_id": "user-456", "app_role": "member"},
+            )
 
-        with patch("app.api.v1.roles._validate_self_role_operation", return_value=({"role_id": "role-123"}, "user-456", "token")):
-            with patch("app.api.v1.roles.remove_role_from_member", new_callable=AsyncMock) as mock_remove:
-                with patch("app.api.v1.roles.add_role_to_member", new_callable=AsyncMock) as mock_add:
-                    with patch("app.api.v1.roles.remove_user_from_role", side_effect=Exception("DB connection error")):
-                        with pytest.raises(HTTPException) as exc_info:
-                            await self_remove_role(payload, principal)
+        assert exc_info.value.status_code == 400
 
-                        assert exc_info.value.status_code == 500
-                        # Discord から一旦削除されたが
-                        mock_remove.assert_awaited_once()
-                        # DB エラーにより再付与（補償）が呼ばれた
-                        mock_add.assert_awaited_once()
+    @pytest.mark.asyncio
+    async def test_deprecated_self_role_endpoints_return_410(self):
+        """旧エンドポイント（self-assign, self-remove）が 410 Gone を返すことを確認"""
+        from app.api.v1.roles import deprecated_self_role_endpoints
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            await deprecated_self_role_endpoints()
+
+        assert exc_info.value.status_code == 410
+        assert "deprecated" in exc_info.value.detail.lower()
+
