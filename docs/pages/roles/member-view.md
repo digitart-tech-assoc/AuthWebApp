@@ -35,8 +35,8 @@ UI上で変更をトグル選択し、「変更を保存してDiscordへ反映�
    - 「未保存の変更があります」と画面に明示。
 2. **保存と同期の実行**:
    - 「変更を保存してDiscordへ反映」をクリック。
-   - 変更前後の差分を抽出し、追加されたロールには `/api/roles/self-assign`、削除されたロールには `/api/roles/self-remove` を発行。
-   - 処理完了後、Discord サーバー側のロールが即座に反映され、成功メッセージを表示。
+   - 変更前後の差分（`roles_to_add`, `roles_to_remove`）を抽出し、一括更新 API（`/api/roles/self-batch`）を 1 回呼び出しで実行。
+   - 処理完了後、Discord サーバー側のロールおよび DB 割当がアトミックに即座に反映され、成功メッセージを表示。
 
 ### 安全制約（Hierarchy Protection）
 - **Bot 上位ロールの保護**: Discord Bot 自身の持つロール階層より上位のロール、および `is_restricted`（管理者限定カテゴリ）のロールは一般メンバーからは操作・選択できません（UI上で無効化表示）。
@@ -46,11 +46,20 @@ UI上で変更をトグル選択し、「変更を保存してDiscordへ反映�
 ## 4. 仕様API（Route Handlers 経由）
 
 - **ロール割当一覧取得**: `GET /api/roles/members`
-- **セルフロール付与**: `POST /api/roles/self-assign`
+- **セルフロール一括更新（バッチ処理）**: `POST /api/roles/self-batch`
   ```json
-  { "role_id": "123456789012345678" }
+  {
+    "roles_to_add": ["123456789012345678"],
+    "roles_to_remove": ["234567890123456789"]
+  }
   ```
-- **セルフロール解除**: `POST /api/roles/self-remove`
+  **レスポンス (200 OK)**:
   ```json
-  { "role_id": "123456789012345678" }
+  {
+    "ok": true,
+    "added": ["123456789012345678"],
+    "removed": ["234567890123456789"]
+  }
   ```
+- **【廃止】セルフロール個別操作**: `POST /api/roles/self-assign`, `POST /api/roles/self-remove`（常に `410 Gone` を返却）
+

@@ -60,52 +60,72 @@ DB 上で編集されたロール定義（Desired State）を Discord サーバ�
 
 ---
 
-## POST `/api/v1/roles/self-assign`
+## POST `/api/v1/roles/self-batch`
 
-ログインメンバーが、自分自身に対してロールを付与します。
-※管理者が保護しているカテゴリ（`is_restricted: true`）に属するロールは付与できません。
+ログインメンバーが、自分自身のロールを一括で付与・解除（バッチ更新）します。
+Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/members/{user_id}`）および DB の割り当て更新を 1 回のリクエストでアトミックに適用します。
 
-* **認可レベル**: `Member`
+* **認可レベル**: `Member` (`member`, `admin`, `obog`)
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
 * **リクエストボディ**:
 ```json
 {
-  "role_id": "123456789012345678"
+  "roles_to_add": ["123456789012345678"],
+  "roles_to_remove": ["234567890123456789"]
 }
 ```
+※ `roles_to_add` と `roles_to_remove` はそれぞれ最大50件まで指定可能です。
 
 ### レスポンス (200 OK)
 ```json
 {
   "ok": true,
-  "message": "Role assigned successfully",
-  "role_id": "123456789012345678"
+  "discord_id": "123456789012345678",
+  "added": ["123456789012345678"],
+  "removed": ["234567890123456789"]
 }
 ```
+変更がなかった場合:
+```json
+{
+  "ok": true,
+  "added": [],
+  "removed": [],
+  "detail": "変更点はありませんでした"
+}
+```
+
+### バリデーション & エラーレスポンス
+- `400 Bad Request`:
+  - 同一ロールが `roles_to_add` と `roles_to_remove` の両方に指定されている場合
+  - Discord ID が特定できない場合
+- `403 Forbidden`:
+  - 管理者保護カテゴリ（`is_restricted: true` または予約カテゴリ）に属するロールが含まれる場合
+  - Discord のマネージドロール（Bot/連携用）または `@everyone` ロールが含まれる場合
+  - Bot の権限階層以上のロールが含まれる場合
+- `404 Not Found`:
+  - 指定されたロールがマニフェストまたは Discord サーバー上に存在しない場合
+  - ギルドメンバーが見つからない場合
+- `500 Internal Server Error`:
+  - DB更新失敗時。Discord 上のロール変更は元の状態に自動補償ロールバックされます。
+- `502 Bad Gateway`:
+  - Discord API との通信エラー。
 
 ---
 
-## POST `/api/v1/roles/self-remove`
+## 【廃止】POST `/api/v1/roles/self-assign` / `/api/v1/roles/self-remove`
 
-ログインメンバーが、自分自身からロールを解除します。
+旧セルフロール単一操作 API です。本 API は廃止されており、常に `410 Gone` を返却します。
+一括更新 API（`POST /api/v1/roles/self-batch`）を使用してください。
 
-* **認可レベル**: `Member`
-* **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
-* **リクエストボディ**:
+* **ステータスコード**: `410 Gone`
+* **レスポンス**:
 ```json
 {
-  "role_id": "123456789012345678"
+  "detail": "This endpoint has been deprecated and removed. Please use POST /api/v1/roles/self-batch instead."
 }
 ```
 
-### レスポンス (200 OK)
-```json
-{
-  "ok": true,
-  "message": "Role removed successfully",
-  "role_id": "123456789012345678"
-}
-```
 
 ---
 
