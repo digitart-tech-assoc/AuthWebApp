@@ -6,6 +6,7 @@
 - Frontend（`cd frontend`）: 型チェック `npx tsc --noEmit`、Lint `npm run lint`、ビルド `npm run build`
 - Backend（`cd backend`）: `pytest`
 - Discord Bot（`cd discord-bot`）: `python -m compileall app/`
+- 動作確認: `docker compose up --build`（または `docker-compose up --build`）で Docker 環境を立ち上げて行う。
 
 ## Architecture
 - `frontend/`: Next.js (App Router / TypeScript / Tailwind CSS)。各ルートの `_components/` に置く Colocation パターンを守る。

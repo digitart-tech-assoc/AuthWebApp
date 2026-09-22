@@ -42,4 +42,6 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
 - Pod は Kubernetes 上で `ReplicaSet: 1`（二重起動による多重同期防止）。
 - livenessProbe / readinessProbe に `GET /internal/health` を設定。
 - 構文・コンパイル検証: `python -m compileall app/`
+- 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
+
 

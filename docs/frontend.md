@@ -67,3 +67,5 @@ UI とユーザー操作に専念し、すべてのデータ永続化・認可�
 - 型チェック: `npx tsc --noEmit`
 - Lint 検証: `npm run lint`
 - ビルド確認: `npm run build`
+- 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
+

@@ -23,14 +23,17 @@ npm run dev
 
 ブラウザで [http://localhost:3000](http://localhost:3000) を開いて動作を確認します。
 
-### 検証コマンド（コミット前に必ず実行）
+### 検証・動作確認コマンド
 
 ```bash
-# TypeScript 型チェック
+# TypeScript 型チェック（コミット前に必須）
 npx tsc --noEmit
 
-# 本番ビルド検証（Next.js Turbopack）
+# 本番ビルド検証（コミット前に必須）
 npm run build
+
+# Docker環境での統合動作確認（ルートディレクトリで実行）
+docker compose up --build
 ```
 
 ---

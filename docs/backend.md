@@ -59,4 +59,6 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 - テスト実行: `pytest`
 - DB マイグレーション適用: `alembic upgrade head`
 - マイグレーション作成: `alembic revision -m "<message>"`
+- 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
+
 
