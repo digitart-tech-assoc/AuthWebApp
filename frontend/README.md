@@ -113,9 +113,10 @@ frontend/src/
   3. **純粋関数**: 外部状態に依存しない計算・差分ロジック（例: `roleDiff.ts`）
 - 特定ページでのみ使われるコンポーネントは、`app/<page>/_components/` 配下に配置（Colocation）してカプセル化します。
 
-### ④ スタイルと依存関係の方向（レイヤー逆転の禁止）
-- `components/`（共通パーツ）から `app/`（個別ページ）の CSS やモジュールをインポートする**逆流依存は厳禁**です。
-- 共通コンポーネントは自己完結するように専用の CSS Module（例: `StudentProfileForm.module.css`）またはインラインスタイル/Tailwind を使用してください。
+### ④ スタイリング指針
+- プロジェクト全体で**Tailwind CSS**を使用します。CSS Modulesは使用しません。
+- 詳細なデザイントークンや実装規約は [docs/frontend/styling-guide.md](../docs/frontend/styling-guide.md) を、CSS Modules からの移行手順・PRチェックリストは [docs/frontend/css-migration-plan.md](../docs/frontend/css-migration-plan.md) を参照してください。
+- **レイヤー逆転の禁止**: `components/`（共通パーツ）から `app/`（個別ページ）のモジュールやCSSをインポートする逆流依存は厳禁です。共通コンポーネントは Tailwind CSS または専用スタイルで自己完結させてください。
 
 ### ⑤ 通信層（APIクライアント）の集約
 - コンポーネントの中に `fetch("/api/...")` を直接ベタ書きしないでください。

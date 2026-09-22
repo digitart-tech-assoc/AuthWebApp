@@ -13,6 +13,8 @@ AI コーディングエージェントおよび開発者は、タスクの対�
 | **画面・UI 要件** | [pages/README.md](./pages/README.md) | 画面サイトマップ・各画面個別要件（`pages/**/index.md`）への案内 |
 | **DB スキーマ** | [db.md](./db.md) | 全テーブル・VIEW（`v_users_with_app_role`等）・ENUM 定義 |
 | **Frontend 基盤** | [frontend.md](./frontend.md) | Next.js 16 構成・Colocation規約・画面一覧・環境変数 |
+| **UI スタイリング規約** | [frontend/styling-guide.md](./frontend/styling-guide.md) | デザインシステム定義書・Tailwind CSS 実装規約 |
+| **CSS 移行計画** | [frontend/css-migration-plan.md](./frontend/css-migration-plan.md) | CSS Modules からの移行手順・置換対応表・PRチェックリスト |
 | **Backend 基盤** | [backend.md](./backend.md) | FastAPI アーキテクチャ・動的RBAC・主要責務・環境変数 |
 | **Discord Bot** | [discord-bot.md](./discord-bot.md) | discord.py ロール差分同期ロジック・内部API・環境変数 |
 | **運用マニュアル** | [manuals/](./manuals/) | 管理者・一般ユーザー・入会希望者向け操作手順 |

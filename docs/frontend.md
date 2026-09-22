@@ -7,6 +7,7 @@ UI とユーザー操作に専念し、すべてのデータ永続化・認可�
 > [!TIP]
 > **開発ガイド・コーディング規約**:
 > 詳細なディレクトリ構造、Colocation パターン（`_components/`）、型定義ルールは [frontend/README.md](../frontend/README.md) を参照してください。
+> デザインシステム・スタイリング規約は [frontend/styling-guide.md](./frontend/styling-guide.md)、CSS Modules 移行計画は [frontend/css-migration-plan.md](./frontend/css-migration-plan.md) を参照してください。
 > 各画面の個別仕様は [docs/pages/README.md](./pages/README.md) を参照してください。
 
 ---
@@ -38,7 +39,7 @@ UI とユーザー操作に専念し、すべてのデータ永続化・認可�
 
 ## 3. 非機能要件・アーキテクチャ
 - **Colocation パターン**: 各ルート固有のコンポーネントは `app/<route>/_components/` 配下に配置する。
-- **UI スタイリング**: Tailwind CSS を基本とし、インラインスタイルの使用を避ける。
+- **UI スタイリング**: Tailwind CSS を基本とし、インラインスタイルや任意値（`[...]`）の使用を避ける。詳細は [Tailwind CSS スタイリング実装規約](./frontend/styling-guide.md) を参照。
 - **パフォーマンス**: 大量ロール表示時もストレスのない操作感（必要に応じて仮想化）。
 - **セキュリティ**:
   - API キーやシークレットをクライアントサイドに露出しない。
