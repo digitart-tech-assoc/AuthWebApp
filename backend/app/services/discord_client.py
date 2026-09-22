@@ -275,8 +275,6 @@ async def set_member_roles(guild_id: str, user_id: str, role_ids: list[str], tok
 
 		raise Exception(error_msg)
 
-	resp.raise_for_status()
-
 
 async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str) -> list[dict]:
 	"""ギルド内の特定のロールを持つメンバーを取得"""
