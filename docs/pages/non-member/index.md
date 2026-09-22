@@ -57,6 +57,6 @@
 
 ## 実装メモ
 
-- `join.module.css` から共通スタイル `heroNonMember` を適用
+- Tailwind CSS によりスタイリング（[docs/frontend/styling-guide.md](../../frontend/styling-guide.md) 準拠）
 - リンクは `Link` コンポーネント使用（クライアントサイドナビゲーション）
 - CSS クラス組み合わせで視覚的な区別を図る
