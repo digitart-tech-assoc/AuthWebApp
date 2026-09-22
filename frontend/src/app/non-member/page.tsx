@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function NonMemberPage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 pb-16 sm:px-6 sm:py-12 sm:pb-20">
+    <main className="mx-auto w-full max-w-5xl px-4 py-8 pb-16 sm:py-12 sm:pb-20">
       <section className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-b from-indigo-500/5 to-white/60 p-6 shadow-sm sm:p-8 md:p-10">
         <div className="flex flex-col items-stretch justify-between gap-6 md:flex-row">
           <div>
