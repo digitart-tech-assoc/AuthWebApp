@@ -27,7 +27,13 @@ export async function POST(request: Request) {
 		});
 		const body = await res.json();
 		return NextResponse.json(body, { status: res.status });
-	} catch {
+	} catch (error) {
+		if (error instanceof Error && error.message === "auth-error-401") {
+			return NextResponse.json({ ok: false, detail: "Unauthorized" }, { status: 401 });
+		}
+		if (error instanceof Error && error.message === "auth-error-403") {
+			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
+		}
 		return NextResponse.json({ ok: false, detail: "proxy failed" }, { status: 502 });
 	}
 }

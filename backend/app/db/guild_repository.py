@@ -97,6 +97,8 @@ def batch_update_user_roles(user_id: str, roles_to_add: list[str], roles_to_remo
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			# 同一ユーザーのDB更新を同時に行う処理間で直列化する。
+			cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"self-role:{user_id}",))
 			for role_id in roles_to_remove:
 				cur.execute(
 					"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",

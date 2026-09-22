@@ -502,8 +502,8 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 
 
 class SelfBatchPayload(BaseModel):
-	roles_to_add: list[str] = Field(default_factory=list)
-	roles_to_remove: list[str] = Field(default_factory=list)
+	roles_to_add: list[str] = Field(default_factory=list, max_length=50)
+	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
 @router.post("/self-batch")
@@ -558,6 +558,24 @@ async def self_batch_roles(
 				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（禁止カテゴリ）",
 			)
 
+	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
+	try:
+		discord_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
+	except Exception as exc:
+		raise HTTPException(status_code=502, detail=f"Discord API error (fetch roles): {exc}") from exc
+
+	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
+	bot_role = next((role for role in discord_roles if role.get("is_our_bot")), None)
+	for role_id in all_role_ids:
+		role_info = roles_in_manifest[role_id]
+		discord_role = discord_roles_by_id.get(role_id)
+		if discord_role is None:
+			raise HTTPException(status_code=404, detail=f"Discord上にロール {role_id} が見つかりません")
+		if discord_role.get("managed") or role_id == DISCORD_GUILD_ID:
+			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' は変更できません")
+		if bot_role and discord_role.get("position", 0) >= bot_role.get("position", 0):
+			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
+
 	# --- 2. 現在のメンバーロール取得 ---
 	try:
 		member_info = await fetch_guild_member(DISCORD_GUILD_ID, discord_id, token)
@@ -586,7 +604,12 @@ async def self_batch_roles(
 
 	# --- 5. DB 一括更新 ---
 	try:
-		await asyncio.to_thread(batch_update_user_roles, discord_id, actually_added, actually_removed)
+		await asyncio.to_thread(
+			batch_update_user_roles,
+			discord_id,
+			list(roles_to_add),
+			list(roles_to_remove),
+		)
 	except Exception as exc:
 		logger.error(
 			"Failed to batch update role_member_assignments in DB for user_id=%s: %s",

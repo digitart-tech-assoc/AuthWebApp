@@ -83,16 +83,17 @@ class TestRolesCompensationTransactions:
 
         with patch("app.api.v1.roles._get_token", return_value="token"):
             with patch("app.api.v1.roles.fetch_manifest", return_value={"roles": [{"role_id": "role-123", "name": "Test"}], "categories": []}):
-                with patch("app.api.v1.roles.fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-existing"]}):
-                    with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
-                        with patch("app.api.v1.roles.batch_update_user_roles", side_effect=Exception("DB connection error")):
-                            with pytest.raises(HTTPException) as exc_info:
-                                await self_batch_roles(payload, principal)
+                with patch("app.api.v1.roles.fetch_guild_roles", new_callable=AsyncMock, return_value=[{"role_id": "role-123", "position": 1, "managed": False}, {"role_id": "role-existing", "position": 1, "managed": False}]):
+                    with patch("app.api.v1.roles.fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-existing"]}):
+                        with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
+                            with patch("app.api.v1.roles.batch_update_user_roles", side_effect=Exception("DB connection error")):
+                                with pytest.raises(HTTPException) as exc_info:
+                                    await self_batch_roles(payload, principal)
 
-                            assert exc_info.value.status_code == 500
-                            assert "Discord state was reverted" in str(exc_info.value.detail)
-                            assert mock_set.await_count == 2
-                            assert mock_set.await_args_list[1].args[2] == ["role-existing"]
+                                assert exc_info.value.status_code == 500
+                                assert "Discord state was reverted" in str(exc_info.value.detail)
+                                assert mock_set.await_count == 2
+                                assert mock_set.await_args_list[1].args[2] == ["role-existing"]
 
     @pytest.mark.asyncio
     async def test_self_batch_rejects_conflicting_role_operations(self):
