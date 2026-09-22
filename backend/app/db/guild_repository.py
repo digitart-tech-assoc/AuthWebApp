@@ -87,6 +87,35 @@ def remove_user_from_role(user_id: str, role_id: str) -> None:
 			conn.commit()
 
 
+def batch_update_user_roles(user_id: str, roles_to_add: list[str], roles_to_remove: list[str]) -> None:
+	"""1ユーザーのロール割り当てを一括で追加/削除する（1トランザクション）。
+
+	Args:
+		user_id:        対象ユーザーの Discord ID
+		roles_to_add:   追加するロール ID リスト
+		roles_to_remove: 削除するロール ID リスト
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			for role_id in roles_to_remove:
+				cur.execute(
+					"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
+					(role_id, user_id),
+				)
+			for role_id in roles_to_add:
+				cur.execute(
+					"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+					(role_id, user_id),
+				)
+		conn.commit()
+		logger.info(
+			"batch_update_user_roles: user_id=%s added=%s removed=%s",
+			user_id,
+			roles_to_add,
+			roles_to_remove,
+		)
+
+
 def clear_all_role_assignments() -> None:
 	"""role_member_assignments テーブルの全行を削除する（Discordから完全再取得する際に使用）。"""
 	with _connect() as conn:

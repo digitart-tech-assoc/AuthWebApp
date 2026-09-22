@@ -241,6 +241,43 @@ async def remove_role_from_member(guild_id: str, user_id: str, role_id: str, tok
 	resp.raise_for_status()
 
 
+async def set_member_roles(guild_id: str, user_id: str, role_ids: list[str], token: str) -> None:
+	"""メンバーのロール一覧を一括設定する（PATCH /guilds/{guild_id}/members/{user_id}）。
+
+	個別の PUT/DELETE を N 回呼ぶ代わりに、Discord の Modify Guild Member エンドポイントで
+	ロール一覧を丸ごと 1 回の API 呼び出しで更新する。これによりレートリミットを大幅に回避できる。
+
+	Args:
+		guild_id: ギルド ID
+		user_id:  対象メンバーの Discord ユーザー ID
+		role_ids: 設定するロール ID の完全リスト（現在のロールは上書きされる）
+		token:    Bot トークン
+	"""
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
+	payload = {"roles": role_ids}
+	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
+		resp = await client.patch(url, headers=_headers(token), json=payload)
+
+	if resp.status_code not in (200, 204):
+		error_msg = f"Failed to set roles for member {user_id}: HTTP {resp.status_code}"
+		try:
+			error_details = resp.json()
+			error_msg += f" - {error_details}"
+		except Exception:
+			error_msg += f" - {resp.text}"
+
+		if resp.status_code == 403:
+			error_msg += "\n[LIKELY CAUSES]\n"
+			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
+			error_msg += "2. Bot's role is lower in hierarchy than a target role\n"
+			error_msg += "3. Attempting to set a managed role\n"
+			error_msg += f"4. Payload sent: {payload}"
+
+		raise Exception(error_msg)
+
+	resp.raise_for_status()
+
+
 async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str) -> list[dict]:
 	"""ギルド内の特定のロールを持つメンバーを取得"""
 	headers = {"Authorization": f"Bot {token}"}
@@ -318,10 +355,14 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str) -> dict | 
 				"discriminator": member["user"].get("discriminator", "0"),
 				"display_name": member.get("nick") or member["user"]["username"],
 				"avatar": member["user"].get("avatar"),
+				"role_ids": member.get("roles", []),
 			}
-	except Exception as e:
-		logger.error("fetch_guild_member failed for %s: %s", user_id, e)
-		return None
+	except httpx.HTTPStatusError:
+		logger.exception("fetch_guild_member returned an HTTP error for %s", user_id)
+		raise
+	except Exception as exc:
+		logger.error("fetch_guild_member failed for %s: %s", user_id, exc)
+		raise
 
 
 async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, max_age_seconds: int = 604800, unique: bool = True) -> dict:

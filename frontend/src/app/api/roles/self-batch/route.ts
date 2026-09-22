@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 		}
 
 		const payload = await request.json();
-		const res = await fetchBackend("/api/v1/roles/self-assign", {
+		const res = await fetchBackend("/api/v1/roles/self-batch", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
