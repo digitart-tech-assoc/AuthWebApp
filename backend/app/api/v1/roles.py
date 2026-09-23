@@ -25,6 +25,7 @@ from app.db.repository import (
 	fetch_guild_members,
 	fetch_manifest,
 	fetch_role_assignments,
+	fetch_role_assignments_for_user,
 	get_member_lists,
 	replace_roles_from_discord,
 	save_guild_members,
@@ -366,8 +367,19 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	}
 
 
+@router.get("/me/assignments")
+async def get_my_role_assignments(_principal: dict = Depends(require_member)) -> dict:
+	"""ログイン中のユーザー自身に割り当てられたロールだけを取得。"""
+	discord_id = _principal.get("discord_id")
+	if not discord_id:
+		raise HTTPException(status_code=400, detail="Discord ID が特定できません。")
+
+	assignments = await asyncio.to_thread(fetch_role_assignments_for_user, discord_id)
+	return {"assignments": assignments}
+
+
 @router.get("/members")
-async def get_role_members(_principal: dict = Depends(require_member)) -> dict:
+async def get_role_members(_principal: dict = Depends(require_admin)) -> dict:
 	"""保存済みのギルドメンバー一覧とロール割り当てを取得。"""
 	members = await asyncio.to_thread(fetch_guild_members)
 	assignments = await asyncio.to_thread(fetch_role_assignments)
@@ -646,7 +658,7 @@ async def self_batch_roles(
 
 
 @router.get("/lists")
-async def get_lists(_principal: dict = Depends(require_member)) -> dict:
+async def get_lists(_principal: dict = Depends(require_admin)) -> dict:
 	"""member_list / admin_list / pre_member_list を取得."""
 	result = await asyncio.to_thread(get_member_lists)
 	return result

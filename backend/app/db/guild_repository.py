@@ -146,3 +146,17 @@ def fetch_role_assignments() -> dict[str, list[str]]:
 			for role_id, user_id in cur.fetchall():
 				result.setdefault(role_id, []).append(user_id)
 			return result
+
+
+def fetch_role_assignments_for_user(user_id: str) -> dict[str, list[str]]:
+	"""指定ユーザー自身のロール割り当てだけを取得。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute(
+				"SELECT role_id, user_id FROM role_member_assignments WHERE user_id = %s",
+				(user_id,),
+			)
+			result: dict[str, list[str]] = {}
+			for role_id, assigned_user_id in cur.fetchall():
+				result.setdefault(role_id, []).append(assigned_user_id)
+			return result

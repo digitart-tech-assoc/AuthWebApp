@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
-import { fetchRoleMembers, selfBatchRoles } from "@/lib/api/roles";
+import { fetchMyRoleAssignments, selfBatchRoles } from "@/lib/api/roles";
 import styles from "./memberself.module.css";
 
 type Category = {
@@ -64,7 +64,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
   // Fetch all member assignments
   const fetchMembers = useCallback(async () => {
     try {
-      const data = await fetchRoleMembers();
+      const data = await fetchMyRoleAssignments();
       if (data.assignments) {
         setMembersByRole(data.assignments);
         initialAssignmentsRef.current = JSON.parse(JSON.stringify(data.assignments));

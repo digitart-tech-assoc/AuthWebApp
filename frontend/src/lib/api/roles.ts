@@ -42,6 +42,15 @@ export async function fetchRoleMembers(): Promise<RoleMembersResponse> {
   return res.json();
 }
 
+/** ログイン中のユーザー自身に割り当てられたロールを取得する */
+export async function fetchMyRoleAssignments(): Promise<RoleMembersResponse> {
+  const res = await fetch("/api/roles/me/assignments");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch my role assignments: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 /**
  * DBへマニフェスト差分を保存する
  */

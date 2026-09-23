@@ -117,7 +117,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 環境変数で設定された管理対象ロール（`member`, `admin`, `pre_member`, `obog`）の名前設定およびメンバー一覧を取得します。
 
-* **認可レベル**: `Member`
+* **認可レベル**: `Admin`
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
 
 ### レスポンス (200 OK)
@@ -133,11 +133,25 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ---
 
+## GET `/api/v1/roles/me/assignments`
+
+ログイン中のユーザー自身に割り当てられたロールだけを取得します。ほかのユーザーのDiscord IDや割り当て情報は返しません。
+
+* **認可レベル**: `Member`（`member`, `sub_user`, `obog`, `admin`）
+* **レスポンス (200 OK)**:
+```json
+{
+  "assignments": {
+    "123456789012345678": ["123456789012345678"]
+  }
+}
+```
+
 ## GET `/api/v1/roles/members`
 
 指定したロール ID に所属しているメンバーの一覧を取得します。
 
-* **認可レベル**: `Member`
+* **認可レベル**: `Admin`
 * **クエリパラメータ**: `role_id` (string, 必須)
 
 ### レスポンス (200 OK)

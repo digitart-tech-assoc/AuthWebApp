@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
+
 import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
 
 export async function GET() {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin") {
+		const allowed = new Set(["member", "admin", "obog"]);
+		if (!allowed.has(role)) {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
+
 		const authorization = await getBackendAuthorizationHeader();
 		if (!authorization) {
 			return NextResponse.json({ ok: false, detail: "Unauthorized" }, { status: 401 });
 		}
-		const res = await fetchBackend("/api/v1/roles/members", {
+
+		const res = await fetchBackend("/api/v1/roles/me/assignments", {
 			headers: { Authorization: authorization },
 			cache: "no-store",
 		});
