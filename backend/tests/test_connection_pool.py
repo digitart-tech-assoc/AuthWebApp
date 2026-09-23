@@ -70,12 +70,19 @@ class TestTransactionHandling:
 		raw.commit.assert_called_once()
 
 	def test_with_block_rolls_back_on_exception(self, creator):
+		# 借用時 ping と返却時リセットでも rollback が呼ばれるため、呼び出し順で __exit__ の rollback を検証する
+		calls: list[str] = []
 		with pytest.raises(RuntimeError):
 			with connection._connect() as conn:
 				raw = conn._conn
+				raw.rollback.reset_mock()  # 借用時 ping 後の rollback を除外
+				raw.rollback.side_effect = lambda: calls.append("rollback")
+				close = conn.close
+				conn.close = lambda: (calls.append("close"), close())
 				raise RuntimeError("boom")
 		raw.commit.assert_not_called()
-		raw.rollback.assert_called()
+		# プールへ返却（close）する前に rollback されていること
+		assert calls[:2] == ["rollback", "close"]
 
 	def test_close_without_commit_rolls_back_on_return(self, creator):
 		conn = connection._connect()
@@ -138,3 +145,39 @@ class TestDisposePool:
 		connection.dispose_pool()
 		connection.dispose_pool()
 		assert connection._pool is None
+
+
+class TestNoNestedCheckout:
+	"""接続を保持したまま別の接続を借用しないこと（プール枯渇による待ち合いの防止）を検証する。"""
+
+	@pytest.fixture
+	def single_slot_pool(self, creator):
+		with patch.object(connection, "DB_POOL_SIZE", 1):
+			yield creator
+
+	def _cursor(self, creator):
+		# プールは生接続を1本だけ作るため、以降の借用はすべて同じカーソルモックを使う
+		with connection._connect() as conn:
+			return conn._conn.cursor.return_value.__enter__.return_value
+
+	def test_upsert_existing_user_with_single_connection(self, single_slot_pool):
+		from app.db.user_repository import upsert_user
+
+		cur = self._cursor(single_slot_pool)
+		cur.fetchone.side_effect = [(1, "user-1", "discord-1"), ("sub_user",)]
+
+		user = upsert_user("user-1", "discord-1")
+
+		assert user == {"id": 1, "user_id": "user-1", "discord_id": "discord-1", "app_role": "member"}
+		assert single_slot_pool.call_count == 1
+
+	def test_upsert_new_user_with_single_connection(self, single_slot_pool):
+		from app.db.user_repository import upsert_user
+
+		cur = self._cursor(single_slot_pool)
+		cur.fetchone.side_effect = [None, None, (2, "user-2", "discord-2"), ("admin",)]
+
+		user = upsert_user("user-2", "discord-2")
+
+		assert user == {"id": 2, "user_id": "user-2", "discord_id": "discord-2", "app_role": "admin"}
+		assert single_slot_pool.call_count == 1
