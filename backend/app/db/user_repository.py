@@ -82,6 +82,15 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 	if not user_id:
 		raise ValueError("user_id is required")
 
+	user = _upsert_user_record(user_id, discord_id)
+	# 接続を返却してから app_role を解決する。
+	# 接続を保持したまま別の接続を借用すると、同時リクエストでコネクションプールが枯渇し待ち合いになるため。
+	user["app_role"] = _resolve_role_from_memberships(user["discord_id"])
+	return user
+
+
+def _upsert_user_record(user_id: str, discord_id: str | None) -> dict[str, Any]:
+	"""users テーブルの行を取得・更新・作成し、id / user_id / discord_id を返す（app_role は含まない）。"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			# 1) user_id (Supabase UUID) 一致を確認
@@ -135,12 +144,10 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				else:
 					effective_discord_id = current_discord_id or discord_id
 
-				resolved_role = _resolve_role_from_memberships(effective_discord_id)
 				return {
 					"id": row[0],
 					"user_id": row[1],
 					"discord_id": effective_discord_id,
-					"app_role": resolved_role,
 				}
 
 			# 2) 新規ユーザー登録時: 既に同じ discord_id を持つ別ユーザーが存在しないか検証
@@ -165,7 +172,6 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 					# Discord ID なしで一般ユーザーとして作成
 					discord_id = None
 
-			resolved_role = _resolve_role_from_memberships(discord_id)
 			cur.execute(
 				"""
 				INSERT INTO users (user_id, discord_id)
@@ -180,7 +186,6 @@ def upsert_user(user_id: str, discord_id: str | None = None) -> dict[str, Any]:
 				"id": row[0],
 				"user_id": row[1],
 				"discord_id": row[2],
-				"app_role": resolved_role,
 			}
 
 
