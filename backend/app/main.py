@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from app.api.v1.contact import router as contact_router
 from app.api.v1.student import router as student_router
 from app.api.v1.members import router as members_router
 from app.api.v1.survey import router as survey_router
+from app.db.connection import dispose_pool
 from app.db.repository import init_db
 
 
@@ -28,12 +30,27 @@ _fastapi_env = os.getenv("FASTAPI_ENV", "").strip().lower()
 _is_prod = _fastapi_env == "production"
 _is_dev = _fastapi_env in DEV_ENVS
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+	# DB初期化を環境変数 SKIP_DB_INIT でスキップ可能
+	# SKIP_DB_INIT が "true" または未設定の場合は初期化をスキップ（デフォルト）
+	# SKIP_DB_INIT が "false" の場合のみ初期化を実行
+	skip_db_init = os.getenv("SKIP_DB_INIT", "true").lower() in ("true", "1", "yes")
+	if not skip_db_init:
+		init_db()
+	yield
+	# コネクションプールは初回の DB アクセス時に生成され、終了時にここで破棄する
+	dispose_pool()
+
+
 app = FastAPI(
 	title="AuthWebApp Backend",
 	version="0.1.0",
 	docs_url=None if _is_prod else "/docs",
 	redoc_url=None if _is_prod else "/redoc",
 	openapi_url=None if _is_prod else "/openapi.json",
+	lifespan=lifespan,
 )
 
 # Build allowlist for CORS. Use FRONTEND_ORIGIN (comma-separated) when set,
@@ -66,16 +83,6 @@ app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup() -> None:
-	# DB初期化を環境変数 SKIP_DB_INIT でスキップ可能
-	# SKIP_DB_INIT が "true" または未設定の場合は初期化をスキップ（デフォルト）
-	# SKIP_DB_INIT が "false" の場合のみ初期化を実行
-	skip_db_init = os.getenv("SKIP_DB_INIT", "true").lower() in ("true", "1", "yes")
-	if not skip_db_init:
-		init_db()
 
 
 @app.get("/health")
