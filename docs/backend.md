@@ -40,6 +40,10 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 | 環境変数 | 必須 | 説明 |
 | :--- | :---: | :--- |
 | `DATABASE_URL` | ○ | PostgreSQL 接続文字列（Supabase Pooler / Transaction mode） |
+| `DB_POOL_SIZE` | - | クライアント側コネクションプールで常時保持する接続数（デフォルト: `5`） |
+| `DB_POOL_MAX_OVERFLOW` | - | `DB_POOL_SIZE` を超えて一時的に作成できる接続数（デフォルト: `5`） |
+| `DB_POOL_TIMEOUT` | - | プール枯渇時に接続の返却を待つ秒数。超過するとエラー（デフォルト: `10`） |
+| `DB_POOL_RECYCLE` | - | 接続を再作成するまでの経過秒数。Pooler 側のアイドル切断対策（デフォルト: `300`） |
 | `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット |
 | `SUPABASE_JWT_SECRET` | ○ | Supabase JWT 署名検証シークレット（HS256用） |
 | `NEXT_PUBLIC_SUPABASE_URL` | ○ | Supabase プロジェクト URL（JWKS 公開鍵取得用） |
