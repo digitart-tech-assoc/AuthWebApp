@@ -149,23 +149,24 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ## GET `/api/v1/roles/members`
 
-指定したロール ID に所属しているメンバーの一覧を取得します。
+保存済みのギルドメンバー一覧と、全ロールの割り当て情報を取得します。
 
 * **認可レベル**: `Admin`
-* **クエリパラメータ**: `role_id` (string, 必須)
 
 ### レスポンス (200 OK)
 ```json
 {
-  "role_id": "123456789012345678",
   "members": [
     {
-      "user_id": "discord_user_id_1",
+      "user_id": "12345678912345678912",
       "username": "taro_yamada",
       "display_name": "山田太郎",
       "avatar": "avatar_hash"
     }
-  ]
+  ],
+  "assignments": {
+    "987654321098765432": ["123456789012345678"]
+  }
 }
 ```
 
