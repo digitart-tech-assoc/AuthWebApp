@@ -25,7 +25,8 @@ export default function PhoneInput({
       label="電話番号"
       placeholder="09012345678"
       value={value}
-      onChange={(nextValue) => onChange(normalizePhoneNumber(nextValue))}
+      onChange={onChange}
+      onBlur={(event) => onChange(normalizePhoneNumber(event.currentTarget.value))}
       error={error}
       required={true}
       type="tel"
