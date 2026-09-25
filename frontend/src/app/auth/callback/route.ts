@@ -13,55 +13,7 @@ type AuthMeResponse = {
 
 const LOGIN_ERROR_DISCORD_EMAIL_REQUIRED = "discord_email_required";
 
-type MemberItem = {
-    discord_id: string;
-};
-
-type MemberListsResponse = {
-    pre_member_list?: MemberItem[];
-};
-
-function extractDiscordId(user: {
-    app_metadata?: Record<string, unknown>;
-    user_metadata?: Record<string, unknown>;
-    identities?: Array<{ provider?: string; id?: string; identity_data?: Record<string, unknown> }>;
-} | null): string | null {
-    if (!user) {
-        return null;
-    }
-
-    // 1. identities (SupabaseがOAuth検証した署名済みプロバイダ情報) を最優先
-    const identities = user.identities ?? [];
-    for (const identity of identities) {
-        if (identity.provider === "discord") {
-            const candidate =
-                identity.id ??
-                identity.identity_data?.sub ??
-                identity.identity_data?.provider_id;
-            if (typeof candidate === "string" && candidate.trim().length > 0) {
-                return candidate.trim();
-            }
-        }
-    }
-
-    // 2. OAuth プロバイダが discord であることを確認した上でのみフォールバック
-    const appMetadata = user.app_metadata ?? {};
-    const provider = appMetadata.provider;
-    const providers = (appMetadata.providers as string[]) ?? [];
-    const isDiscord = provider === "discord" || providers.includes("discord");
-
-    if (isDiscord) {
-        const metadata = user.user_metadata ?? {};
-        const fromMetadata = metadata.provider_id ?? metadata.sub;
-        if (typeof fromMetadata === "string" && fromMetadata.trim().length > 0) {
-            return fromMetadata.trim();
-        }
-    }
-
-    return null;
-}
-
-async function resolvePostSignInPath(accessToken: string, discordId: string | null) {
+async function resolvePostSignInPath(accessToken: string) {
     try {
         const meRes = await fetch(`${BACKEND_URL}/api/v1/auth/me`, {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -78,23 +30,7 @@ async function resolvePostSignInPath(accessToken: string, discordId: string | nu
             }
         }
 
-        if (!discordId) {
-            return "/non-member";
-        }
-
-        const listsRes = await fetch(`${BACKEND_URL}/api/v1/roles/lists`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            cache: "no-store",
-        });
-
-        if (!listsRes.ok) {
-            return "/non-member";
-        }
-
-        const lists = (await listsRes.json()) as MemberListsResponse;
-        const preMembers = lists.pre_member_list ?? [];
-        const isPreMember = preMembers.some((item) => item.discord_id === discordId);
-        return isPreMember ? "/join" : "/non-member";
+        return "/non-member";
     } catch {
         return "/non-member";
     }
@@ -126,9 +62,8 @@ export async function GET(request: NextRequest) {
             }
 
             const accessToken = session?.access_token?.trim();
-            const discordId = extractDiscordId(user);
             const postSignInPath = accessToken
-                ? await resolvePostSignInPath(accessToken, discordId)
+                ? await resolvePostSignInPath(accessToken)
                 : "/login?error=auth_callback_error";
 
             const needsAccessGate = next === "/roles" || next.startsWith("/roles/") || next === "/admin" || next.startsWith("/admin/");

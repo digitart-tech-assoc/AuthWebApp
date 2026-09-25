@@ -137,6 +137,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   }, [initRoles, initCategories, setPermTarget]);
 
   const fetchMembers = useCallback(async () => {
+    if (!isAdmin) return;
     try {
       const data = await fetchRoleMembers();
       if (data.members) setAllMembers(data.members);
@@ -148,7 +149,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     } catch (e) {
       console.error("Failed to fetch members", e);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     fetchMembers();
