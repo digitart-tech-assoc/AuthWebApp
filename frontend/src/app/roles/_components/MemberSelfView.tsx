@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import { fetchMyRoleAssignments, selfBatchRoles } from "@/lib/api/roles";
+import { statusBanner, unsavedBar, unsavedBarBtn } from "./roleStyles";
 
 type Category = {
   id: string;
@@ -41,12 +42,6 @@ type Props = {
   avatarUrl: string | null;
 };
 
-
-const statusBannerClass = {
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  error: "border-red-200 bg-red-50 text-red-700",
-  info: "border-sky-200 bg-sky-50 text-sky-800",
-} as const;
 
 const catGroupClass = "mb-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm";
 const catHeaderClass = "flex min-h-10 cursor-pointer select-none items-center gap-2 px-4 py-3 transition-colors hover:bg-slate-50";
@@ -238,7 +233,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
       {/* Status */}
       {status && (
-        <div className={`mb-4 rounded-lg border px-4 py-2.5 text-sm font-medium animate-fade-in-down ${statusBannerClass[status.kind]}`}>
+        <div className={statusBanner(status.kind)}>
           {status.kind === "success" && "✓ "}
           {status.kind === "error" && "✕ "}
           {status.kind === "info" && "ℹ "}
@@ -386,11 +381,11 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
       {/* Floating save bar */}
       {hasUnsaved && (
-        <div className="fixed inset-x-4 bottom-6 z-40 mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-4 rounded-xl bg-slate-800 px-6 py-3.5 text-sm font-semibold text-slate-50 shadow-xl animate-slide-up">
+        <div className={unsavedBar}>
           <span>未送信の変更があります</span>
           <button
             type="button"
-            className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-blue-600 px-5 text-sm font-bold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className={unsavedBarBtn}
             disabled={saveState === "saving"}
             onClick={handleSave}
           >

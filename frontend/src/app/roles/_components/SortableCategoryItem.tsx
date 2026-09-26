@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import RoleList from "./RoleList";
-import styles from "./roles.module.css";
+import { btnCompact, chevron, groupCard, groupCount, groupHeader, groupName } from "./roleStyles";
 import type { Category, Role } from "@/types/roles";
 
 import { ChevronRight, Shield } from "lucide-react";
@@ -30,7 +30,6 @@ export type SortableCategoryItemProps = {
   onOpenMemberModal: ((role: Role) => void) | undefined;
   onEditRole: ((role: Role) => void) | undefined;
   onEditCategory: ((cat: Category) => void) | undefined;
-  styles?: Record<string, string>;
 };
 
 export default function SortableCategoryItem({
@@ -55,17 +54,17 @@ export default function SortableCategoryItem({
   onEditCategory,
 }: SortableCategoryItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cat.id });
+  // dnd-kit の位置・遷移は実行時の値のため style で指定する（styling-guide.md「インラインスタイルの例外」）
   const catStyle = {
     // scaleX/scaleYを1に固定してドラッグ時の引き伸ばしを防ぐ
     transform: CSS.Transform.toString(transform ? { ...transform, scaleX: 1, scaleY: 1 } : null),
     transition,
-    opacity: isDragging ? 0.5 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={catStyle} className={styles.group}>
+    <div ref={setNodeRef} style={catStyle} className={`${groupCard} ${isDragging ? "opacity-50" : ""}`}>
       <div
-        className={styles.groupHeader}
+        className={groupHeader}
         onClick={() => onToggleCollapse(cat.id)}
         role="button"
         tabIndex={0}
@@ -74,7 +73,7 @@ export default function SortableCategoryItem({
         }}
       >
         <ChevronRight
-          className={`${styles.chevron} ${isOpen ? styles.open : ""}`}
+          className={chevron(isOpen)}
           size={16}
         />
         {/* Drag handle */}
@@ -82,22 +81,21 @@ export default function SortableCategoryItem({
           <span
             {...attributes}
             {...listeners}
-            className={styles.dragHandle}
+            className={`inline-flex size-6 items-center justify-center rounded-md px-1 leading-none text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
             title="ドラッグでカテゴリを並び替え"
             onClick={(e) => e.stopPropagation()}
-            style={{ cursor: isDragging ? "grabbing" : "grab", padding: "0 4px", lineHeight: 1 }}
           >
             ⠿
           </span>
         )}
-        <span className={styles.groupName}>{cat.name}</span>
-        <span className={styles.groupCount}>{catRoles.length}</span>
+        <span className={groupName}>{cat.name}</span>
+        <span className={groupCount}>{catRoles.length}</span>
 
         {isAdmin ? (
           <>
             <button
               type="button"
-              className={styles.catPermBtn}
+              className={`${btnCompact} border-slate-300 bg-transparent text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (onEditCategory) onEditCategory(cat);
@@ -109,7 +107,7 @@ export default function SortableCategoryItem({
             </button>
             <button
               type="button"
-              className={styles.catPermBtn}
+              className={`${btnCompact} border-slate-300 bg-transparent text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800`}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenCategoryPermissions(cat);
@@ -127,7 +125,7 @@ export default function SortableCategoryItem({
         {isAdmin ? (
           <button
             type="button"
-            className={styles.groupDeleteBtn}
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm leading-none text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-400"
             onClick={(e) => {
               e.stopPropagation();
               onDeleteCategory(cat.id);
@@ -140,7 +138,7 @@ export default function SortableCategoryItem({
         ) : memberCanManageCat ? (
           <button
             type="button"
-            className={`${styles.groupDeleteBtn} ${catRoles.length > 0 ? styles.btnDisabled ?? "" : ""}`}
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm leading-none text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-400"
             onClick={(e) => {
               e.stopPropagation();
               if (catRoles.length > 0) return;
