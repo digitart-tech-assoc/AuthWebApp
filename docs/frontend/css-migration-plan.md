@@ -66,3 +66,23 @@ PR 作成時およびレビュー時は以下を確認してください。
 - [ ] ボタンやリンクのタップ領域が最低 40px 以上確保されているか。
 - [ ] 不要になった `*.module.css` が漏れなく削除されているか。
 - [ ] `tsc`、`lint`、`build` がすべてパスしているか。
+
+---
+
+## 5. ロール管理画面（`/roles`）の移行順
+
+`/roles` は DnD・アコーディオン・モーダル・差分表示が集中しているため、以下の単位で PR を分割し、順に移行する。
+
+| 順 | 対象 CSS | 対象コンポーネント |
+| :--- | :--- | :--- |
+| 0 | —（基盤） | `globals.css` のアニメーショントークン、本書・styling-guide.md の追記 |
+| 1 | `rolemember.module.css` | `RoleMemberModal` |
+| 2 | `newrole.module.css` | `NewRoleModal`, `EditCategoryModal` |
+| 3 | `permission.module.css` | `PermissionEditor` |
+| 4 | `memberself.module.css` | `MemberSelfView` |
+| 5 | `roles.module.css`（モーダル・ボタン） | `RoleDiffModal`, `PushButton`, `SyncButton` |
+| 6 | `roles.module.css`（本体） | `RoleAccordion`, `RoleList`, `SortableCategoryItem` |
+| 7 | —（インラインスタイル） | `roles/page.tsx`, `MembersPanel` |
+
+- dnd-kit の `transform` / `transition` とロール色は、styling-guide.md の「インラインスタイルの例外」に従い `style` で指定する。
+- 複数コンポーネントで共有するクラス（ボタン等）は `roles/_components/roleStyles.ts` に className 文字列の定数として定義する。
