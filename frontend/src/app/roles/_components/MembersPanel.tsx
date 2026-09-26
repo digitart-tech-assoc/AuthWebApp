@@ -50,7 +50,7 @@ export default function MembersPanel() {
 	}, []);
 
 	if (loading) {
-		return <div className="p-4 text-sm text-slate-400">メンバーリストを読み込み中...</div>;
+		return <div className="p-4 text-sm text-slate-500">メンバーリストを読み込み中...</div>;
 	}
 
 	return (
@@ -81,7 +81,7 @@ export default function MembersPanel() {
 						</h3>
 						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.member_list.length === 0 ? (
-								<p className="text-slate-400">メンバーなし</p>
+								<p className="text-slate-500">メンバーなし</p>
 							) : (
 								<ul className="m-0 list-disc pl-5">
 									{members.member_list.map((m: MemberItem) => (
@@ -100,7 +100,7 @@ export default function MembersPanel() {
 						</h3>
 						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.admin_list.length === 0 ? (
-								<p className="text-slate-400">管理者なし</p>
+								<p className="text-slate-500">管理者なし</p>
 							) : (
 								<ul className="m-0 list-disc pl-5">
 									{members.admin_list.map((m: MemberItem) => (
@@ -119,7 +119,7 @@ export default function MembersPanel() {
 						</h3>
 						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.pre_member_list.length === 0 ? (
-								<p className="text-slate-400">入会予定メンバーなし</p>
+								<p className="text-slate-500">入会予定メンバーなし</p>
 							) : (
 								<ul className="m-0 list-disc pl-5">
 									{members.pre_member_list.map((m: MemberItem) => (

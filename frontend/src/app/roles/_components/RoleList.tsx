@@ -221,7 +221,7 @@ export default function RoleList({
   );
 
   if (roles.length === 0) {
-    return <p className="px-4 py-5 text-center text-sm text-slate-400">ロールがありません</p>;
+    return <p className="px-4 py-5 text-center text-sm text-slate-500">ロールがありません</p>;
   }
   const enableDrag = typeof onReorder === "function" && !onToggleSelect;
 
@@ -242,7 +242,7 @@ export default function RoleList({
   return (
     <div>
       {showHeader && (
-        <div className="flex items-center border-b border-slate-100 py-2 pr-3.5 pl-2.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+        <div className="flex items-center border-b border-slate-100 py-2 pr-3.5 pl-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">
           <span className="w-8 shrink-0" />
           <span className="flex-1">ロール名</span>
           {onPermissions && <span className="text-right">権限</span>}

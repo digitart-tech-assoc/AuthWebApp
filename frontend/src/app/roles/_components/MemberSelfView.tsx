@@ -52,7 +52,7 @@ const catRoleItemClass = "flex min-h-10 items-center gap-2.5 px-4 py-1 transitio
 const catRoleItemDisabledClass = `${catRoleItemClass} cursor-not-allowed opacity-40`;
 const catRoleNameClass = "flex-1 text-sm text-slate-700";
 const roleDotClass = "size-2.5 shrink-0 rounded-full";
-const mutedTagClass = "px-2.5 py-1 text-xs text-slate-400";
+const mutedTagClass = "px-2.5 py-1 text-xs text-slate-500";
 const pillBtnBase =
   "inline-flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40";
 const assignBtnClass = `${pillBtnBase} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`;
@@ -220,7 +220,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
   const dotColor = (color: string) => (!color || color === "#000000") ? "#d1d5db" : color;
 
   if (loading) {
-    return <div className="p-10 text-center text-sm text-slate-400">読み込み中...</div>;
+    return <div className="p-10 text-center text-sm text-slate-500">読み込み中...</div>;
   }
 
   return (
@@ -264,7 +264,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         <div className="mb-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">現在のロール（{myRoles.length}件）</div>
 
         {myRoles.length === 0 ? (
-          <div className="py-2 text-sm text-slate-400">ロールが割り当てられていません</div>
+          <div className="py-2 text-sm text-slate-500">ロールが割り当てられていません</div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {myRoles.map((role) => {
