@@ -6,6 +6,7 @@ const btnBase =
 
 export const btnPrimary = `${btnBase} bg-blue-600 font-semibold text-white shadow-sm hover:bg-blue-700`;
 export const btnSecondary = `${btnBase} border border-slate-300 bg-white font-medium text-slate-700 shadow-sm hover:bg-slate-50`;
+export const btnSync = `${btnBase} bg-slate-600 font-semibold text-white shadow-sm hover:bg-slate-700`;
 
 // ===== モーダル内の共通パーツ =====
 export const modalHeader = "flex shrink-0 items-start justify-between gap-3 px-6 pt-5";

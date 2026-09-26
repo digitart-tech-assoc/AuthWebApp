@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { refreshRolesFromDiscord } from "@/lib/api/roles";
-import styles from "./roles.module.css";
+import { btnSync } from "./roleStyles";
 
 type Props = {
   onSuccess?: (count: number) => void;
@@ -35,7 +35,7 @@ export default function SyncButton({ onSuccess, onError }: Props) {
       type="button"
       onClick={handleSync}
       disabled={isPending}
-      className={styles.btnSync}
+      className={btnSync}
     >
       {isPending ? (
         <>
@@ -49,5 +49,5 @@ export default function SyncButton({ onSuccess, onError }: Props) {
 }
 
 function LoadingDots() {
-  return <span style={{ letterSpacing: 2 }}>●●●</span>;
+  return <span className="tracking-widest">●●●</span>;
 }
