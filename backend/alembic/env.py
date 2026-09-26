@@ -18,6 +18,8 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from app.db.database_url import with_psycopg2_driver
+
 # Load environment variables from .env file at project root
 project_root = Path(__file__).resolve().parent.parent.parent
 env_file = project_root / ".env"
@@ -55,6 +57,8 @@ def run_migrations_offline() -> None:
 
     """
     url = os.getenv("DATABASE_URL")
+    if url:
+        url = with_psycopg2_driver(url)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -79,7 +83,7 @@ def run_migrations_online() -> None:
         raise ValueError("DATABASE_URL environment variable is not set")
     
     connectable = engine_from_config(
-        {"sqlalchemy.url": database_url},
+        {"sqlalchemy.url": with_psycopg2_driver(database_url)},
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
