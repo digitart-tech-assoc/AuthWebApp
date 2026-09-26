@@ -4,6 +4,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { syncMembers, getMembers, type MemberListsData, type MemberItem } from "@/actions/members";
+import { btnPrimary } from "./roleStyles";
 
 export default function MembersPanel() {
 	const [loading, setLoading] = useState(false);
@@ -49,17 +50,17 @@ export default function MembersPanel() {
 	}, []);
 
 	if (loading) {
-		return <div style={{ padding: 16, color: "#888" }}>メンバーリストを読み込み中...</div>;
+		return <div className="p-4 text-sm text-slate-500">メンバーリストを読み込み中...</div>;
 	}
 
 	return (
-		<div style={{ marginTop: 24, padding: 16, border: "1px solid #e5e7eb", borderRadius: 8 }}>
-			<h2 style={{ marginTop: 0, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>
+		<div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+			<h2 className="mt-0 mb-4 text-lg font-semibold text-slate-900">
 				メンバーリスト管理
 			</h2>
 
 			{error && (
-				<p style={{ marginBottom: 16, color: "#b91c1c" }}>
+				<p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
 					エラー: {error}
 				</p>
 			)}
@@ -67,33 +68,24 @@ export default function MembersPanel() {
 			<button
 				onClick={handleSync}
 				disabled={syncing}
-				style={{
-					padding: "8px 16px",
-					marginBottom: 16,
-					backgroundColor: syncing ? "#d1d5db" : "#3b82f6",
-					color: "white",
-					border: "none",
-					borderRadius: 4,
-					cursor: syncing ? "not-allowed" : "pointer",
-					fontSize: 14,
-				}}
+				className={`${btnPrimary} mb-4`}
 			>
 				{syncing ? "同期中..." : "Discord から同期"}
 			</button>
 
 			{members && (
 				<div>
-					<div style={{ marginBottom: 16 }}>
-						<h3 style={{ marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+					<div className="mb-4">
+						<h3 className="mb-2 text-sm font-semibold text-slate-900">
 							メンバー ({members.member_list.length})
 						</h3>
-						<div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12 }}>
+						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.member_list.length === 0 ? (
-								<p style={{ color: "#888" }}>メンバーなし</p>
+								<p className="text-slate-500">メンバーなし</p>
 							) : (
-								<ul style={{ margin: 0, paddingLeft: 20 }}>
+								<ul className="m-0 list-disc pl-5">
 									{members.member_list.map((m: MemberItem) => (
-										<li key={m.discord_id} style={{ marginBottom: 4 }}>
+										<li key={m.discord_id} className="mb-1">
 											{m.discord_id} {m.assigned_at ? `(${new Date(m.assigned_at).toLocaleDateString()})` : ""}
 										</li>
 									))}
@@ -102,17 +94,17 @@ export default function MembersPanel() {
 						</div>
 					</div>
 
-					<div style={{ marginBottom: 16 }}>
-						<h3 style={{ marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+					<div className="mb-4">
+						<h3 className="mb-2 text-sm font-semibold text-slate-900">
 							管理者 ({members.admin_list.length})
 						</h3>
-						<div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12 }}>
+						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.admin_list.length === 0 ? (
-								<p style={{ color: "#888" }}>管理者なし</p>
+								<p className="text-slate-500">管理者なし</p>
 							) : (
-								<ul style={{ margin: 0, paddingLeft: 20 }}>
+								<ul className="m-0 list-disc pl-5">
 									{members.admin_list.map((m: MemberItem) => (
-										<li key={m.discord_id} style={{ marginBottom: 4 }}>
+										<li key={m.discord_id} className="mb-1">
 											{m.discord_id} {m.assigned_at ? `(${new Date(m.assigned_at).toLocaleDateString()})` : ""}
 										</li>
 									))}
@@ -122,16 +114,16 @@ export default function MembersPanel() {
 					</div>
 
 					<div>
-						<h3 style={{ marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+						<h3 className="mb-2 text-sm font-semibold text-slate-900">
 							入会予定メンバー ({members.pre_member_list.length})
 						</h3>
-						<div style={{ maxHeight: 200, overflowY: "auto", fontSize: 12 }}>
+						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
 							{members.pre_member_list.length === 0 ? (
-								<p style={{ color: "#888" }}>入会予定メンバーなし</p>
+								<p className="text-slate-500">入会予定メンバーなし</p>
 							) : (
-								<ul style={{ margin: 0, paddingLeft: 20 }}>
+								<ul className="m-0 list-disc pl-5">
 									{members.pre_member_list.map((m: MemberItem) => (
-										<li key={m.discord_id} style={{ marginBottom: 4 }}>
+										<li key={m.discord_id} className="mb-1">
 											{m.discord_id} {m.assigned_at ? `(${new Date(m.assigned_at).toLocaleDateString()})` : ""}
 										</li>
 									))}

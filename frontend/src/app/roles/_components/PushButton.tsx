@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { pushRolesToDiscord, type PushRolesResponse } from "@/lib/api/roles";
-import styles from "./roles.module.css";
+import { btnPrimary } from "./roleStyles";
 
 type Props = {
   onSuccess?: (result: PushRolesResponse) => void;
@@ -40,7 +40,7 @@ export default function PushButton({ onSuccess, onError }: Props) {
       type="button"
       onClick={handlePush}
       disabled={isPending}
-      className={styles.btnPrimary}
+      className={btnPrimary}
     >
       {isPending ? <>送信中...</> : <>↑ Discord へ送信</>}
     </button>
