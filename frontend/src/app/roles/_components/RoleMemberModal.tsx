@@ -2,9 +2,8 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import Image from "next/image";
-import styles from "./rolemember.module.css";
 
 import type { Member } from "@/types/roles";
 export type { Member };
@@ -26,6 +25,44 @@ type Props = {
 
 type Screen = "list" | "grant" | "revoke";
 
+const titleClass = "m-0 text-base font-bold text-slate-900";
+const closeBtnClass =
+  "inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
+const searchClass =
+  "mx-4 mt-3 mb-2 block shrink-0 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20";
+const memberListClass = "min-h-0 flex-1 overflow-y-auto px-2 py-1.5";
+const memberRowBaseClass =
+  "flex min-h-10 select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors";
+const memberRowClass = `${memberRowBaseClass} cursor-pointer hover:bg-slate-100`;
+const memberRowDisabledClass = `${memberRowBaseClass} cursor-default opacity-50`;
+const checkboxClass = "size-4 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-default";
+const memberNameClass = "min-w-0 flex-1 truncate text-sm font-medium text-slate-700";
+const badgeClass = "shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500";
+const lockedBadgeClass = "shrink-0 rounded-md bg-slate-500 px-1.5 py-0.5 text-xs text-white";
+const emptyClass = "py-6 text-center text-sm text-slate-500";
+const footerClass =
+  "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4";
+const btnBaseClass =
+  "inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+const cancelBtnClass = `${btnBaseClass} border border-slate-300 bg-white font-medium text-slate-700 hover:bg-slate-50`;
+const actionBtnClass = `${btnBaseClass} bg-blue-600 font-semibold text-white hover:bg-blue-700`;
+const revokeBtnClass = `${btnBaseClass} border border-red-200 bg-red-50 font-semibold text-red-700 hover:bg-red-100`;
+const lockedMsgClass = "inline-flex items-center gap-1 text-xs font-medium text-slate-500";
+
+function ModalFrame({ onBackdropClick, children }: { onBackdropClick: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10">
+      <div className="absolute inset-0 bg-slate-900/50 animate-fade-in" onClick={onBackdropClick} />
+      <div
+        className="relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl animate-pop-in"
+        role="dialog"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function MemberAvatar({ member }: { member: Member }) {
   const avatarUrl = member.avatar
     ? `https://cdn.discordapp.com/avatars/${member.user_id}/${member.avatar}.webp?size=32`
@@ -34,7 +71,7 @@ function MemberAvatar({ member }: { member: Member }) {
     <Image
       src={avatarUrl}
       alt={member.display_name || member.username}
-      className={styles.avatar}
+      className="size-8 shrink-0 rounded-full object-cover"
       width={32}
       height={32}
       unoptimized
@@ -111,66 +148,64 @@ export default function RoleMemberModal({
   // ── Screen: 付与相手を選ぶ ──
   if (screen === "grant") {
     return (
-      <>
-        <div className={styles.overlay} onClick={() => setScreen("list")} />
-        <div className={styles.modal} role="dialog">
-          <div className={styles.header}>
-            <span className={styles.title}>ロールを付与するメンバーを選択</span>
-            <button type="button" className={styles.closeBtn} onClick={() => setScreen("list")}>✕</button>
-          </div>
-          <input
-            className={styles.search}
-            placeholder="名前で検索..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className={styles.memberList}>
-            {filteredAll.map((m) => {
-              const alreadyHas = localMemberIds.has(m.user_id);
-              const checked = selectedForGrant.has(m.user_id);
-              const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
-              return (
-                <label
-                  key={m.user_id}
-                  className={`${styles.memberRow} ${alreadyHas || isSelfOnly ? styles.disabled : ""}`}
-                >
-                  <input
-                    type="checkbox"
-                    disabled={alreadyHas || isSelfOnly}
-                    checked={checked}
-                    onChange={() => {
-                      if (alreadyHas || isSelfOnly) return;
-                      setSelectedForGrant((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(m.user_id)) next.delete(m.user_id);
-                        else next.add(m.user_id);
-                        return next;
-                      });
-                    }}
-                  />
-                  <MemberAvatar member={m} />
-                  <span className={styles.memberName}>{m.display_name || m.username}</span>
-                  {alreadyHas && <span className={styles.badge}>付与済</span>}
-                  {!alreadyHas && isSelfOnly && <span className={styles.badge} style={{ background: '#6b7280' }}>操作不可</span>}
-                </label>
-              );
-            })}
-          </div>
-          <div className={styles.footer}>
-            <button type="button" className={styles.cancelBtn} onClick={() => setScreen("list")}>
-              戻る
-            </button>
-            <button
-              type="button"
-              className={styles.actionBtn}
-              onClick={confirmGrant}
-              disabled={selectedForGrant.size === 0}
-            >
-              決定 ({selectedForGrant.size}名)
-            </button>
-          </div>
+      <ModalFrame onBackdropClick={() => setScreen("list")}>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
+          <span className={titleClass}>ロールを付与するメンバーを選択</span>
+          <button type="button" className={closeBtnClass} onClick={() => setScreen("list")}>✕</button>
         </div>
-      </>
+        <input
+          className={searchClass}
+          placeholder="名前で検索..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className={memberListClass}>
+          {filteredAll.map((m) => {
+            const alreadyHas = localMemberIds.has(m.user_id);
+            const checked = selectedForGrant.has(m.user_id);
+            const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
+            return (
+              <label
+                key={m.user_id}
+                className={alreadyHas || isSelfOnly ? memberRowDisabledClass : memberRowClass}
+              >
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  disabled={alreadyHas || isSelfOnly}
+                  checked={checked}
+                  onChange={() => {
+                    if (alreadyHas || isSelfOnly) return;
+                    setSelectedForGrant((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(m.user_id)) next.delete(m.user_id);
+                      else next.add(m.user_id);
+                      return next;
+                    });
+                  }}
+                />
+                <MemberAvatar member={m} />
+                <span className={memberNameClass}>{m.display_name || m.username}</span>
+                {alreadyHas && <span className={badgeClass}>付与済</span>}
+                {!alreadyHas && isSelfOnly && <span className={lockedBadgeClass}>操作不可</span>}
+              </label>
+            );
+          })}
+        </div>
+        <div className={footerClass}>
+          <button type="button" className={cancelBtnClass} onClick={() => setScreen("list")}>
+            戻る
+          </button>
+          <button
+            type="button"
+            className={actionBtnClass}
+            onClick={confirmGrant}
+            disabled={selectedForGrant.size === 0}
+          >
+            決定 ({selectedForGrant.size}名)
+          </button>
+        </div>
+      </ModalFrame>
     );
   }
 
@@ -184,136 +219,131 @@ export default function RoleMemberModal({
       );
     });
     return (
-      <>
-        <div className={styles.overlay} onClick={() => setScreen("list")} />
-        <div className={styles.modal} role="dialog">
-          <div className={styles.header}>
-            <span className={styles.title}>ロールを削除するメンバーを選択</span>
-            <button type="button" className={styles.closeBtn} onClick={() => setScreen("list")}>✕</button>
-          </div>
-          <input
-            className={styles.search}
-            placeholder="名前で検索..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className={styles.memberList}>
-            {filteredCurrent.length === 0 && (
-              <p className={styles.empty}>このロールを持つメンバーはいません</p>
-            )}
-            {filteredCurrent.map((m) => {
-              const checked = selectedForRevoke.has(m.user_id);
-              const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
-              return (
-                <label key={m.user_id} className={`${styles.memberRow} ${isSelfOnly ? styles.disabled : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={isSelfOnly}
-                    onChange={() => {
-                      if (isSelfOnly) return;
-                      setSelectedForRevoke((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(m.user_id)) next.delete(m.user_id);
-                        else next.add(m.user_id);
-                        return next;
-                      });
-                    }}
-                  />
-                  <MemberAvatar member={m} />
-                  <span className={styles.memberName}>{m.display_name || m.username}</span>
-                  {isSelfOnly && <span className={styles.badge} style={{ background: '#6b7280' }}>操作不可</span>}
-                </label>
-              );
-            })}
-          </div>
-          <div className={styles.footer}>
-            <button type="button" className={styles.cancelBtn} onClick={() => setScreen("list")}>
-              戻る
-            </button>
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${styles.revokeBtn}`}
-              onClick={confirmRevoke}
-              disabled={selectedForRevoke.size === 0}
-            >
-              削除 ({selectedForRevoke.size}名)
-            </button>
-          </div>
+      <ModalFrame onBackdropClick={() => setScreen("list")}>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
+          <span className={titleClass}>ロールを削除するメンバーを選択</span>
+          <button type="button" className={closeBtnClass} onClick={() => setScreen("list")}>✕</button>
         </div>
-      </>
+        <input
+          className={searchClass}
+          placeholder="名前で検索..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className={memberListClass}>
+          {filteredCurrent.length === 0 && (
+            <p className={emptyClass}>このロールを持つメンバーはいません</p>
+          )}
+          {filteredCurrent.map((m) => {
+            const checked = selectedForRevoke.has(m.user_id);
+            const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
+            return (
+              <label key={m.user_id} className={isSelfOnly ? memberRowDisabledClass : memberRowClass}>
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  checked={checked}
+                  disabled={isSelfOnly}
+                  onChange={() => {
+                    if (isSelfOnly) return;
+                    setSelectedForRevoke((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(m.user_id)) next.delete(m.user_id);
+                      else next.add(m.user_id);
+                      return next;
+                    });
+                  }}
+                />
+                <MemberAvatar member={m} />
+                <span className={memberNameClass}>{m.display_name || m.username}</span>
+                {isSelfOnly && <span className={lockedBadgeClass}>操作不可</span>}
+              </label>
+            );
+          })}
+        </div>
+        <div className={footerClass}>
+          <button type="button" className={cancelBtnClass} onClick={() => setScreen("list")}>
+            戻る
+          </button>
+          <button
+            type="button"
+            className={revokeBtnClass}
+            onClick={confirmRevoke}
+            disabled={selectedForRevoke.size === 0}
+          >
+            削除 ({selectedForRevoke.size}名)
+          </button>
+        </div>
+      </ModalFrame>
     );
   }
 
   // ── Screen: メンバー一覧（デフォルト） ──
   const displayName = (m: Member) => m.display_name || m.username;
   return (
-    <>
-      <div className={styles.overlay} onClick={onClose} />
-      <div className={styles.modal} role="dialog">
-        <div className={styles.header}>
-          <div>
-            <p className={styles.title}>{roleName}</p>
-            <p className={styles.subtitle}>このロールを持つメンバー ({currentMembers.length}名)</p>
-          </div>
-        </div>
-
-        <div className={styles.memberList}>
-          {currentMembers.length === 0 && (
-            <p className={styles.empty}>メンバーがいません</p>
-          )}
-          {currentMembers.map((m) => (
-            <div key={m.user_id} className={styles.memberRow}>
-              <MemberAvatar member={m} />
-              <span className={styles.memberName}>{displayName(m)}</span>
-              <span className={styles.memberUsername}>@{m.username}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className={styles.footer}>
-          {!readOnly && !isLocked && (
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${styles.revokeBtn}`}
-                onClick={() => { setSearch(""); setSelectedForRevoke(new Set()); setScreen("revoke"); }}
-                disabled={localMemberIds.size === 0}
-              >
-                削除
-              </button>
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onClick={() => { setSearch(""); setSelectedForGrant(new Set()); setScreen("grant"); }}
-              >
-                付与
-              </button>
-            </div>
-          )}
-          {isLocked && (
-            <span className={styles.lockedMsg}>Botより上位のロールは編集できません</span>
-          )}
-          {readOnly && (
-            <span className={styles.lockedMsg}>閲覧のみ（付与・削除は各カテゴリから行えます）</span>
-          )}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button type="button" className={styles.cancelBtn} onClick={onClose}>
-              戻る
-            </button>
-            {!readOnly && (
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${!hasChanges ? styles.dimmed : ""}`}
-                onClick={handleCommit}
-                disabled={!hasChanges}
-              >
-                変更を確定
-              </button>
-            )}
-          </div>
+    <ModalFrame onBackdropClick={onClose}>
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
+        <div>
+          <p className={titleClass}>{roleName}</p>
+          <p className="mt-1 mb-0 text-xs text-slate-500">このロールを持つメンバー ({currentMembers.length}名)</p>
         </div>
       </div>
-    </>
+
+      <div className={memberListClass}>
+        {currentMembers.length === 0 && (
+          <p className={emptyClass}>メンバーがいません</p>
+        )}
+        {currentMembers.map((m) => (
+          <div key={m.user_id} className={memberRowBaseClass}>
+            <MemberAvatar member={m} />
+            <span className={memberNameClass}>{displayName(m)}</span>
+            <span className="shrink-0 text-xs text-slate-500">@{m.username}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className={footerClass}>
+        {!readOnly && !isLocked && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={revokeBtnClass}
+              onClick={() => { setSearch(""); setSelectedForRevoke(new Set()); setScreen("revoke"); }}
+              disabled={localMemberIds.size === 0}
+            >
+              削除
+            </button>
+            <button
+              type="button"
+              className={actionBtnClass}
+              onClick={() => { setSearch(""); setSelectedForGrant(new Set()); setScreen("grant"); }}
+            >
+              付与
+            </button>
+          </div>
+        )}
+        {isLocked && (
+          <span className={lockedMsgClass}><span aria-hidden="true">🔒</span>Botより上位のロールは編集できません</span>
+        )}
+        {readOnly && (
+          <span className={lockedMsgClass}><span aria-hidden="true">🔒</span>閲覧のみ（付与・削除は各カテゴリから行えます）</span>
+        )}
+        <div className="flex gap-2">
+          <button type="button" className={cancelBtnClass} onClick={onClose}>
+            戻る
+          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className={actionBtnClass}
+              onClick={handleCommit}
+              disabled={!hasChanges}
+            >
+              変更を確定
+            </button>
+          )}
+        </div>
+      </div>
+    </ModalFrame>
   );
 }
