@@ -7,7 +7,7 @@ import NameInput from "@/components/forms/NameInput";
 import FuriganaInput from "@/components/forms/FuriganaInput";
 import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
-import PhoneInput from "@/components/forms/PhoneInput";
+import PhoneInput, { normalizePhoneNumber } from "@/components/forms/PhoneInput";
 import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "@/lib/validation";
 import type { StudentProfile } from "@/types/join";
 
@@ -35,26 +35,26 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const validate = (): boolean => {
+  const validate = (data = formData): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.student_number.match(/^(?:\d{8}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
+    if (!data.student_number.match(/^(?:\d{8}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
       newErrors.student_number = "学生番号は8文字で有効な形式を入力してください";
     }
 
-    if (!validateFullName(formData.name)) {
+    if (!validateFullName(data.name)) {
       newErrors.name = "姓と名の間に半角スペースを入れてください";
     }
 
-    if (!validateFurigana(formData.furigana)) {
+    if (!validateFurigana(data.furigana)) {
       newErrors.furigana = "フリガナはカタカナで、姓と名の間に半角スペースを入れてください";
     }
 
-    if (formData.department.trim().length === 0) {
+    if (data.department.trim().length === 0) {
       newErrors.department = "学部学科を選択してください";
     }
 
-    if (!formData.phone.match(/^\d{10,11}$/)) {
+    if (!data.phone.match(/^\d{10,11}$/)) {
       newErrors.phone = "電話番号は10〜11桁の数字で入力してください";
     }
 
@@ -64,11 +64,13 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!validate()) return;
+    const normalizedFormData = { ...formData, phone: normalizePhoneNumber(formData.phone) };
+    setFormData(normalizedFormData);
+    if (!validate(normalizedFormData)) return;
     try {
       setLoading(true);
       setMessage(null);
-      await onSubmit(formData);
+      await onSubmit(normalizedFormData);
       setMessage("保存しました");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));

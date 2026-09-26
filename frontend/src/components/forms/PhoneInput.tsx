@@ -9,6 +9,10 @@ interface PhoneInputProps {
   disabled?: boolean;
 }
 
+export function normalizePhoneNumber(value: string): string {
+  return value.normalize("NFKC").replace(/\D/g, "");
+}
+
 export default function PhoneInput({
   value,
   onChange,
@@ -22,6 +26,7 @@ export default function PhoneInput({
       placeholder="09012345678"
       value={value}
       onChange={onChange}
+      onBlur={(event) => onChange(normalizePhoneNumber(event.currentTarget.value))}
       error={error}
       required={true}
       type="tel"
