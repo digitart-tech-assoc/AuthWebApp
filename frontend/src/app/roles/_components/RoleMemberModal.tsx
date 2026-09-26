@@ -2,8 +2,9 @@
 
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
+import ModalFrame from "./ModalFrame";
 
 import type { Member } from "@/types/roles";
 export type { Member };
@@ -49,19 +50,6 @@ const actionBtnClass = `${btnBaseClass} bg-blue-600 font-semibold text-white hov
 const revokeBtnClass = `${btnBaseClass} border border-red-200 bg-red-50 font-semibold text-red-700 hover:bg-red-100`;
 const lockedMsgClass = "inline-flex items-center gap-1 text-xs font-medium text-slate-500";
 
-function ModalFrame({ onBackdropClick, children }: { onBackdropClick: () => void; children: ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10">
-      <div className="absolute inset-0 bg-slate-900/50 animate-fade-in" onClick={onBackdropClick} />
-      <div
-        className="relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl animate-pop-in"
-        role="dialog"
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function MemberAvatar({ member }: { member: Member }) {
   const avatarUrl = member.avatar
