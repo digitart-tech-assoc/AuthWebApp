@@ -6,7 +6,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import { fetchMyRoleAssignments, selfBatchRoles } from "@/lib/api/roles";
-import styles from "./memberself.module.css";
 
 type Category = {
   id: string;
@@ -42,6 +41,29 @@ type Props = {
   avatarUrl: string | null;
 };
 
+
+const statusBannerClass = {
+  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  error: "border-red-200 bg-red-50 text-red-700",
+  info: "border-sky-200 bg-sky-50 text-sky-800",
+} as const;
+
+const catGroupClass = "mb-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm";
+const catHeaderClass = "flex min-h-10 cursor-pointer select-none items-center gap-2 px-4 py-3 transition-colors hover:bg-slate-50";
+const catNameClass = "flex-1 text-sm font-semibold text-slate-900";
+const catCountClass = "rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500";
+const catRoleListClass = "border-t border-slate-100 py-1";
+const catRoleItemClass = "flex min-h-10 items-center gap-2.5 px-4 py-1 transition-colors hover:bg-slate-50";
+const catRoleItemDisabledClass = `${catRoleItemClass} cursor-not-allowed opacity-40`;
+const catRoleNameClass = "flex-1 text-sm text-slate-700";
+const roleDotClass = "size-2.5 shrink-0 rounded-full";
+const mutedTagClass = "px-2.5 py-1 text-xs text-slate-400";
+const pillBtnBase =
+  "inline-flex h-8 items-center whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40";
+const assignBtnClass = `${pillBtnBase} border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100`;
+const removeRoleBtnClass = `${pillBtnBase} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`;
+const chevronClass = (open: boolean) =>
+  `size-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`;
 
 export default function MemberSelfView({ categories, roles, myDiscordId, displayName, avatarUrl }: Props) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -203,20 +225,20 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
   const dotColor = (color: string) => (!color || color === "#000000") ? "#d1d5db" : color;
 
   if (loading) {
-    return <div className={styles.loadingText}>読み込み中...</div>;
+    return <div className="p-10 text-center text-sm text-slate-400">読み込み中...</div>;
   }
 
   return (
-    <div className={styles.container}>
+    <div className="mx-auto max-w-3xl font-medium">
       {/* Header */}
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>マイロール</h1>
-        <p className={styles.pageSubtitle}>自分のロールを管理できます</p>
+      <div className="mb-6">
+        <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">マイロール</h1>
+        <p className="m-0 text-sm text-slate-500">自分のロールを管理できます</p>
       </div>
 
       {/* Status */}
       {status && (
-        <div className={`${styles.statusBanner} ${styles[status.kind]}`}>
+        <div className={`mb-4 rounded-lg border px-4 py-2.5 text-sm font-medium animate-fade-in-down ${statusBannerClass[status.kind]}`}>
           {status.kind === "success" && "✓ "}
           {status.kind === "error" && "✕ "}
           {status.kind === "info" && "ℹ "}
@@ -227,36 +249,36 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       {/* Action bar - PushButtonは自動実行のため非表示 */}
 
       {/* Profile card */}
-      <div className={styles.profileCard}>
-        <div className={styles.profileHeader}>
-          <div className={styles.avatar}>
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center gap-3.5">
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-xl text-slate-500">
             {avatarUrl ? (
-              <Image src={avatarUrl} alt={displayName} width={48} height={48} unoptimized />
+              <Image src={avatarUrl} alt={displayName} width={48} height={48} className="size-full object-cover" unoptimized />
             ) : (
               "👤"
             )}
           </div>
           <div>
-            <div className={styles.profileName}>{displayName}</div>
-            <div className={styles.profileSub}>
+            <div className="text-base font-bold text-slate-900">{displayName}</div>
+            <div className="mt-0.5 text-xs text-slate-500">
               {myDiscordId ? `Discord ID: ${myDiscordId}` : "Discord未連携"}
             </div>
           </div>
         </div>
 
-        <div className={styles.sectionLabel}>現在のロール（{myRoles.length}件）</div>
+        <div className="mb-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">現在のロール（{myRoles.length}件）</div>
 
         {myRoles.length === 0 ? (
-          <div className={styles.emptyRoles}>ロールが割り当てられていません</div>
+          <div className="py-2 text-sm text-slate-400">ロールが割り当てられていません</div>
         ) : (
-          <div className={styles.myRoles}>
+          <div className="flex flex-wrap gap-2">
             {myRoles.map((role) => {
               return (
                 <div
                   key={role.role_id}
-                  className={styles.myRoleChip}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 pr-2.5 pl-2 text-sm font-medium text-slate-700"
                 >
-                  <span className={styles.roleDot} style={{ backgroundColor: dotColor(role.color) }} />
+                  <span className={roleDotClass} style={{ backgroundColor: dotColor(role.color) }} />
                   {role.name}
                 </div>
               );
@@ -266,8 +288,8 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
       </div>
 
       {/* ロールカテゴリ */}
-      <div className={styles.catalogSection}>
-        <div className={styles.catalogTitle}>ロールカテゴリ</div>
+      <div className="mt-6">
+        <div className="mb-3 text-base font-bold text-slate-900">ロールカテゴリ</div>
 
         {sortedCategories.map((cat) => {
           const catRoles = sortedRoles.filter((r) => r.category_id === cat.id);
@@ -276,18 +298,18 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
           const catRestricted = cat.is_restricted;
 
           return (
-            <div key={cat.id} className={styles.catGroup}>
-              <div className={styles.catHeader} onClick={() => toggleCat(cat.id)}>
-                <svg className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ""}`} viewBox="0 0 16 16" fill="currentColor">
+            <div key={cat.id} className={catGroupClass}>
+              <div className={catHeaderClass} onClick={() => toggleCat(cat.id)}>
+                <svg className={chevronClass(isOpen)} viewBox="0 0 16 16" fill="currentColor">
                   <path d="M5.5 3.5L10.5 8l-5 4.5" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span className={styles.catName}>{cat.name}</span>
-                <span className={styles.catCount}>{catRoles.length}</span>
-                {catRestricted && <span className={styles.catRestricted}>管理者専用</span>}
+                <span className={catNameClass}>{cat.name}</span>
+                <span className={catCountClass}>{catRoles.length}</span>
+                {catRestricted && <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">管理者専用</span>}
               </div>
 
               {isOpen && (
-                <div className={styles.catRoleList}>
+                <div className={catRoleListClass}>
                   {catRoles.map((role) => {
                     const assigned = hasRole(role.role_id);
                     const aboveBot = isAboveBot(role);
@@ -295,18 +317,18 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                     return (
                       <div
                         key={role.role_id}
-                        className={`${styles.catRoleItem} ${aboveBot ? styles.disabledRole : ""}`}
+                        className={aboveBot ? catRoleItemDisabledClass : catRoleItemClass}
                       >
-                        <span className={styles.roleDot} style={{ backgroundColor: dotColor(role.color) }} />
-                        <span className={styles.catRoleName}>{role.name}</span>
+                        <span className={roleDotClass} style={{ backgroundColor: dotColor(role.color) }} />
+                        <span className={catRoleNameClass}>{role.name}</span>
                         {aboveBot ? (
-                          <span className={styles.alreadyAssigned}>編集不可</span>
+                          <span className={mutedTagClass}>編集不可</span>
                         ) : catRestricted ? (
-                          <span className={styles.alreadyAssigned}>変更不可</span>
+                          <span className={mutedTagClass}>変更不可</span>
                         ) : assigned ? (
                           <button
                             type="button"
-                            className={styles.removeRoleBtn}
+                            className={removeRoleBtnClass}
                             disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
@@ -315,7 +337,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                         ) : (
                           <button
                             type="button"
-                            className={styles.assignBtn}
+                            className={assignBtnClass}
                             disabled={saveState === "saving"}
                             onClick={() => toggleMyRole(role.role_id)}
                           >
@@ -332,28 +354,28 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
         })}
 
         {/* ロール一覧（閲覧のみ） */}
-        <div className={styles.catGroup}>
-          <div className={styles.catHeader} onClick={() => toggleCat("__all_roles__")}>
-            <svg className={`${styles.chevron} ${!collapsedCats.has("__all_roles__") ? styles.chevronOpen : ""}`} viewBox="0 0 16 16" fill="currentColor">
+        <div className={catGroupClass}>
+          <div className={catHeaderClass} onClick={() => toggleCat("__all_roles__")}>
+            <svg className={chevronClass(!collapsedCats.has("__all_roles__"))} viewBox="0 0 16 16" fill="currentColor">
               <path d="M5.5 3.5L10.5 8l-5 4.5" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className={styles.catName}>ロール一覧</span>
-            <span className={styles.catCount}>{sortedRoles.length}</span>
+            <span className={catNameClass}>ロール一覧</span>
+            <span className={catCountClass}>{sortedRoles.length}</span>
           </div>
 
           {!collapsedCats.has("__all_roles__") && (
-            <div className={styles.catRoleList}>
+            <div className={catRoleListClass}>
               {sortedRoles.map((role) => {
                 const assigned = hasRole(role.role_id);
                 const aboveBot = isAboveBot(role);
                 return (
                   <div
                     key={role.role_id}
-                    className={`${styles.catRoleItem} ${aboveBot ? styles.disabledRole : ""}`}
+                    className={aboveBot ? catRoleItemDisabledClass : catRoleItemClass}
                   >
-                    <span className={styles.roleDot} style={{ backgroundColor: dotColor(role.color) }} />
-                    <span className={styles.catRoleName}>{role.name}</span>
-                    {assigned && <span className={styles.alreadyAssigned}>付与済み</span>}
+                    <span className={roleDotClass} style={{ backgroundColor: dotColor(role.color) }} />
+                    <span className={catRoleNameClass}>{role.name}</span>
+                    {assigned && <span className={mutedTagClass}>付与済み</span>}
                   </div>
                 );
               })}
@@ -364,11 +386,11 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
       {/* Floating save bar */}
       {hasUnsaved && (
-        <div className={styles.unsavedBar}>
+        <div className="fixed inset-x-4 bottom-6 z-40 mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-4 rounded-xl bg-slate-800 px-6 py-3.5 text-sm font-semibold text-slate-50 shadow-xl animate-slide-up">
           <span>未送信の変更があります</span>
           <button
             type="button"
-            className={styles.unsavedBarBtn}
+            className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-blue-600 px-5 text-sm font-bold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={saveState === "saving"}
             onClick={handleSave}
           >
