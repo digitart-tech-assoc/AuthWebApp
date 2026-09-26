@@ -5,6 +5,7 @@
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import ModalFrame from "./ModalFrame";
+import { btnDanger, btnPrimary, btnSecondary, modalCloseBtn, modalHeader, modalSubtitle, modalTitle, textInput } from "./roleStyles";
 
 import type { Member } from "@/types/roles";
 export type { Member };
@@ -26,11 +27,8 @@ type Props = {
 
 type Screen = "list" | "grant" | "revoke";
 
-const titleClass = "m-0 text-base font-bold text-slate-900";
-const closeBtnClass =
-  "inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
-const searchClass =
-  "mx-4 mt-3 mb-2 block shrink-0 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20";
+const headerClass = `${modalHeader} border-b border-slate-200 pb-3`;
+const searchWrapClass = "shrink-0 px-4 pt-3 pb-2";
 const memberListClass = "min-h-0 flex-1 overflow-y-auto px-2 py-1.5";
 const memberRowBaseClass =
   "flex min-h-10 select-none items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors";
@@ -42,12 +40,7 @@ const badgeClass = "shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs text-
 const lockedBadgeClass = "shrink-0 rounded-md bg-slate-500 px-1.5 py-0.5 text-xs text-white";
 const emptyClass = "py-6 text-center text-sm text-slate-500";
 const footerClass =
-  "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4";
-const btnBaseClass =
-  "inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
-const cancelBtnClass = `${btnBaseClass} border border-slate-300 bg-white font-medium text-slate-700 hover:bg-slate-50`;
-const actionBtnClass = `${btnBaseClass} bg-blue-600 font-semibold text-white hover:bg-blue-700`;
-const revokeBtnClass = `${btnBaseClass} border border-red-200 bg-red-50 font-semibold text-red-700 hover:bg-red-100`;
+  "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4";
 const lockedMsgClass = "inline-flex items-center gap-1 text-xs font-medium text-slate-500";
 
 
@@ -137,16 +130,18 @@ export default function RoleMemberModal({
   if (screen === "grant") {
     return (
       <ModalFrame onBackdropClick={() => setScreen("list")}>
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
-          <span className={titleClass}>ロールを付与するメンバーを選択</span>
-          <button type="button" className={closeBtnClass} onClick={() => setScreen("list")}>✕</button>
+        <div className={headerClass}>
+          <span className={modalTitle}>ロールを付与するメンバーを選択</span>
+          <button type="button" className={modalCloseBtn} onClick={() => setScreen("list")}>✕</button>
         </div>
-        <input
-          className={searchClass}
-          placeholder="名前で検索..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className={searchWrapClass}>
+          <input
+            className={textInput}
+            placeholder="名前で検索..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <div className={memberListClass}>
           {filteredAll.map((m) => {
             const alreadyHas = localMemberIds.has(m.user_id);
@@ -181,12 +176,12 @@ export default function RoleMemberModal({
           })}
         </div>
         <div className={footerClass}>
-          <button type="button" className={cancelBtnClass} onClick={() => setScreen("list")}>
+          <button type="button" className={btnSecondary} onClick={() => setScreen("list")}>
             戻る
           </button>
           <button
             type="button"
-            className={actionBtnClass}
+            className={btnPrimary}
             onClick={confirmGrant}
             disabled={selectedForGrant.size === 0}
           >
@@ -208,16 +203,18 @@ export default function RoleMemberModal({
     });
     return (
       <ModalFrame onBackdropClick={() => setScreen("list")}>
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
-          <span className={titleClass}>ロールを削除するメンバーを選択</span>
-          <button type="button" className={closeBtnClass} onClick={() => setScreen("list")}>✕</button>
+        <div className={headerClass}>
+          <span className={modalTitle}>ロールを削除するメンバーを選択</span>
+          <button type="button" className={modalCloseBtn} onClick={() => setScreen("list")}>✕</button>
         </div>
-        <input
-          className={searchClass}
-          placeholder="名前で検索..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className={searchWrapClass}>
+          <input
+            className={textInput}
+            placeholder="名前で検索..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <div className={memberListClass}>
           {filteredCurrent.length === 0 && (
             <p className={emptyClass}>このロールを持つメンバーはいません</p>
@@ -250,12 +247,12 @@ export default function RoleMemberModal({
           })}
         </div>
         <div className={footerClass}>
-          <button type="button" className={cancelBtnClass} onClick={() => setScreen("list")}>
+          <button type="button" className={btnSecondary} onClick={() => setScreen("list")}>
             戻る
           </button>
           <button
             type="button"
-            className={revokeBtnClass}
+            className={btnDanger}
             onClick={confirmRevoke}
             disabled={selectedForRevoke.size === 0}
           >
@@ -270,10 +267,10 @@ export default function RoleMemberModal({
   const displayName = (m: Member) => m.display_name || m.username;
   return (
     <ModalFrame onBackdropClick={onClose}>
-      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 px-5 pt-4 pb-3">
+      <div className={headerClass}>
         <div>
-          <p className={titleClass}>{roleName}</p>
-          <p className="mt-1 mb-0 text-xs text-slate-500">このロールを持つメンバー ({currentMembers.length}名)</p>
+          <p className={modalTitle}>{roleName}</p>
+          <p className={modalSubtitle}>このロールを持つメンバー ({currentMembers.length}名)</p>
         </div>
       </div>
 
@@ -295,7 +292,7 @@ export default function RoleMemberModal({
           <div className="flex gap-2">
             <button
               type="button"
-              className={revokeBtnClass}
+              className={btnDanger}
               onClick={() => { setSearch(""); setSelectedForRevoke(new Set()); setScreen("revoke"); }}
               disabled={localMemberIds.size === 0}
             >
@@ -303,7 +300,7 @@ export default function RoleMemberModal({
             </button>
             <button
               type="button"
-              className={actionBtnClass}
+              className={btnPrimary}
               onClick={() => { setSearch(""); setSelectedForGrant(new Set()); setScreen("grant"); }}
             >
               付与
@@ -317,13 +314,13 @@ export default function RoleMemberModal({
           <span className={lockedMsgClass}><span aria-hidden="true">🔒</span>閲覧のみ（付与・削除は各カテゴリから行えます）</span>
         )}
         <div className="flex gap-2">
-          <button type="button" className={cancelBtnClass} onClick={onClose}>
+          <button type="button" className={btnSecondary} onClick={onClose}>
             戻る
           </button>
           {!readOnly && (
             <button
               type="button"
-              className={actionBtnClass}
+              className={btnPrimary}
               onClick={handleCommit}
               disabled={!hasChanges}
             >
