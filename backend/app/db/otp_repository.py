@@ -160,7 +160,7 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			_log_db_access("verify_otp_attempt", {"join_request_id": join_request_id, "code_preview": (code_plain[:2] + "****") if code_plain else ""})
-			# Get latest unverified OTP for this join request
+			# Get latest unverified OTP for this join request with FOR UPDATE to prevent race conditions
 			cur.execute(
 				"""
 				SELECT id, code_hash, expires_at, attempt_count, verified_at
@@ -168,6 +168,7 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 				WHERE join_request_id = %s AND verified_at IS NULL
 				ORDER BY created_at DESC
 				LIMIT 1
+				FOR UPDATE
 				""",
 				(join_request_id,),
 			)
@@ -177,6 +178,10 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 
 			otp_id, code_hash, expires_at, attempt_count, verified_at = row
 
+			# Check max attempts
+			if attempt_count >= OTP_MAX_ATTEMPTS:
+				raise ValueError("Maximum OTP attempts exceeded")
+
 			# Normalize expires_at to timezone-aware UTC if needed, then check expiry
 			if getattr(expires_at, 'tzinfo', None) is None:
 				expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -184,20 +189,27 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 			if datetime.now(timezone.utc) > expires_at:
 				raise ValueError("OTP has expired")
 
-			# Check max attempts
-			if attempt_count >= OTP_MAX_ATTEMPTS:
-				raise ValueError("Maximum OTP attempts exceeded")
-
 			# Check code
 			if not verify_otp_code(code_plain, code_hash):
-				# Increment attempt count
-				cur.execute(
-					"""
-					UPDATE otp_codes SET attempt_count = attempt_count + 1
-					WHERE id = %s
-					""",
-					(otp_id,),
-				)
+				# Increment attempt count and revoke if limit exceeded
+				new_attempt_count = attempt_count + 1
+				if new_attempt_count >= OTP_MAX_ATTEMPTS:
+					cur.execute(
+						"""
+						UPDATE otp_codes 
+						SET attempt_count = %s, expires_at = now()
+						WHERE id = %s
+						""",
+						(new_attempt_count, otp_id),
+					)
+				else:
+					cur.execute(
+						"""
+						UPDATE otp_codes SET attempt_count = %s
+						WHERE id = %s
+						""",
+						(new_attempt_count, otp_id),
+					)
 				conn.commit()
 				raise ValueError("Invalid OTP code")
 

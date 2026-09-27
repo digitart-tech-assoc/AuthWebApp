@@ -300,32 +300,20 @@ async def verify_otp(
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
 	logger.info("verify_otp called: discord_id=%s", discord_id)
-	# 最新の OTP レコードを取得（検証済みフラグに関わらず）
-	otp = student_repository.get_latest_otp(discord_id, unverified_only=False)
-	if otp is None:
-		raise HTTPException(status_code=400, detail="No OTP found. Please request a new one.")
+	
+	try:
+		is_valid = await asyncio.to_thread(
+			student_repository.verify_otp_transactional,
+			discord_id,
+			req.code
+		)
+	except ValueError as e:
+		if "Too many attempts" in str(e):
+			raise HTTPException(status_code=429, detail=str(e))
+		raise HTTPException(status_code=400, detail=str(e))
 
-	# 既に検証済みの場合は成功扱いしてフロントが続行できるようにする
-	if otp["verified"]:
-		return VerifyOTPResponse(verified=True, message="OTP already verified")
-
-	# 有効期限確認
-	if otp["expires_at"] < datetime.now(timezone.utc):
-		raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
-
-	# 試行回数確認（最大試行回数超過チェック）
-	if otp["attempt_count"] >= OTP_MAX_ATTEMPTS:
-		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
-
-	# OTP コード確認（bcrypt によるハッシュ突合: CPU-bound 処理を別スレッドにオフロード）
-	is_valid = await asyncio.to_thread(verify_otp_code, req.code, otp["code"])
 	if not is_valid:
-		# 試行回数をインクリメント
-		student_repository.increment_otp_attempt(otp["id"])
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")
-
-	# OTP を検証済みにする
-	student_repository.mark_otp_verified(otp["id"])
 
 	# OTP 検証完了後、role_member_assignments を更新する
 	# - member ロールを追加
