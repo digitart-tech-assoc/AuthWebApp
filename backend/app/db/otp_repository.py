@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_MAX_ATTEMPTS
+from app.core.exceptions import OTPTooManyAttemptsError
 from app.db.connection import _connect, _log_db_access
 from app.utils.otp import verify_otp_code
 
@@ -180,7 +181,7 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 
 			# Check max attempts
 			if attempt_count >= OTP_MAX_ATTEMPTS:
-				raise ValueError("Maximum OTP attempts exceeded")
+				raise OTPTooManyAttemptsError("Maximum OTP attempts exceeded")
 
 			# Normalize expires_at to timezone-aware UTC if needed, then check expiry
 			if getattr(expires_at, 'tzinfo', None) is None:

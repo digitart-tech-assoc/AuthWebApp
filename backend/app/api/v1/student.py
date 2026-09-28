@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
-from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS, OTP_MAX_ATTEMPTS
-from app.utils.otp import hash_otp_code, verify_otp_code
+from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
+from app.core.exceptions import OTPTooManyAttemptsError
+from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
@@ -143,11 +144,6 @@ def _is_paid_invitation(discord_id: str) -> bool:
 def _get_student_profile(discord_id: str) -> dict[str, Any] | None:
 	"""既存の学生プロフィール取得"""
 	return student_repository.get_student_profile(discord_id)
-
-
-def _get_latest_otp(discord_id: str) -> dict[str, Any] | None:
-	"""最新の OTP レコード取得"""
-	return student_repository.get_latest_otp(discord_id, unverified_only=True)
 
 
 # ============================================================================
@@ -307,12 +303,15 @@ async def verify_otp(
 			discord_id,
 			req.code
 		)
+	except OTPTooManyAttemptsError as e:
+		raise HTTPException(status_code=429, detail=str(e))
 	except ValueError as e:
-		if "Too many attempts" in str(e):
-			raise HTTPException(status_code=429, detail=str(e))
 		raise HTTPException(status_code=400, detail=str(e))
 
-	if not is_valid:
+	if is_valid is student_repository.OTPVerificationResult.ALREADY_VERIFIED:
+		return VerifyOTPResponse(verified=True, message="OTP already verified")
+
+	if is_valid is student_repository.OTPVerificationResult.INVALID:
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")
 
 	# OTP 検証完了後、role_member_assignments を更新する
