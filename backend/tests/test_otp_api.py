@@ -9,8 +9,15 @@ from app.core.exceptions import OTPTooManyAttemptsError
 from app.db.student_repository import OTPVerificationResult
 
 
+@pytest.fixture
+def eligible_student(monkeypatch):
+	"""入会資格（pre_member かつ支払済み）を満たす状態にする"""
+	monkeypatch.setattr(student_api, "_is_pre_member", lambda discord_id: True)
+	monkeypatch.setattr(student_api, "_is_paid_invitation", lambda discord_id: True)
+
+
 @pytest.mark.asyncio
-async def test_verified_student_otp_does_not_repeat_role_updates(monkeypatch):
+async def test_verified_student_otp_does_not_repeat_role_updates(monkeypatch, eligible_student):
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"verify_otp_transactional",
@@ -38,7 +45,7 @@ async def test_verified_student_otp_does_not_repeat_role_updates(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_student_otp_limit_uses_typed_exception_for_429(monkeypatch):
+async def test_student_otp_limit_uses_typed_exception_for_429(monkeypatch, eligible_student):
 	def reject_verification(discord_id, code):
 		raise OTPTooManyAttemptsError("limit reached")
 

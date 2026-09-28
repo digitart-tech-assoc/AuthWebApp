@@ -141,6 +141,24 @@ def _is_paid_invitation(discord_id: str) -> bool:
 	return student_repository.is_paid_invitation(discord_id)
 
 
+# 入会資格チェックを省略できる既存会員の app_role（プロフィール更新用）
+_REGISTERED_APP_ROLES = ("member", "admin", "obog")
+
+
+async def _ensure_registration_eligible(discord_id: str) -> None:
+	"""入会資格（pre_member かつ入会費支払済み）をサーバーサイドで強制検証する。
+
+	満たさない場合は 403 を送出し、後続処理を中断する。
+	"""
+	is_pre = await asyncio.to_thread(_is_pre_member, discord_id)
+	if not is_pre:
+		raise HTTPException(status_code=403, detail="入会予定者リストに登録されていません")
+
+	is_paid = await asyncio.to_thread(_is_paid_invitation, discord_id)
+	if not is_paid:
+		raise HTTPException(status_code=403, detail="入会費の支払いが確認できません")
+
+
 def _get_student_profile(discord_id: str) -> dict[str, Any] | None:
 	"""既存の学生プロフィール取得"""
 	return student_repository.get_student_profile(discord_id)
@@ -251,6 +269,7 @@ async def send_otp(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
+	await _ensure_registration_eligible(discord_id)
 
 	logger.info("send_otp called: discord_id=%s student_number=%s", discord_id, req.student_number)
 
@@ -294,6 +313,9 @@ async def verify_otp(
 	discord_id = principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
+
+	# OTP 試行回数を消費させないよう、検証前に入会資格を確認する
+	await _ensure_registration_eligible(discord_id)
 
 	logger.info("verify_otp called: discord_id=%s", discord_id)
 	
@@ -350,11 +372,13 @@ async def create_student_profile(
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
 	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
-	# OTP が検証済みか確認（ただし既に member/admin/obog の場合はスキップ）
+	# 新規入会者は入会資格と OTP 検証済みであることを確認する
+	# （既に member/admin/obog の場合はプロフィール更新とみなしスキップ）
 	app_role = principal.get("app_role")
-	skip_otp = app_role in ("member", "admin", "obog")
+	is_registered = app_role in _REGISTERED_APP_ROLES
 
-	if not skip_otp:
+	if not is_registered:
+		await _ensure_registration_eligible(discord_id)
 		verified_otp = student_repository.get_latest_verified_otp(discord_id)
 		if verified_otp is None or not verified_otp["verified"]:
 			raise HTTPException(status_code=400, detail="OTP verification required")
