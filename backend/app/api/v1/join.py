@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import traceback
@@ -9,6 +10,7 @@ import traceback
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
+from app.core.exceptions import OTPTooManyAttemptsError
 from app.db import repository
 from app.services.brevo_client import BrevoClient
 from app.services.discord_client import create_channel_invite
@@ -140,10 +142,13 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 	"""
 	try:
 		# OTP 検証
-		repository.verify_otp(
+		await asyncio.to_thread(
+			repository.verify_otp,
 			join_request_id=req.join_request_id,
 			code_plain=req.otp_code,
 		)
+	except OTPTooManyAttemptsError as e:
+		raise HTTPException(status_code=429, detail=str(e))
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 

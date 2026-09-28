@@ -86,13 +86,10 @@ from app.db.otp_repository import (
 # 7. 学生登録・学生OTP関連
 from app.db.student_repository import (
 	create_otp_record,
-	get_latest_otp,
 	get_latest_verified_otp,
 	get_student_profile,
 	get_student_profile as _get_student_profile,
-	increment_otp_attempt,
 	is_paid_invitation,
-	mark_otp_verified,
 	upsert_student_profile_and_promote,
 )
 
@@ -144,11 +141,8 @@ __all__ = [
 	"get_join_request",
 	"save_member_survey_response",
 	"create_otp_record",
-	"get_latest_otp",
 	"get_latest_verified_otp",
 	"get_student_profile",
-	"increment_otp_attempt",
 	"is_paid_invitation",
-	"mark_otp_verified",
 	"upsert_student_profile_and_promote",
 ]

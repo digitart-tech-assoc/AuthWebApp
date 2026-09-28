@@ -1,0 +1,2 @@
+class OTPTooManyAttemptsError(ValueError):
+	pass
