@@ -3,7 +3,12 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./newrole.module.css"; // Reuse new role modal styles
+import ModalFrame from "./ModalFrame";
+import ToggleSwitch from "./ToggleSwitch";
+import {
+  btnPrimary, btnSecondary, fieldLabel, modalBody, modalCloseBtn, modalErrorMsg, modalFooter,
+  modalHeader, modalSubtitle, modalTitle, requiredMark, textInput, toggleDesc, toggleLabel, toggleRow,
+} from "./roleStyles";
 
 type Category = {
   id: string;
@@ -32,66 +37,60 @@ export default function EditCategoryModal({ category, isAdmin, onSaved, onClose 
   }
 
   return (
-    <>
-      <div className={styles.overlay} onClick={onClose} />
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <div>
-            <h2 className={styles.title}>カテゴリの編集</h2>
-            <p className={styles.subtitle}>カテゴリ名や管理者専用設定を変更します</p>
-          </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
+    <ModalFrame onBackdropClick={onClose} size="xl" ariaLabel="カテゴリの編集">
+      <div className={modalHeader}>
+        <div>
+          <h2 className={modalTitle}>カテゴリの編集</h2>
+          <p className={modalSubtitle}>カテゴリ名や管理者専用設定を変更します</p>
         </div>
+        <button type="button" className={modalCloseBtn} onClick={onClose} aria-label="閉じる">✕</button>
+      </div>
 
-        <div className={styles.body}>
-          <div className={styles.basicSection}>
-            <label className={styles.fieldLabel}>カテゴリ名 <span className={styles.required}>*</span></label>
-            <input
-              type="text"
-              className={styles.textInput}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="カテゴリ名"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) handleSave();
-              }}
-            />
+      <div className={modalBody}>
+        <div className="flex flex-col gap-3">
+          <label className={fieldLabel}>カテゴリ名 <span className={requiredMark}>*</span></label>
+          <input
+            type="text"
+            className={textInput}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="カテゴリ名"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) handleSave();
+            }}
+          />
 
-            {isAdmin && (
-              <div className={styles.toggleRow}>
-                <div>
-                  <div className={styles.toggleLabel}>管理者専用カテゴリ</div>
-                  <div className={styles.toggleDesc}>
-                    オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
-                  </div>
+          {isAdmin && (
+            <div className={toggleRow}>
+              <div>
+                <div className={toggleLabel}>管理者専用カテゴリ</div>
+                <div className={toggleDesc}>
+                  オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
                 </div>
-                <label className={styles.switch}>
-                  <input
-                    type="checkbox"
-                    checked={isRestricted}
-                    onChange={(e) => setIsRestricted(e.target.checked)}
-                  />
-                  <span className={styles.switchSlider} />
-                </label>
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className={styles.footer}>
-          {!name.trim() && <div className={styles.errorMsg}>カテゴリ名を入力してください</div>}
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>キャンセル</button>
-          <button
-            type="button"
-            className={styles.createBtn}
-            onClick={handleSave}
-            disabled={!name.trim()}
-          >
-            保存
-          </button>
+              <ToggleSwitch
+                checked={isRestricted}
+                onChange={setIsRestricted}
+                ariaLabel="管理者専用カテゴリ"
+              />
+            </div>
+          )}
         </div>
       </div>
-    </>
+
+      <div className={modalFooter}>
+        {!name.trim() && <div className={modalErrorMsg}>カテゴリ名を入力してください</div>}
+        <button type="button" className={btnSecondary} onClick={onClose}>キャンセル</button>
+        <button
+          type="button"
+          className={btnPrimary}
+          onClick={handleSave}
+          disabled={!name.trim()}
+        >
+          保存
+        </button>
+      </div>
+    </ModalFrame>
   );
 }

@@ -4,7 +4,12 @@
 
 import { useState, useEffect } from "react";
 import { DISCORD_PERMISSIONS } from "./PermissionEditor";
-import styles from "./newrole.module.css";
+import ModalFrame from "./ModalFrame";
+import ToggleSwitch from "./ToggleSwitch";
+import {
+  btnPrimary, btnSecondary, fieldLabel, modalBody, modalErrorMsg, modalFooter, modalHeader,
+  modalSubtitle, modalTitle, requiredMark, selectInput, textInput, toggleDesc, toggleLabel, toggleRow,
+} from "./roleStyles";
 
 type Category = {
   id: string;
@@ -42,6 +47,11 @@ const PALETTE = [
   "#607D8B", "#11806A", "#1F8B4C", "#206694", "#71368A",
   "#AD1457", "#C27C0E", "#A84300", "#992D22", "#000000",
 ];
+
+const tabBase =
+  "-mb-px h-10 rounded-t-md border-b-2 px-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500";
+const tabClass = (active: boolean) =>
+  `${tabBase} ${active ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-900"}`;
 
 function hasBitExact(perms: bigint, bit: bigint): boolean {
   return Boolean((perms >> bit) & 1n);
@@ -140,202 +150,192 @@ export default function NewRoleModal({
   }
 
   return (
-    <>
-      <div className={styles.overlay} onClick={onClose} />
-      <div className={styles.modal} role="dialog" aria-label={isEditMode ? "ロール編集" : "新規ロール作成"}>
-        {/* Header */}
-        <div className={styles.header}>
-          <div>
-            <p className={styles.title}>{isEditMode ? "✏ ロールを編集" : "＋ 新規ロールを作成"}</p>
-            <p className={styles.subtitle}>
-              {isEditMode
-                ? "変更を確定すると、DBへの保存とDiscordへの同期が自動で行われます"
-                : "作成を確定すると、DBへの保存とDiscordへの同期が自動で行われます"}
-            </p>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className={styles.tabs}>
-          <button
-            type="button"
-            className={`${styles.tab} ${step === "basic" ? styles.activeTab : ""}`}
-            onClick={() => setStep("basic")}
-          >
-            基本設定
-          </button>
-          {canSetPermissions && (
-            <button
-              type="button"
-              className={`${styles.tab} ${step === "permissions" ? styles.activeTab : ""}`}
-              onClick={() => setStep("permissions")}
-            >
-              権限設定
-            </button>
-          )}
-        </div>
-
-        {/* Body */}
-        <div className={styles.body}>
-          {step === "basic" && (
-            <div className={styles.basicSection}>
-              {/* Preview */}
-              <div className={styles.preview}>
-                <span
-                  className={styles.previewDot}
-                  style={{ backgroundColor: color === "#000000" ? "#d1d5db" : color }}
-                />
-                <span className={styles.previewName}>{name || "（ロール名）"}</span>
-              </div>
-
-              {/* Name */}
-              <label className={styles.fieldLabel}>ロール名 <span className={styles.required}>*</span></label>
-              <input
-                type="text"
-                className={styles.textInput}
-                placeholder="例: メンバー、モデレーター"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
-
-              {/* Category */}
-              <label className={styles.fieldLabel}>カテゴリ{isMember && <span className={styles.required}> *</span>}</label>
-              {isMember && (
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                  禁止カテゴリ（会員情報・学部学科・学年）およびカテゴリに属さない状態での作成できません
-                </p>
-              )}
-              <select
-                className={styles.select}
-                value={categoryId ?? ""}
-                onChange={(e) => setCategoryId(e.target.value || null)}
-              >
-                {!isMember && <option value="">カテゴリなし</option>}
-                {categories
-                  .filter((c) => !restrictedCategoryIds.has(c.id))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-              </select>
-
-              {/* Color palette */}
-              <label className={styles.fieldLabel}>カラー</label>
-              <div className={styles.palette}>
-                {PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`${styles.paletteColor} ${color === c ? styles.selectedColor : ""}`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => handleColorPick(c)}
-                    title={c}
-                  />
-                ))}
-              </div>
-              <div className={styles.hexRow}>
-                <div
-                  className={styles.hexSwatch}
-                  style={{ backgroundColor: color }}
-                />
-                <input
-                  type="text"
-                  className={styles.hexInput}
-                  value={hexInput}
-                  onChange={(e) => handleHexChange(e.target.value)}
-                  placeholder="#99AAB5"
-                  maxLength={7}
-                />
-              </div>
-
-              {/* Toggles */}
-              <div className={styles.toggleRow}>
-                <div>
-                  <div className={styles.toggleLabel}>メンバーをオンライン一覧で分けて表示</div>
-                  <div className={styles.toggleDesc}>（Hoist）- 固定: オフ</div>
-                </div>
-                <label className={styles.switch}>
-                  <input type="checkbox" checked={hoist} disabled />
-                  <span className={styles.switchSlider} />
-                </label>
-              </div>
-              <div className={styles.toggleRow}>
-                <div>
-                  <div className={styles.toggleLabel}>このロールを誰でもメンションできるようにする</div>
-                  <div className={styles.toggleDesc}>（Mentionable）- 固定: オン</div>
-                </div>
-                <label className={styles.switch}>
-                  <input type="checkbox" checked={mentionable} disabled />
-                  <span className={styles.switchSlider} />
-                </label>
-              </div>
-            </div>
-          )}
-
-          {step === "permissions" && (
-            <div className={styles.permSection}>
-              {categoryId && (
-                <div className={styles.inheritNote}>
-                  📋 選択したカテゴリの権限を初期値として引き継いでいます
-                </div>
-              )}
-              {isAdminActive && (
-                <div className={styles.adminWarn}>
-                  ⚠️ 「管理者」が有効なため、他の権限はすべて自動的に有効になります
-                </div>
-              )}
-              {DISCORD_PERMISSIONS.map((section) => (
-                <div key={section.category} className={styles.permSection2}>
-                  <div className={styles.permSectionLabel}>{section.category}</div>
-                  {section.perms.map((perm) => {
-                    const isEnabled = hasBitExact(perms, perm.bit);
-                    const isFromAdmin = isAdminActive && perm.bit !== 3n;
-                    const isBotAllowed = botHasAdmin || hasBitExact(botPermissions, perm.bit);
-
-                    return (
-                      <div
-                        key={String(perm.bit)}
-                        className={`${styles.permRow} ${isFromAdmin ? styles.dimmed : ""} ${!isBotAllowed ? styles.disabledRow : ""}`}
-                      >
-                        <div className={styles.permInfo}>
-                          <div className={styles.permName}>
-                            {perm.name}
-                            {!isBotAllowed && <span className={styles.botLacksMsg}>(Bot権限不足)</span>}
-                          </div>
-                          <div className={styles.permDesc}>{perm.description}</div>
-                        </div>
-                        <label className={styles.switch}>
-                          <input
-                            type="checkbox"
-                            checked={isFromAdmin ? true : isEnabled}
-                            disabled={isFromAdmin || !isBotAllowed}
-                            onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
-                          />
-                          <span className={styles.switchSlider} />
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          {error && <span className={styles.errorMsg}>✕ {error}</span>}
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>戻る</button>
-          <button
-            type="button"
-            className={styles.createBtn}
-            onClick={handleSave}
-            disabled={!name.trim()}
-          >
-            {isEditMode ? "更新" : "作成"}
-          </button>
+    <ModalFrame onBackdropClick={onClose} size="xl" ariaLabel={isEditMode ? "ロール編集" : "新規ロール作成"}>
+      {/* Header */}
+      <div className={modalHeader}>
+        <div>
+          <p className={modalTitle}>{isEditMode ? "✏ ロールを編集" : "＋ 新規ロールを作成"}</p>
+          <p className={modalSubtitle}>
+            {isEditMode
+              ? "変更を確定すると、DBへの保存とDiscordへの同期が自動で行われます"
+              : "作成を確定すると、DBへの保存とDiscordへの同期が自動で行われます"}
+          </p>
         </div>
       </div>
-    </>
+
+      {/* Tabs */}
+      <div className="flex shrink-0 gap-0.5 border-b border-slate-200 px-6 pt-3">
+        <button
+          type="button"
+          className={tabClass(step === "basic")}
+          onClick={() => setStep("basic")}
+        >
+          基本設定
+        </button>
+        {canSetPermissions && (
+          <button
+            type="button"
+            className={tabClass(step === "permissions")}
+            onClick={() => setStep("permissions")}
+          >
+            権限設定
+          </button>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className={modalBody}>
+        {step === "basic" && (
+          <div className="flex flex-col gap-3">
+            {/* Preview */}
+            <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+              <span
+                className="size-3.5 shrink-0 rounded-full"
+                style={{ backgroundColor: color === "#000000" ? "#d1d5db" : color }}
+              />
+              <span className="text-sm font-semibold text-slate-900">{name || "（ロール名）"}</span>
+            </div>
+
+            {/* Name */}
+            <label className={fieldLabel}>ロール名 <span className={requiredMark}>*</span></label>
+            <input
+              type="text"
+              className={textInput}
+              placeholder="例: メンバー、モデレーター"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+
+            {/* Category */}
+            <label className={fieldLabel}>カテゴリ{isMember && <span className={requiredMark}> *</span>}</label>
+            {isMember && (
+              <p className="m-0 text-xs text-slate-500">
+                禁止カテゴリ（会員情報・学部学科・学年）およびカテゴリに属さない状態での作成できません
+              </p>
+            )}
+            <select
+              className={selectInput}
+              value={categoryId ?? ""}
+              onChange={(e) => setCategoryId(e.target.value || null)}
+            >
+              {!isMember && <option value="">カテゴリなし</option>}
+              {categories
+                .filter((c) => !restrictedCategoryIds.has(c.id))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+
+            {/* Color palette */}
+            <label className={fieldLabel}>カラー</label>
+            <div className="flex flex-wrap gap-2">
+              {PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`size-8 cursor-pointer rounded-full p-0 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${color === c ? "scale-110 ring-2 ring-blue-600 ring-offset-2" : ""}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => handleColorPick(c)}
+                  title={c}
+                  aria-label={`カラー ${c}`}
+                />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="size-10 shrink-0 rounded-lg border border-slate-300"
+                style={{ backgroundColor: color }}
+              />
+              <input
+                type="text"
+                className="h-10 w-32 rounded-lg border border-slate-300 bg-slate-50 px-3 font-mono text-sm text-slate-900 transition-colors focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+                value={hexInput}
+                onChange={(e) => handleHexChange(e.target.value)}
+                placeholder="#99AAB5"
+                maxLength={7}
+                aria-label="カラーコード"
+              />
+            </div>
+
+            {/* Toggles */}
+            <div className={toggleRow}>
+              <div>
+                <div className={toggleLabel}>メンバーをオンライン一覧で分けて表示</div>
+                <div className={toggleDesc}>（Hoist）- 固定: オフ</div>
+              </div>
+              <ToggleSwitch checked={hoist} disabled ariaLabel="Hoist" />
+            </div>
+            <div className={toggleRow}>
+              <div>
+                <div className={toggleLabel}>このロールを誰でもメンションできるようにする</div>
+                <div className={toggleDesc}>（Mentionable）- 固定: オン</div>
+              </div>
+              <ToggleSwitch checked={mentionable} disabled ariaLabel="Mentionable" />
+            </div>
+          </div>
+        )}
+
+        {step === "permissions" && (
+          <div className="flex flex-col">
+            {categoryId && (
+              <div className="mb-2.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                📋 選択したカテゴリの権限を初期値として引き継いでいます
+              </div>
+            )}
+            {isAdminActive && (
+              <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                ⚠️ 「管理者」が有効なため、他の権限はすべて自動的に有効になります
+              </div>
+            )}
+            {DISCORD_PERMISSIONS.map((section) => (
+              <div key={section.category} className="mb-1">
+                <div className="pt-2.5 pb-1 text-xs font-bold uppercase tracking-wider text-slate-500">{section.category}</div>
+                {section.perms.map((perm) => {
+                  const isEnabled = hasBitExact(perms, perm.bit);
+                  const isFromAdmin = isAdminActive && perm.bit !== 3n;
+                  const isBotAllowed = botHasAdmin || hasBitExact(botPermissions, perm.bit);
+
+                  return (
+                    <div
+                      key={String(perm.bit)}
+                      className={`flex items-center gap-3 border-t border-slate-100 py-2 transition-opacity ${isFromAdmin || !isBotAllowed ? "opacity-50" : ""}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-slate-900">
+                          {perm.name}
+                          {!isBotAllowed && <span className="ml-1.5 align-middle text-xs font-semibold text-red-600">(Bot権限不足)</span>}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{perm.description}</div>
+                      </div>
+                      <ToggleSwitch
+                        checked={isFromAdmin ? true : isEnabled}
+                        disabled={isFromAdmin || !isBotAllowed}
+                        onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
+                        ariaLabel={perm.name}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className={modalFooter}>
+        {error && <span className={modalErrorMsg}>✕ {error}</span>}
+        <button type="button" className={btnSecondary} onClick={onClose}>戻る</button>
+        <button
+          type="button"
+          className={btnPrimary}
+          onClick={handleSave}
+          disabled={!name.trim()}
+        >
+          {isEditMode ? "更新" : "作成"}
+        </button>
+      </div>
+    </ModalFrame>
   );
 }

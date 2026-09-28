@@ -103,35 +103,35 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	const reordered = Number(params?.reordered ?? "0");
 
 	return (
-		<main style={{ padding: 24 }}>
-			<p style={{ marginBottom: 12, color: "#6b7280", fontSize: 14 }}>
+		<main className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
+			<p className="mb-3 text-sm text-slate-500">
 				サインイン中: {displayName}（ロール: {role}） {" "}
-				<a href="/auth/signout?callbackUrl=%2F">ログアウト</a>
+				<a href="/auth/signout?callbackUrl=%2F" className="text-blue-600 underline hover:text-blue-700">ログアウト</a>
 			</p>
 
 			{synced && !hasError ? (
-				<p style={{ marginTop: 8, color: "#166534" }}>
+				<p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
 					同期完了: {syncedRoles} 件のロールを更新しました。
 				</p>
 			) : null}
 			{hasError ? (
-				<p style={{ marginTop: 8, color: "#b91c1c" }}>
+				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
 					同期に失敗しました。しばらくしてから再実行してください。
 				</p>
 			) : null}
 			{pushed && !pushError ? (
-				<p style={{ marginTop: 8, color: "#166534" }}>
+				<p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
 					push完了: updated={updated}, created={created}, deleted={deleted},
 					reordered={reordered}
 				</p>
 			) : null}
 			{pushError ? (
-				<p style={{ marginTop: 8, color: "#b91c1c" }}>
+				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
 					pushに失敗しました。設定と権限を確認してください。
 				</p>
 			) : null}
 			{accessError ? (
-				<p style={{ marginTop: 8, color: "#b91c1c" }}>{accessError}</p>
+				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{accessError}</p>
 			) : null}
 
 			{isMember ? (

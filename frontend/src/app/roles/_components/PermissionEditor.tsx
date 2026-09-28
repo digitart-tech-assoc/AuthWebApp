@@ -3,7 +3,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import styles from "./permission.module.css";
+import ToggleSwitch from "./ToggleSwitch";
+import { btnPrimary, btnSecondary, modalFooter } from "./roleStyles";
 
 // ===== Discord permission definitions =====
 
@@ -110,31 +111,42 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
   const hasChanges = perms !== BigInt(target.currentPermissions);
 
   return (
-    <>
+    <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
-      <div className={styles.overlay} onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/40 animate-fade-in" onClick={onClose} />
 
       {/* Panel */}
-      <div className={styles.panel} role="dialog" aria-label="権限設定">
+      <div
+        className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-xl animate-slide-in-right"
+        role="dialog"
+        aria-modal="true"
+        aria-label="権限設定"
+      >
         {/* Header */}
-        <div className={styles.panelHeader}>
-          <div className={styles.panelTitleWrap}>
-            <p className={styles.panelTitle}>
+        <div className="flex items-start gap-2.5 border-b border-slate-200 px-5 pt-5 pb-4">
+          <div className="min-w-0 flex-1">
+            <p className="m-0 truncate text-base font-bold text-slate-900">
               {target.name}
             </p>
             {target.kind === "role" && target.categoryPermissions !== undefined && (
-              <span className={styles.categoryBadge}>カテゴリ権限を参照中</span>
+              <span className="mt-1 inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                カテゴリ権限を参照中
+              </span>
             )}
           </div>
         </div>
 
         {/* Body */}
-        <div className={styles.panelBody}>
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Category inherit banner (for roles only) */}
           {target.kind === "role" && target.categoryPermissions !== undefined && target.categoryPermissions !== 0 && (
-            <div className={styles.inheritBanner}>
+            <div className="mx-5 my-3 flex flex-wrap items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
               <span>カテゴリの権限設定を一括適用できます</span>
-              <button type="button" className={styles.inheritBannerApply} onClick={applyCategory}>
+              <button
+                type="button"
+                className="ml-auto inline-flex h-8 items-center whitespace-nowrap rounded-md bg-blue-600 px-2.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                onClick={applyCategory}
+              >
                 カテゴリ権限を適用
               </button>
             </div>
@@ -142,15 +154,17 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
 
           {/* Administrator warning */}
           {isAdminActive && (
-            <div className={styles.adminWarning}>
+            <div className="mx-5 mb-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               ⚠️ 「管理者」が有効なため、他の権限はすべて自動的に有効になります。
             </div>
           )}
 
           {/* Permission sections */}
           {DISCORD_PERMISSIONS.map((section) => (
-            <div key={section.category} className={styles.section}>
-              <div className={styles.sectionLabel}>{section.category}</div>
+            <div key={section.category} className="pb-2">
+              <div className="px-5 pt-3.5 pb-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+                {section.category}
+              </div>
               {section.perms.map((perm) => {
                 const isEnabled = hasBitExact(perms, perm.bit);
                 const isFromAdmin = isAdminActive && perm.bit !== 3n;
@@ -166,28 +180,26 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
                 return (
                   <div
                     key={String(perm.bit)}
-                    className={`${styles.permRow} ${isFromAdmin ? styles.inherited : ""} ${!isBotAllowed ? styles.disabledRow : ""}`}
+                    className={`flex items-center gap-3 border-t border-slate-100 px-5 py-2.5 transition-colors hover:bg-slate-50 ${isFromAdmin || !isBotAllowed ? "opacity-50" : ""}`}
                   >
-                    <div className={styles.permInfo}>
-                      <div className={styles.permName}>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-slate-900">
                         {perm.name}
-                        {!isBotAllowed && <span className={styles.botLacksMsg}>(Bot権限不足)</span>}
+                        {!isBotAllowed && <span className="ml-1.5 align-middle text-xs font-semibold text-red-600">(Bot権限不足)</span>}
                       </div>
-                      <div className={styles.permDesc}>{perm.description}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">{perm.description}</div>
                     </div>
                     {isInheritedFromCat && !isFromAdmin && (
-                      <span className={styles.inheritedTag}>カテゴリと同じ</span>
+                      <span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700">
+                        カテゴリと同じ
+                      </span>
                     )}
-                    <label className={styles.toggle}>
-                      <input
-                        type="checkbox"
-                        checked={isFromAdmin ? true : isEnabled}
-                        disabled={isFromAdmin || !isBotAllowed}
-                        onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
-                        aria-label={perm.name}
-                      />
-                      <span className={styles.toggleSlider} />
-                    </label>
+                    <ToggleSwitch
+                      checked={isFromAdmin ? true : isEnabled}
+                      disabled={isFromAdmin || !isBotAllowed}
+                      onChange={() => !isFromAdmin && isBotAllowed && toggleBit(perm.bit)}
+                      ariaLabel={perm.name}
+                    />
                   </div>
                 );
               })}
@@ -196,13 +208,13 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
         </div>
 
         {/* Footer */}
-        <div className={styles.footer}>
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>
+        <div className={modalFooter}>
+          <button type="button" className={btnSecondary} onClick={onClose}>
             戻る
           </button>
           <button
             type="button"
-            className={styles.saveBtn}
+            className={btnPrimary}
             onClick={handleSave}
             disabled={!hasChanges}
           >
@@ -210,6 +222,6 @@ export default function PermissionEditorPanel({ target, botPermissions, onSave, 
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

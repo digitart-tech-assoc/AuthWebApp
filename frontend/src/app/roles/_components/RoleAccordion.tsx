@@ -24,7 +24,10 @@ import {
   patchManifest,
   pushRolesToDiscord,
 } from "@/lib/api/roles";
-import styles from "./roles.module.css";
+import {
+  btnCreate, btnDanger, btnPrimary, btnSecondary, chevron, groupCard, groupCount, groupHeader, groupName,
+  statusBanner, unsavedBar, unsavedBarBtn,
+} from "./roleStyles";
 import type { Category, Role, Member } from "@/types/roles";
 
 type Props = {
@@ -470,16 +473,16 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const botPermissions = botRole ? BigInt(botRole.permissions) : 0n;
 
   return (
-    <div className={styles.page}>
+    <div className="mx-auto w-full max-w-4xl pt-4 pb-20">
       {/* Page header */}
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>ロール管理</h1>
-        <p className={styles.pageSubtitle}>Discord サーバーのロールとカテゴリ、権限を管理できます</p>
+      <div className="relative mb-8 border-b-2 border-slate-200 pb-5 after:absolute after:-bottom-0.5 after:left-0 after:h-0.5 after:w-15 after:rounded-full after:bg-linear-to-r after:from-indigo-600 after:to-indigo-400">
+        <h1 className="mb-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">ロール管理</h1>
+        <p className="m-0 text-sm text-slate-500">Discord サーバーのロールとカテゴリ、権限を管理できます</p>
       </div>
 
       {/* Status banner */}
       {status && (
-        <div className={`${styles.statusBanner} ${styles[status.kind]}`}>
+        <div className={statusBanner(status.kind)}>
           {status.kind === "success" && "✓ "}
           {status.kind === "error" && "✕ "}
           {status.kind === "info" && "ℹ "}
@@ -488,12 +491,13 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       )}
 
       {/* Top action bar */}
-      <div className={styles.topBar}>
-        <div className={styles.searchWrap}>
-          <span className={styles.searchIcon}>⌕</span>
+      <div className="mb-5 flex flex-wrap items-center gap-2.5">
+        <div className="relative min-w-45 flex-1">
+          <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-slate-400" aria-hidden="true">⌕</span>
           <input
             type="search"
-            className={styles.search}
+            className="block h-10 w-full rounded-lg border border-slate-300 bg-white pr-3 pl-9 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+            aria-label="ロールを検索"
             placeholder="ロールを検索..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -501,13 +505,13 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         </div>
         {/* PushButton は executeSave() 内で自動呼出しされるため非表示 */}
         {canCreateRole ? (
-          <button type="button" className={styles.btnCreate} onClick={() => setShowNewRole(true)}>
+          <button type="button" className={btnCreate} onClick={() => setShowNewRole(true)}>
             + ロール作成
           </button>
         ) : null}
         <button
           type="button"
-          className={isSelectMode ? styles.btnDanger : styles.btnSecondary}
+          className={isSelectMode ? btnDanger : btnSecondary}
           onClick={toggleSelectMode}
           disabled={!canCreateCategory}
           title={canCreateCategory ? "カテゴリ作成" : "カテゴリ作成は admin/member のみ可能"}
@@ -516,7 +520,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         </button>
       </div>
 
-      <div className={`${styles.statusBanner} ${styles.info}`}>
+      <div className={statusBanner("info")}>
         {isAdmin
           ? "adminモード: すべての管理操作が有効です。"
           : isMember
@@ -526,29 +530,30 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
       {/* Category creation selection bar */}
       {isSelectMode && (
-        <div className={styles.selectionBar}>
-          <span className={styles.selectionBarLabel}>
+        <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 text-sm font-medium text-indigo-800 animate-fade-in-down">
+          <span className="min-w-30 flex-1">
             チェックしたロールをカテゴリに追加します（選択数: {selectedRoleIds.size}）
           </span>
           <input
             type="text"
-            className={styles.categoryNameInput}
+            className="h-10 w-36 rounded-lg border border-indigo-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 sm:w-45"
             placeholder="カテゴリ名を入力"
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") createCategory(); }}
           />
           {isAdmin && (
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>
+            <label className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap text-sm">
               <input
                 type="checkbox"
+                className="size-4 cursor-pointer accent-blue-600"
                 checked={newCategoryRestricted}
                 onChange={(e) => setNewCategoryRestricted(e.target.checked)}
               />
               管理者専用
             </label>
           )}
-          <button type="button" className={styles.btnPrimary} onClick={createCategory}
+          <button type="button" className={btnPrimary} onClick={createCategory}
             disabled={!newCategoryName.trim()}>
             作成
           </button>
@@ -556,7 +561,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       )}
 
       {/* Role board */}
-      <div className={styles.board}>
+      <div className="flex flex-col gap-3">
 
         {/* ===== Categorized groups with DnD reordering ===== */}
         <DndContext
@@ -600,7 +605,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   }
                   onEditRole={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
                   onEditCategory={!isSelectMode && isAdmin ? setEditingCategory : undefined}
-                  styles={styles}
                 />
               );
             })}
@@ -608,20 +612,20 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         </DndContext>
 
         {/* ===== Master All Roles ===== */}
-        <div className={styles.group}>
+        <div className={groupCard}>
           <div
-            className={styles.groupHeader}
+            className={groupHeader}
             onClick={() => toggleCollapse("__all_roles__")}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleCollapse("__all_roles__"); }}
           >
             <ChevronRight
-              className={`${styles.chevron} ${!collapsedIds.has("__all_roles__") ? styles.open : ""}`}
+              className={chevron(!collapsedIds.has("__all_roles__"))}
               size={16}
             />
-            <span className={styles.groupName}>ロール一覧</span>
-            <span className={styles.groupCount}>{filteredRoles.length}</span>
+            <span className={groupName}>ロール一覧</span>
+            <span className={groupCount}>{filteredRoles.length}</span>
           </div>
           {!collapsedIds.has("__all_roles__") && (
             <RoleList
@@ -646,11 +650,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
 
       {/* Floating save bar */}
       {hasUnsaved && (
-        <div className={styles.unsavedBar}>
+        <div className={unsavedBar}>
           <span>未送信の変更があります</span>
           <button
             type="button"
-            className={styles.unsavedBarBtn}
+            className={unsavedBarBtn}
             disabled={saveState === "saving" || !canEditManifest}
             onClick={() => persistRoles(allRoles, localCategories)}
           >
@@ -711,7 +715,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {canManageMembers ? (
         <MembersPanel />
       ) : (
-        <div className={styles.lockedPanel}>
+        <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3.5 text-sm text-slate-500">
           会員情報カテゴリの操作・会員管理は admin のみ利用できます。
         </div>
       )}

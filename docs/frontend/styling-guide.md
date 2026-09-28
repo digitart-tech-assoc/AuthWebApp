@@ -18,8 +18,16 @@
 - 任意値（ブラケット記法 `[...]`）の使用（例外: Discord ブランドカラー `#5865F2` のみ許容）。
 - `gray`, `zinc`, `neutral` などの他ニュートラルカラーの混用。
 - 白背景での低不透明度ボーダー（`border-slate-900/5` 等）の使用。
-- インラインスタイル（`style={{ ... }}`）の使用。
+- インラインスタイル（`style={{ ... }}`）の使用（例外: 下記「インラインスタイルの例外」を参照）。
 - CSS Modules（`*.module.css`）の新規作成・インポート。
+
+### インラインスタイルの例外
+実行時にしか値が決まらず、Tailwind のクラスで表現できないものに限り、`style` での指定を許容する。静的な値（`cursor`、`display`、`gap` 等）は必ずクラスにする。
+
+| 用途 | 例 |
+| :--- | :--- |
+| ドラッグ＆ドロップ（`@dnd-kit`）の位置・遷移 | `style={{ transform: CSS.Transform.toString(transform), transition }}` |
+| ユーザー／Discord が指定した色 | `style={{ backgroundColor: role.color }}`（ロールの色ドット、カラースウォッチ） |
 
 ---
 
@@ -108,6 +116,22 @@
 
 ---
 
+### 2.6 アニメーション
+
+独自アニメーションは `globals.css` の `@theme` に定義したトークンのみ使用する。コンポーネント側で `@keyframes` を定義しない。
+
+| クラス | 用途 |
+| :--- | :--- |
+| `animate-fade-in` | モーダル・パネルのオーバーレイ |
+| `animate-fade-in-down` | ステータスバナー、選択バー |
+| `animate-pop-in` | モーダルダイアログ本体 |
+| `animate-slide-in-right` | 右からのスライドインパネル |
+| `animate-slide-up` | 画面下部のフローティングバー |
+
+中央寄せは `transform` ではなく flex（`fixed inset-0 flex items-center justify-center`）や `inset-x-0 mx-auto w-fit` で行う。`transform` による中央寄せは、アニメーションの `transform` に上書きされるため。
+
+---
+
 ## 3. 共通コンポーネント定義 (Components)
 
 ### ボタン (Buttons)
@@ -126,6 +150,12 @@
 <a href="/auth/discord" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#5865F2] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#4752C4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5865F2] focus-visible:ring-offset-2">
   Discord でログイン
 </a>
+
+// 行内コンパクトボタン（テーブル行・リスト行の中の操作ボタンに限る）
+// 見た目は h-8 とし、40px のタップ領域は親の行（min-h-10）と余白で確保する
+<button className="inline-flex h-8 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
+  編集
+</button>
 ```
 
 ### フォーム入力 (Input)
