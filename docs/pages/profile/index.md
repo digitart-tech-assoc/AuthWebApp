@@ -103,4 +103,4 @@ interface StudentProfile {
 - `getBackendAuthorizationHeader()` で Authorization ヘッダを自動生成
 - `resolveRoleFromBackend()` でバックエンド API から権限を取得
 - `ProfileForm` はクライアントコンポーネント（フォーム操作用）
-- ページレイアウト：`join.module.css` の共通スタイル使用
+- Tailwind CSS によりスタイリング（[docs/frontend/styling-guide.md](../../frontend/styling-guide.md) 準拠）

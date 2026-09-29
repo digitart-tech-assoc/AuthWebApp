@@ -2,7 +2,6 @@ import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { getStudentProfile } from "@/actions/studentRegistration";
 import ProfileForm from "./_components/ProfileForm";
-import styles from "../join/join.module.css";
 import { redirect } from "next/navigation";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
@@ -49,9 +48,9 @@ export default async function ProfilePage() {
   const profile = await getStudentProfile();
 
   return (
-    <main className={styles.page}>
-      <h1 style={{ fontSize: 28, marginBottom: 12 }}>プロフィール</h1>
-      <p style={{ marginBottom: 18, color: "#6b7280" }}>
+    <main className="mx-auto w-full max-w-5xl px-4 py-8 pb-16 sm:py-12 sm:pb-20">
+      <h1 className="mb-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">プロフィール</h1>
+      <p className="mb-5 text-sm leading-relaxed text-slate-500 sm:text-base">
         学生情報が未登録の場合はここで登録・修正してください。
       </p>
 
