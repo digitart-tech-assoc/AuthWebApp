@@ -4,6 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import student as student_api
+from app.core.exceptions import RegistrationNotEligibleError
 
 INELIGIBLE_CASES = [
 	pytest.param(False, True, id="not-pre-member"),
@@ -126,10 +127,11 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 		"get_latest_verified_otp",
 		lambda discord_id: {"verified": True},
 	)
+	promote_calls = []
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"upsert_student_profile_and_promote",
-		lambda **kwargs: "prof_test",
+		lambda **kwargs: promote_calls.append(kwargs) or "prof_test",
 	)
 
 	response = await student_api.create_student_profile(
@@ -138,6 +140,8 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	)
 
 	assert response.profile_id == "prof_test"
+	# 本会員化と同一トランザクションで資格を再検証させる
+	assert promote_calls[0]["require_eligibility"] is True
 
 
 @pytest.mark.asyncio
@@ -153,10 +157,11 @@ async def test_create_profile_allows_registered_user_update(monkeypatch, app_rol
 	)
 	monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 	monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+	promote_calls = []
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"upsert_student_profile_and_promote",
-		lambda **kwargs: "prof_test",
+		lambda **kwargs: promote_calls.append(kwargs) or "prof_test",
 	)
 
 	response = await student_api.create_student_profile(
@@ -165,3 +170,37 @@ async def test_create_profile_allows_registered_user_update(monkeypatch, app_rol
 	)
 
 	assert response.profile_id == "prof_test"
+	assert promote_calls[0]["require_eligibility"] is False
+
+
+@pytest.mark.asyncio
+async def test_create_profile_returns_403_when_eligibility_lost_before_promotion(monkeypatch):
+	# API 側の資格確認後、本会員化までの間に資格が失効・削除されたケース
+	_set_eligibility(monkeypatch, True, True)
+	monkeypatch.setenv("DISCORD_TOKEN", "dummy-token")
+	monkeypatch.setenv("DISCORD_GUILD_ID", "dummy-guild")
+	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
+	monkeypatch.setattr(
+		student_api.student_repository,
+		"get_latest_verified_otp",
+		lambda discord_id: {"verified": True},
+	)
+
+	def lose_eligibility(**kwargs):
+		raise RegistrationNotEligibleError("入会費の支払いが確認できません")
+
+	monkeypatch.setattr(
+		student_api.student_repository,
+		"upsert_student_profile_and_promote",
+		lose_eligibility,
+	)
+	monkeypatch.setattr(student_api, "add_role_to_member", _forbid("add_role_to_member"))
+
+	with pytest.raises(HTTPException) as error:
+		await student_api.create_student_profile(
+			_profile_request(),
+			principal={**PRINCIPAL, "app_role": "pre_member"},
+		)
+
+	assert error.value.status_code == 403
+	assert error.value.detail == "入会費の支払いが確認できません"

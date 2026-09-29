@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
-from app.core.exceptions import OTPTooManyAttemptsError
+from app.core.exceptions import OTPTooManyAttemptsError, RegistrationNotEligibleError
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
@@ -388,18 +388,23 @@ async def create_student_profile(
 	member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
 	member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
 
-	profile_id = student_repository.upsert_student_profile_and_promote(
-		profile_id=f"prof_{uuid.uuid4().hex[:12]}",
-		discord_id=discord_id,
-		student_number=req.student_number,
-		name=req.name,
-		furigana=req.furigana,
-		department=req.department,
-		gender=req.gender,
-		phone=req.phone,
-		email_aoyama=email_aoyama,
-		member_role_ids=member_role_ids,
-	)
+	# 資格確認後に失効・削除された場合に備え、本会員化と同一トランザクションで再検証する
+	try:
+		profile_id = student_repository.upsert_student_profile_and_promote(
+			profile_id=f"prof_{uuid.uuid4().hex[:12]}",
+			discord_id=discord_id,
+			student_number=req.student_number,
+			name=req.name,
+			furigana=req.furigana,
+			department=req.department,
+			gender=req.gender,
+			phone=req.phone,
+			email_aoyama=email_aoyama,
+			member_role_ids=member_role_ids,
+			require_eligibility=not is_registered,
+		)
+	except RegistrationNotEligibleError as e:
+		raise HTTPException(status_code=403, detail=str(e))
 
 	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与
 	logger.info("DB commit completed; applying member roles to Discord member: discord_id=%s", discord_id)
