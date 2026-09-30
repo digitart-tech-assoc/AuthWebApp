@@ -308,6 +308,8 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                   {catRoles.map((role) => {
                     const assigned = hasRole(role.role_id);
                     const aboveBot = isAboveBot(role);
+                    // Discord 権限を持つロールはセルフ付与・解除の対象外（Backend でも拒否される）
+                    const hasPermissions = role.permissions !== 0;
 
                     return (
                       <div
@@ -318,6 +320,8 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                         <span className={catRoleNameClass}>{role.name}</span>
                         {aboveBot ? (
                           <span className={mutedTagClass}>編集不可</span>
+                        ) : hasPermissions ? (
+                          <span className={mutedTagClass}>権限付き（変更不可）</span>
                         ) : catRestricted ? (
                           <span className={mutedTagClass}>変更不可</span>
                         ) : assigned ? (
