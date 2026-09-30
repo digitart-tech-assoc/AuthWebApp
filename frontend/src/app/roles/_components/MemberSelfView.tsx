@@ -321,7 +321,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                         {aboveBot ? (
                           <span className={mutedTagClass}>編集不可</span>
                         ) : hasPermissions ? (
-                          <span className={mutedTagClass}>権限付き（変更不可）</span>
+                          <span className={mutedTagClass}>変更不可</span>
                         ) : catRestricted ? (
                           <span className={mutedTagClass}>変更不可</span>
                         ) : assigned ? (
