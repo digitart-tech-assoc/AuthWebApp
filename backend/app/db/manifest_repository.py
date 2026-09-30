@@ -12,7 +12,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0), COALESCE(is_restricted, FALSE)
+                SELECT id, name, display_order, is_collapsed, COALESCE(permissions, 0), COALESCE(is_restricted, FALSE), COALESCE(is_self_assignable, FALSE)
                 FROM role_categories
                 ORDER BY display_order ASC, name ASC
                 """
@@ -25,6 +25,7 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
                     "is_collapsed": row[3],
                     "permissions": int(row[4]),
                     "is_restricted": bool(row[5]),
+                    "is_self_assignable": bool(row[6]),
                 }
                 for row in cur.fetchall()
             ]
@@ -62,8 +63,8 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 			for c in categories:
 				cur.execute(
 					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
-					VALUES (%s, %s, %s, %s, %s, %s)
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted, is_self_assignable)
+					VALUES (%s, %s, %s, %s, %s, %s, %s)
 					""",
 					(
 						c["id"],
@@ -72,6 +73,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 						c.get("is_collapsed", False),
 						int(c.get("permissions", 0)),
 						bool(c.get("is_restricted", False)),
+						bool(c.get("is_self_assignable", False)),
 					),
 				)
 
@@ -165,19 +167,21 @@ def patch_manifest_db(
 			for c in upsert_categories:
 				cur.execute(
 					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
-					VALUES (%s, %s, %s, %s, %s, %s)
+					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted, is_self_assignable)
+					VALUES (%s, %s, %s, %s, %s, %s, %s)
 					ON CONFLICT (id) DO UPDATE SET
 						name = EXCLUDED.name,
 						display_order = EXCLUDED.display_order,
 						is_collapsed = EXCLUDED.is_collapsed,
 						permissions = EXCLUDED.permissions,
-						is_restricted = EXCLUDED.is_restricted
+						is_restricted = EXCLUDED.is_restricted,
+						is_self_assignable = EXCLUDED.is_self_assignable
 					""",
 					(
 						c["id"], c["name"], c.get("display_order", 0), 
 						c.get("is_collapsed", False), int(c.get("permissions", 0)),
-						bool(c.get("is_restricted", False))
+						bool(c.get("is_restricted", False)),
+						bool(c.get("is_self_assignable", False))
 					),
 				)
 

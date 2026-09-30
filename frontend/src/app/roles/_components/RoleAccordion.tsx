@@ -109,9 +109,9 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const canManageMembers = isAdmin;
   const canEditManifest = isAdmin || isMember;
 
-  // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
+  // memberモードでロール付与を禁止するカテゴリ（is_self_assignableフラグで判定）
   const restrictedCategoryIds = useMemo(
-    () => new Set(localCategories.filter((c) => c.is_restricted).map((c) => c.id)),
+    () => new Set(localCategories.filter((c) => !c.is_self_assignable).map((c) => c.id)),
     [localCategories]
   );
 
@@ -327,6 +327,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       is_collapsed: false,
       permissions: 0,
       is_restricted: newCategoryRestricted,
+      is_self_assignable: !newCategoryRestricted,
     };
     const updatedRoles = allRoles.map((r) => selectedRoleIds.has(r.role_id) ? { ...r, category_id: newCatId } : r);
     const nextCats = [...localCategories, newCat];
@@ -342,11 +343,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     showStatus({ kind: "info", msg: `カテゴリ「${name}」${restrictedLabel}を作成しました。「変更を確定」で保存してDiscordに同期します` });
   }
 
-  function handleEditCategorySaved(catId: string, newName: string, newIsRestricted: boolean) {
+  function handleEditCategorySaved(catId: string, newName: string, newIsRestricted: boolean, newIsSelfAssignable: boolean) {
     setLocalCategories((prev) =>
       prev.map((c) =>
         c.id === catId
-          ? { ...c, name: newName, is_restricted: newIsRestricted }
+          ? { ...c, name: newName, is_restricted: newIsRestricted, is_self_assignable: newIsSelfAssignable }
           : c
       )
     );

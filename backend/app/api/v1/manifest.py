@@ -21,6 +21,7 @@ class Category(BaseModel):
 	is_collapsed: bool = False
 	permissions: int = 0
 	is_restricted: bool = False
+	is_self_assignable: bool = False
 
 
 class Role(BaseModel):

@@ -7,6 +7,7 @@ export type Category = {
   is_collapsed: boolean;
   permissions: number;
   is_restricted: boolean;
+  is_self_assignable: boolean;
 };
 
 export type Role = {

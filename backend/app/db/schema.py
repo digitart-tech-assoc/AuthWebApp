@@ -53,6 +53,18 @@ def init_db() -> None:
                     UPDATE role_categories SET is_restricted = TRUE WHERE name IN ('会員情報', '学部学科', '学年');
                     """
                 )
+                # Migration: add is_self_assignable column (whitelist for self-assign)
+                cur.execute(
+                    """
+                    ALTER TABLE role_categories ADD COLUMN IF NOT EXISTS is_self_assignable BOOLEAN DEFAULT FALSE;
+                    """
+                )
+                # Migration: set is_self_assignable = TRUE for non-restricted categories
+                cur.execute(
+                    """
+                    UPDATE role_categories SET is_self_assignable = TRUE WHERE is_restricted = FALSE;
+                    """
+                )
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS role_manifests (

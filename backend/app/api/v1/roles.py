@@ -552,22 +552,33 @@ async def self_batch_roles(
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
 
-	# --- 1. 一括バリデーション ---
+	# --- 1. 一括バリデーション（ホワイトリスト方式） ---
 	manifest = await asyncio.to_thread(fetch_manifest)
 	roles_in_manifest = {r["role_id"]: r for r in manifest.get("roles", [])}
-	restricted_cat_ids = {
+	self_assignable_cat_ids = {
 		c["id"] for c in manifest.get("categories", [])
-		if c["name"] in MEMBER_RESTRICTED_CATEGORY_NAMES or c.get("is_restricted", False)
+		if c.get("is_self_assignable", False)
 	}
 
 	for role_id in all_role_ids:
 		role_info = roles_in_manifest.get(role_id)
 		if role_info is None:
 			raise HTTPException(status_code=404, detail=f"指定されたロール {role_id} が見つかりません")
-		if role_info.get("category_id") in restricted_cat_ids:
+		cat_id = role_info.get("category_id")
+		if cat_id is None:
 			raise HTTPException(
 				status_code=403,
-				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（禁止カテゴリ）",
+				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（カテゴリ未設定）",
+			)
+		if cat_id not in self_assignable_cat_ids:
+			raise HTTPException(
+				status_code=403,
+				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（セルフアサイン非対応カテゴリ）",
+			)
+		if int(role_info.get("permissions", 0)) != 0:
+			raise HTTPException(
+				status_code=403,
+				detail=f"ロール '{role_info.get('name', role_id)}' は変更できません（Discord権限付き）",
 			)
 
 	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。

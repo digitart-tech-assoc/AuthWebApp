@@ -82,7 +82,7 @@ class TestRolesCompensationTransactions:
         principal = {"discord_id": "user-456", "app_role": "member"}
 
         with patch("app.api.v1.roles._get_token", return_value="token"):
-            with patch("app.api.v1.roles.fetch_manifest", return_value={"roles": [{"role_id": "role-123", "name": "Test"}], "categories": []}):
+            with patch("app.api.v1.roles.fetch_manifest", return_value={"roles": [{"role_id": "role-123", "name": "Test", "category_id": "cat-ok", "permissions": 0}], "categories": [{"id": "cat-ok", "is_self_assignable": True}]}):
                 with patch("app.api.v1.roles.fetch_guild_roles", new_callable=AsyncMock, return_value=[{"role_id": "role-123", "position": 1, "managed": False}, {"role_id": "role-existing", "position": 1, "managed": False}]):
                     with patch("app.api.v1.roles.fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-existing"]}):
                         with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
@@ -108,4 +108,89 @@ class TestRolesCompensationTransactions:
             )
 
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_self_batch_rejects_null_category_role(self):
+        """カテゴリ未設定 (category_id = None) のロール付与は拒否される"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
+        from fastapi import HTTPException
+
+        payload = SelfBatchPayload(roles_to_add=["role-null-cat"], roles_to_remove=[])
+        principal = {"discord_id": "user-456", "app_role": "member"}
+
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value={"roles": [{"role_id": "role-null-cat", "name": "NullCatRole", "category_id": None}], "categories": []}):
+                with pytest.raises(HTTPException) as exc_info:
+                    await self_batch_roles(payload, principal)
+
+                assert exc_info.value.status_code == 403
+                assert "カテゴリ未設定" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_self_batch_rejects_non_self_assignable_category(self):
+        """is_self_assignable=False のカテゴリに属するロール付与は拒否される"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
+        from fastapi import HTTPException
+
+        payload = SelfBatchPayload(roles_to_add=["role-restricted"], roles_to_remove=[])
+        principal = {"discord_id": "user-456", "app_role": "member"}
+
+        manifest = {
+            "categories": [{"id": "cat-1", "is_self_assignable": False}],
+            "roles": [{"role_id": "role-restricted", "category_id": "cat-1", "name": "RestrictedRole"}]
+        }
+
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value=manifest):
+                with pytest.raises(HTTPException) as exc_info:
+                    await self_batch_roles(payload, principal)
+                
+                assert exc_info.value.status_code == 403
+                assert "セルフアサイン非対応カテゴリ" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_self_batch_rejects_role_with_permissions(self):
+        """permissions != 0 のロール付与は拒否される"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
+        from fastapi import HTTPException
+
+        payload = SelfBatchPayload(roles_to_add=["role-perms"], roles_to_remove=[])
+        principal = {"discord_id": "user-456", "app_role": "member"}
+
+        manifest = {
+            "categories": [{"id": "cat-1", "is_self_assignable": True}],
+            "roles": [{"role_id": "role-perms", "category_id": "cat-1", "permissions": 8, "name": "PermRole"}]
+        }
+
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value=manifest):
+                with pytest.raises(HTTPException) as exc_info:
+                    await self_batch_roles(payload, principal)
+                
+                assert exc_info.value.status_code == 403
+                assert "Discord権限付き" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_self_batch_allows_self_assignable_category(self):
+        """is_self_assignable=True かつ permissions=0 のロール付与は成功する（以降のロジックへ進む）"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
+        from fastapi import HTTPException
+
+        payload = SelfBatchPayload(roles_to_add=["role-ok"], roles_to_remove=[])
+        principal = {"discord_id": "user-456", "app_role": "member"}
+
+        manifest = {
+            "categories": [{"id": "cat-1", "is_self_assignable": True}],
+            "roles": [{"role_id": "role-ok", "category_id": "cat-1", "permissions": 0, "name": "OkRole"}]
+        }
+
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value=manifest):
+                # We mock fetch_guild_roles to raise an exception just to verify it passes the manifest validation step
+                with patch("app.api.v1.roles.fetch_guild_roles", side_effect=Exception("Passed validation")):
+                    with pytest.raises(HTTPException) as exc_info:
+                        await self_batch_roles(payload, principal)
+                    
+                    assert exc_info.value.status_code == 502
+                    assert "Passed validation" in str(exc_info.value.detail)
 

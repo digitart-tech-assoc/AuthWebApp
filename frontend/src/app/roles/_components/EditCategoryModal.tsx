@@ -17,23 +17,25 @@ type Category = {
   is_collapsed: boolean;
   permissions: number;
   is_restricted: boolean;
+  is_self_assignable: boolean;
 };
 
 type Props = {
   category: Category;
   isAdmin: boolean;
-  onSaved: (categoryId: string, name: string, is_restricted: boolean) => void;
+  onSaved: (categoryId: string, name: string, is_restricted: boolean, is_self_assignable: boolean) => void;
   onClose: () => void;
 };
 
 export default function EditCategoryModal({ category, isAdmin, onSaved, onClose }: Props) {
   const [name, setName] = useState(category.name);
   const [isRestricted, setIsRestricted] = useState(category.is_restricted);
+  const [isSelfAssignable, setIsSelfAssignable] = useState(category.is_self_assignable);
 
   function handleSave() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onSaved(category.id, trimmed, isRestricted);
+    onSaved(category.id, trimmed, isRestricted, isSelfAssignable);
   }
 
   return (
@@ -62,18 +64,34 @@ export default function EditCategoryModal({ category, isAdmin, onSaved, onClose 
           />
 
           {isAdmin && (
-            <div className={toggleRow}>
-              <div>
-                <div className={toggleLabel}>管理者専用カテゴリ</div>
-                <div className={toggleDesc}>
-                  オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
+            <div className="flex flex-col gap-4">
+              <div className={toggleRow}>
+                <div>
+                  <div className={toggleLabel}>セルフアサイン可能</div>
+                  <div className={toggleDesc}>
+                    オンにすると、メンバーはマイページからこのカテゴリのロールを自分で付与・解除できるようになります。
+                  </div>
                 </div>
+                <ToggleSwitch
+                  checked={isSelfAssignable}
+                  onChange={setIsSelfAssignable}
+                  ariaLabel="セルフアサイン可能"
+                />
               </div>
-              <ToggleSwitch
-                checked={isRestricted}
-                onChange={setIsRestricted}
-                ariaLabel="管理者専用カテゴリ"
-              />
+
+              <div className={toggleRow}>
+                <div>
+                  <div className={toggleLabel}>管理者専用カテゴリ</div>
+                  <div className={toggleDesc}>
+                    オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={isRestricted}
+                  onChange={setIsRestricted}
+                  ariaLabel="管理者専用カテゴリ"
+                />
+              </div>
             </div>
           )}
         </div>

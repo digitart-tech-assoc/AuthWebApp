@@ -15,6 +15,7 @@ type Category = {
   is_collapsed: boolean;
   permissions: number;
   is_restricted: boolean;
+  is_self_assignable: boolean;
 };
 
 type Role = {
@@ -209,11 +210,11 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
   // My current roles
   const myRoles = sortedRoles.filter((r) => hasRole(r.role_id));
 
-  // ソート: 編集可能カテゴリを先に、次に制限カテゴリ
+  // セルフアサイン可能なカテゴリを先頭に表示
   const sortedCategories = [...categories].sort((a, b) => {
-    const aR = a.is_restricted;
-    const bR = b.is_restricted;
-    if (aR !== bR) return aR ? 1 : -1;
+    const aS = a.is_self_assignable;
+    const bS = b.is_self_assignable;
+    if (aS !== bS) return aS ? -1 : 1;
     return a.display_order - b.display_order;
   });
 
@@ -290,7 +291,7 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
           const catRoles = sortedRoles.filter((r) => r.category_id === cat.id);
           if (catRoles.length === 0) return null;
           const isOpen = !collapsedCats.has(cat.id);
-          const catRestricted = cat.is_restricted;
+          const catRestricted = !cat.is_self_assignable;
 
           return (
             <div key={cat.id} className={catGroupClass}>
@@ -308,16 +309,19 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                   {catRoles.map((role) => {
                     const assigned = hasRole(role.role_id);
                     const aboveBot = isAboveBot(role);
+                    const hasDiscordPerms = role.permissions !== 0;
 
                     return (
                       <div
                         key={role.role_id}
-                        className={aboveBot ? catRoleItemDisabledClass : catRoleItemClass}
+                        className={aboveBot ? catRoleItemDisabledClass : hasDiscordPerms ? `${catRoleItemClass} cursor-not-allowed` : catRoleItemClass}
                       >
                         <span className={roleDotClass} style={{ backgroundColor: dotColor(role.color) }} />
                         <span className={catRoleNameClass}>{role.name}</span>
                         {aboveBot ? (
                           <span className={mutedTagClass}>編集不可</span>
+                        ) : hasDiscordPerms ? (
+                          <span className={mutedTagClass}>変更不可</span>
                         ) : catRestricted ? (
                           <span className={mutedTagClass}>変更不可</span>
                         ) : assigned ? (
