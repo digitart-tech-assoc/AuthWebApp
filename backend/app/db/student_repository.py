@@ -8,7 +8,7 @@ from enum import Enum, auto
 from typing import Any
 
 from app.core.config import OTP_MAX_ATTEMPTS
-from app.core.exceptions import OTPTooManyAttemptsError
+from app.core.exceptions import OTPTooManyAttemptsError, RegistrationNotEligibleError
 from app.db.connection import _connect, _log_db_access
 from app.utils.otp import verify_otp_code
 
@@ -119,10 +119,40 @@ def upsert_student_profile_and_promote(
 	phone: str,
 	email_aoyama: str,
 	member_role_ids: list[str],
+	require_eligibility: bool = True,
 ) -> str:
-	"""学生プロフィールを保存し、pre_memberからmemberへ昇格、ロール割り当てを追加する。"""
+	"""学生プロフィールを保存し、pre_memberからmemberへ昇格、ロール割り当てを追加する。
+
+	require_eligibility が True の場合、同一トランザクション内で入会資格
+	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
+	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
+	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			if require_eligibility:
+				# コミットまで pre_member / 支払情報の削除・変更をブロックする
+				cur.execute(
+					"""
+					SELECT 1 FROM user_memberships
+					WHERE discord_id = %s AND membership_type = 'pre_member'
+					FOR UPDATE
+					""",
+					(discord_id,),
+				)
+				if cur.fetchone() is None:
+					raise RegistrationNotEligibleError("入会予定者リストに登録されていません")
+
+				cur.execute(
+					"""
+					SELECT 1 FROM paid_invitations
+					WHERE discord_id = %s AND (expires_at IS NULL OR expires_at > now())
+					FOR SHARE
+					""",
+					(discord_id,),
+				)
+				if cur.fetchone() is None:
+					raise RegistrationNotEligibleError("入会費の支払いが確認できません")
+
 			# 既存プロフィールを確認
 			cur.execute(
 				"SELECT id FROM student_profiles WHERE discord_id = %s",
