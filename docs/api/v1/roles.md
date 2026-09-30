@@ -99,8 +99,10 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 - `400 Bad Request`:
   - 同一ロールが `roles_to_add` と `roles_to_remove` の両方に指定されている場合
   - Discord ID が特定できない場合
-- `403 Forbidden`:
-  - 管理者保護カテゴリ（`is_restricted: true` または予約カテゴリ）に属するロールが含まれる場合
+- `403 Forbidden`（ホワイトリスト方式。判定は DB のマニフェストを正とする）:
+  - カテゴリ未設定（`category_id: null`）のロールが含まれる場合
+  - 付与・解除できるカテゴリ（マニフェストに存在し、`is_restricted: false` かつ予約カテゴリ以外）に属さないロールが含まれる場合
+  - マニフェスト上の `permissions` が `0` 以外（Discord 権限付き）のロールが含まれる場合
   - Discord のマネージドロール（Bot/連携用）または `@everyone` ロールが含まれる場合
   - Bot の権限階層以上のロールが含まれる場合
 - `404 Not Found`:
