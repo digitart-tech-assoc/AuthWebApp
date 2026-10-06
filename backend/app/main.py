@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 # /health/db の疎通確認の待ち時間の上限（秒）。プール枯渇時の待ち（DB_POOL_TIMEOUT）より短くし、監視側を長く待たせない
 HEALTH_DB_TIMEOUT_SECONDS = 5.0
 
+# 実行中の疎通確認。to_thread のスレッドはタイムアウトしても止まらないため、
+# 同時に 1 つだけ走らせ、完了するまで後続のリクエストはこれを共有する（スレッドと接続の積み上がりを防ぐ）
+_health_db_task: asyncio.Task | None = None
+
 # 環境判定（Fail-Closed / ホワイトリスト方式）
 # FASTAPI_ENV が未設定、空文字、または開発用値 ("development", "dev", "local") 以外の場合は
 # 本番相当として扱い、OpenAPI docs や開発用APIを遮断する。
@@ -101,8 +105,14 @@ async def health() -> dict:
 @app.get("/health/db")
 async def health_db() -> JSONResponse:
 	"""DB へ疎通確認クエリを実行し、応答可能かを返す（Readiness 確認・死活監視用）。"""
+	global _health_db_task
+	if _health_db_task is None or _health_db_task.done():
+		_health_db_task = asyncio.create_task(asyncio.to_thread(ping_database))
+		# タイムアウトで誰も結果を受け取らなかった場合の "Task exception was never retrieved" を防ぐ
+		_health_db_task.add_done_callback(lambda t: t.cancelled() or t.exception())
 	try:
-		await asyncio.wait_for(asyncio.to_thread(ping_database), timeout=HEALTH_DB_TIMEOUT_SECONDS)
+		# shield: タイムアウト時にタスクをキャンセル済み（done）にせず、スレッドが終わるまで実行中として扱う
+		await asyncio.wait_for(asyncio.shield(_health_db_task), timeout=HEALTH_DB_TIMEOUT_SECONDS)
 	except Exception:
 		# 接続先や内部エラーの詳細はレスポンスに含めず、ログにだけ残す
 		logger.warning("Database health check failed", exc_info=True)
