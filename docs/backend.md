@@ -16,6 +16,7 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 1. **データベース操作の集中管理**:
    - PostgreSQL (Supabase) への全クエリ・トランザクション処理を一元管理。
    - Alembic によるマイグレーション管理。
+   - DB アクセスは同期処理（psycopg2）のため、`async def` のエンドポイントから呼ぶときは `await asyncio.to_thread(func, *args)` で別スレッドに逃がし、イベントループを止めない。bcrypt によるハッシュ化・照合も同様に扱う。
 2. **認証・動的 RBAC 認可**:
    - Supabase Auth の JWT（RS256 / ES256 / HS256）を署名検証。
    - `v_users_with_app_role` ビューによるロール（`admin`, `member`, `obog`, `pre_member`, `none`）の動的判定。
