@@ -24,6 +24,9 @@ OTP_EXPIRY_SECONDS: int = 600
 OTP_EXPIRY_MINUTES: int = OTP_EXPIRY_SECONDS // 60
 OTP_MAX_ATTEMPTS: int = 5
 OTP_CODE_LENGTH: int = 6
+# OTP 検証時の行ロック（SELECT ... FOR UPDATE）を待つ上限（ミリ秒）。
+# 同じ OTP への並行リクエストがコネクションを握ったまま待ち続け、プールを枯渇させるのを防ぐ
+OTP_LOCK_TIMEOUT_MS: int = 3000
 
 
 # ============================================================================
