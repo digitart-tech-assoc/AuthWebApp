@@ -3,7 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import OTPInput from "@/components/OTPInput";
 import { requestOtp, verifyOtp } from "@/lib/join";
-import styles from "./OTPModal.module.css";
+import { LoaderCircle } from "lucide-react";
+import { btnPrimary, btnSecondary } from "./joinStyles";
+
+const infoText = "my-2 text-sm text-slate-700";
+const spinner = "mr-2 inline size-4 animate-spin align-middle text-slate-500";
 
 type Props = {
   email: string;
@@ -95,62 +99,63 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
   };
 
   return (
-    <div className={styles.backdrop} role="dialog" aria-modal="true">
-      <div className={styles.modal} ref={modalRef} tabIndex={-1} aria-label="メール認証ダイアログ">
-        <div className={styles.header}>
-          <h3 className={styles.title}>メール認証コードの送信</h3>
-          <p className={styles.subtitle}>送信先: {email}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl focus:outline-none" ref={modalRef} tabIndex={-1} aria-label="メール認証ダイアログ">
+        <div className="mb-2">
+          <h3 className="m-0 mb-1 text-lg font-semibold text-slate-900">メール認証コードの送信</h3>
+          <p className="m-0 text-sm text-slate-500">送信先: {email}</p>
         </div>
 
-        <div className={styles.body}>
+        <div className="mt-2">
           {status === null && (
-            <div className={styles.row}>
-              <button onClick={sendOtp} className={`${styles.button} ${styles.primary}`} disabled={isBusy}>送信</button>
-              <button onClick={onClose} className={styles.button}>キャンセル</button>
+            <div className="flex gap-2">
+              <button type="button" onClick={sendOtp} className={btnPrimary} disabled={isBusy}>送信</button>
+              <button type="button" onClick={onClose} className={btnSecondary}>キャンセル</button>
             </div>
           )}
 
-          {status === "sending" && <p className={styles.info}><span className={styles.spinner} aria-hidden></span> 送信中…</p>}
+          {status === "sending" && <p className={infoText}><LoaderCircle className={spinner} aria-hidden="true" /> 送信中…</p>}
 
           {status === "sent" && (
             <div>
-              <p className={styles.info}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
+              <p className={infoText}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
               <OTPInput onComplete={handleComplete} />
-              <div className={styles.row} style={{ marginTop: 12 }}>
-                <button onClick={sendOtp} className={styles.button} disabled={resendSeconds > 0 || isBusy}>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={sendOtp} className={btnSecondary} disabled={resendSeconds > 0 || isBusy}>
                   {resendSeconds > 0 ? `再送 (${resendSeconds}s)` : "再送"}
                 </button>
-                <button onClick={onClose} className={styles.button}>閉じる</button>
+                <button type="button" onClick={onClose} className={btnSecondary}>閉じる</button>
               </div>
             </div>
           )}
 
-          {status === "verifying" && <p className={styles.info}><span className={styles.spinner} aria-hidden></span> 確認中…</p>}
+          {status === "verifying" && <p className={infoText}><LoaderCircle className={spinner} aria-hidden="true" /> 確認中…</p>}
 
           {status === "verified" && (
             <div>
-              <p className={styles.success}>認証に成功しました。</p>
+              <p className="my-1 font-bold text-emerald-700">認証に成功しました。</p>
               {inviteUrl ? (
-                <div className={styles.inviteRow}>
-                  <p className={styles.inviteText}>Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer" className={styles.inviteLink}>{inviteUrl}</a></p>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className="mt-2 flex items-center gap-2">
+                  <p className="m-0 max-w-90 truncate text-sm text-slate-900">Discord招待: <a href={inviteUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline">{inviteUrl}</a></p>
+                  <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => void handleCopy(inviteUrl)}
-                      className={`${styles.button} ${styles.copyButton}`}
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >コピー</button>
-                    {copyStatus ? <span style={{ fontSize: 13, color: '#374151' }}>{copyStatus}</span> : null}
+                    {copyStatus ? <span className="text-sm text-slate-700">{copyStatus}</span> : null}
                   </div>
                 </div>
               ) : (
-                <p className={styles.info}>招待リンクはまもなく届きます。</p>
+                <p className={infoText}>招待リンクはまもなく届きます。</p>
               )}
-              <div style={{ marginTop: 12 }}>
-                <button onClick={onClose} className={styles.button}>閉じる</button>
+              <div className="mt-3">
+                <button type="button" onClick={onClose} className={btnSecondary}>閉じる</button>
               </div>
             </div>
           )}
 
-          {error && <p className={styles.error}>エラー: {error}</p>}
+          {error && <p className="mt-2 text-sm font-semibold text-red-700">エラー: {error}</p>}
         </div>
       </div>
     </div>
