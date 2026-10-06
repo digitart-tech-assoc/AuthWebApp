@@ -31,11 +31,7 @@ async function resolveUserInfoFromBackend(authorization: string): Promise<{ app_
 }
 
 type SearchParamsType = {
-	synced?: string;
-	roles?: string;
-	error?: string;
 	pushed?: string;
-	push_error?: string;
 	updated?: string;
 	created?: string;
 	deleted?: string;
@@ -108,11 +104,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	}
 
 	const params = await Promise.resolve(searchParams);
-	const synced = params?.synced === "1";
-	const hasError = params?.error === "1";
-	const syncedRoles = Number(params?.roles ?? "0");
-	const pushError = params?.push_error === "1";
-	const pushResult = pushError ? null : parsePushResult(params);
+	const pushResult = parsePushResult(params);
 
 	return (
 		<main className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
@@ -121,21 +113,6 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 				<a href="/auth/signout?callbackUrl=%2F" className="text-blue-600 underline hover:text-blue-700">ログアウト</a>
 			</p>
 
-			{synced && !hasError ? (
-				<p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-					同期完了: {syncedRoles} 件のロールを更新しました。
-				</p>
-			) : null}
-			{hasError ? (
-				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-					同期に失敗しました。しばらくしてから再実行してください。
-				</p>
-			) : null}
-			{pushError ? (
-				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-					pushに失敗しました。設定と権限を確認してください。
-				</p>
-			) : null}
 			{accessError ? (
 				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{accessError}</p>
 			) : null}
