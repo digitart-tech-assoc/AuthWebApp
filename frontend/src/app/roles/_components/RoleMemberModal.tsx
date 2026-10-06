@@ -38,7 +38,8 @@ const checkboxClass = "size-4 shrink-0 cursor-pointer accent-blue-600 disabled:c
 const memberNameClass = "min-w-0 flex-1 truncate text-sm font-medium text-slate-700";
 const badgeClass = "shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500";
 const lockedBadgeClass = "shrink-0 rounded-md bg-slate-500 px-1.5 py-0.5 text-xs text-white";
-const emptyClass = "py-6 text-center text-sm text-slate-500";
+// 一覧領域の中央に表示する（モーダルの高さは固定のため、0 件でも領域は縮まない）
+const emptyClass = "flex h-full items-center justify-center py-6 text-center text-sm text-slate-500";
 const footerClass =
   "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4";
 const lockedMsgClass = "inline-flex items-center gap-1 text-xs font-medium text-slate-500";
@@ -129,7 +130,7 @@ export default function RoleMemberModal({
   // ── Screen: 付与相手を選ぶ ──
   if (screen === "grant") {
     return (
-      <ModalFrame onBackdropClick={() => setScreen("list")}>
+      <ModalFrame onBackdropClick={() => setScreen("list")} fixedHeight>
         <div className={headerClass}>
           <span className={modalTitle}>ロールを付与するメンバーを選択</span>
           <button type="button" className={modalCloseBtn} onClick={() => setScreen("list")}>✕</button>
@@ -143,6 +144,9 @@ export default function RoleMemberModal({
           />
         </div>
         <div className={memberListClass}>
+          {filteredAll.length === 0 && (
+            <p className={emptyClass}>該当するメンバーが見つかりません</p>
+          )}
           {filteredAll.map((m) => {
             const alreadyHas = localMemberIds.has(m.user_id);
             const checked = selectedForGrant.has(m.user_id);
@@ -202,7 +206,7 @@ export default function RoleMemberModal({
       );
     });
     return (
-      <ModalFrame onBackdropClick={() => setScreen("list")}>
+      <ModalFrame onBackdropClick={() => setScreen("list")} fixedHeight>
         <div className={headerClass}>
           <span className={modalTitle}>ロールを削除するメンバーを選択</span>
           <button type="button" className={modalCloseBtn} onClick={() => setScreen("list")}>✕</button>
@@ -217,7 +221,9 @@ export default function RoleMemberModal({
         </div>
         <div className={memberListClass}>
           {filteredCurrent.length === 0 && (
-            <p className={emptyClass}>このロールを持つメンバーはいません</p>
+            <p className={emptyClass}>
+              {currentMembers.length === 0 ? "このロールを持つメンバーはいません" : "該当するメンバーが見つかりません"}
+            </p>
           )}
           {filteredCurrent.map((m) => {
             const checked = selectedForRevoke.has(m.user_id);
@@ -266,7 +272,7 @@ export default function RoleMemberModal({
   // ── Screen: メンバー一覧（デフォルト） ──
   const displayName = (m: Member) => m.display_name || m.username;
   return (
-    <ModalFrame onBackdropClick={onClose}>
+    <ModalFrame onBackdropClick={onClose} fixedHeight>
       <div className={headerClass}>
         <div>
           <p className={modalTitle}>{roleName}</p>
