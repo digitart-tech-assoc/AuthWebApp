@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 from enum import Enum, auto
 from typing import Any
 
-from app.core.config import OTP_MAX_ATTEMPTS
-from app.core.exceptions import OTPTooManyAttemptsError, RegistrationNotEligibleError
-from app.db.connection import _connect, _log_db_access
+from psycopg2 import errors as pg_errors
+
+from app.core.config import OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
+from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
+from app.db.connection import _connect, _log_db_access, set_local_lock_timeout
 from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
@@ -218,17 +220,22 @@ def verify_otp_transactional(discord_id: str, code_plain: str) -> OTPVerificatio
 	"""トランザクション内でOTPを取得・ロックし、ハッシュ検証と試行回数更新を行う"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute(
-				"""
-				SELECT id, code, attempt_count, expires_at, verified
-				FROM otp_records
-				WHERE discord_id = %s
-				ORDER BY created_at DESC
-				LIMIT 1
-				FOR UPDATE
-				""",
-				(discord_id,),
-			)
+			# 並行リクエストがロック待ちのままコネクションを握り続けないよう、待ち時間に上限を設ける
+			set_local_lock_timeout(cur, OTP_LOCK_TIMEOUT_MS)
+			try:
+				cur.execute(
+					"""
+					SELECT id, code, attempt_count, expires_at, verified
+					FROM otp_records
+					WHERE discord_id = %s
+					ORDER BY created_at DESC
+					LIMIT 1
+					FOR UPDATE
+					""",
+					(discord_id,),
+				)
+			except pg_errors.LockNotAvailable as e:
+				raise OTPVerificationBusyError("OTP verification is already in progress") from e
 			row = cur.fetchone()
 			if row is None:
 				raise ValueError("No OTP found. Please request a new one.")

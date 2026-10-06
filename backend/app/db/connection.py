@@ -155,6 +155,15 @@ def _connect() -> _PooledConnection:
     return _PooledConnection(_get_pool().connect())
 
 
+def set_local_lock_timeout(cur, timeout_ms: int) -> None:
+    """現在のトランザクション内に限り、行ロックを待つ上限時間を設定する。
+
+    SET LOCAL のため、トランザクションの終了（commit / rollback）で元に戻り、プールの次の借用者には影響しない。
+    上限を超えると psycopg2.errors.LockNotAvailable が送出される。
+    """
+    cur.execute("SET LOCAL lock_timeout = %s", (f"{int(timeout_ms)}ms",))
+
+
 def _should_log_to_stdout() -> bool:
 	"""Return True when the DATABASE_URL appears to target Supabase (so container logs should record requests)."""
 	try:

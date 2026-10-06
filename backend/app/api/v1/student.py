@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
-from app.core.exceptions import OTPTooManyAttemptsError, RegistrationNotEligibleError
+from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
@@ -327,6 +327,8 @@ async def verify_otp(
 		)
 	except OTPTooManyAttemptsError as e:
 		raise HTTPException(status_code=429, detail=str(e))
+	except OTPVerificationBusyError:
+		raise HTTPException(status_code=409, detail="同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。")
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 
