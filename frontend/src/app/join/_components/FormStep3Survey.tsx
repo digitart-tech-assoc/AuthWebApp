@@ -1,9 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import styles from "../join.module.css";
+import { btnPrimary, btnSecondary, card, cardTitle, fieldError } from "./joinStyles";
 
 import type { SurveyAnswers } from "@/types/join";
+
+const sectionClass = "mb-5";
+const qTitle = "mb-1.5 text-base font-semibold text-slate-900";
+const qDesc = "mb-2.5 text-sm text-slate-500";
+const optionList = "mb-2 flex flex-col gap-2 pl-3.5";
+const optionLabel = "flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-slate-50";
+const optionText = "shrink-0 text-sm text-slate-900";
+const optionOtherInline =
+  "ml-2 min-w-40 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20";
 
 interface Props {
   onBack: () => void;
@@ -85,34 +94,34 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
   };
 
   return (
-    <div className={styles.card}>
-      <h2 className={styles.cardTitle}>アンケート</h2>
+    <div className={card}>
+      <h2 className={cardTitle}>アンケート</h2>
 
-      <div style={{ marginTop: 12 }}>
+      <div className="mt-3">
         {/* 1. Digitartの認知経路 */}
-        <section style={{ marginBottom: 20 }}>
-          <h3 className={styles.qTitle}>1. Digitartの認知経路</h3>
-          <p className={styles.qDesc}>Digitartをどのようにして知りましたか？(複数選択可)</p>
-          <div className={styles.optionList}>
+        <section className={sectionClass}>
+          <h3 className={qTitle}>1. Digitartの認知経路</h3>
+          <p className={qDesc}>Digitartをどのようにして知りましたか？(複数選択可)</p>
+          <div className={optionList}>
             {OPTIONS_A.map((opt) => (
-              <label key={opt} className={styles.optionLabel}>
+              <label key={opt} className={optionLabel}>
                 <input
                   type="checkbox"
                   checked={answers.digitart_channels.includes(opt)}
                   onChange={() => toggleMulti("digitart_channels", opt)}
                 />
-                <span className={styles.optionText}>{opt}</span>
+                <span className={optionText}>{opt}</span>
                 {opt === "その他" && (
                   <>
                     <input
                       placeholder="その他を記入"
                       value={answers.digitart_channels_other}
                       onChange={(e) => setAnswers({ ...answers, digitart_channels_other: e.target.value })}
-                      className={styles.optionOtherInline}
+                      className={optionOtherInline}
                       aria-invalid={digitartOtherMissing}
                     />
                     {digitartOtherMissing && (
-                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                      <p className={`${fieldError} mt-1.5`}>「その他」を入力してください</p>
                     )}
                   </>
                 )}
@@ -122,29 +131,29 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
         </section>
 
         {/* 2. サークルの認知経路 */}
-        <section style={{ marginBottom: 20 }}>
-          <h3 className={styles.qTitle}>2. サークルの認知経路</h3>
-          <p className={styles.qDesc}>サークルを探す際になにを使いましたか？(複数選択可)</p>
-          <div className={styles.optionList}>
+        <section className={sectionClass}>
+          <h3 className={qTitle}>2. サークルの認知経路</h3>
+          <p className={qDesc}>サークルを探す際になにを使いましたか？(複数選択可)</p>
+          <div className={optionList}>
             {OPTIONS_A.map((opt) => (
-              <label key={opt + "2"} className={styles.optionLabel}>
+              <label key={opt + "2"} className={optionLabel}>
                 <input
                   type="checkbox"
                   checked={answers.circle_search_channels.includes(opt)}
                   onChange={() => toggleMulti("circle_search_channels", opt)}
                 />
-                <span className={styles.optionText}>{opt}</span>
+                <span className={optionText}>{opt}</span>
                 {opt === "その他" && (
                   <>
                     <input
                       placeholder="その他を記入"
                       value={answers.circle_search_other}
                       onChange={(e) => setAnswers({ ...answers, circle_search_other: e.target.value })}
-                      className={styles.optionOtherInline}
+                      className={optionOtherInline}
                       aria-invalid={circleOtherMissing}
                     />
                     {circleOtherMissing && (
-                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                      <p className={`${fieldError} mt-1.5`}>「その他」を入力してください</p>
                     )}
                   </>
                 )}
@@ -154,30 +163,30 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
         </section>
 
         {/* 3. Discordへの参加経路 */}
-        <section style={{ marginBottom: 20 }}>
-          <h3 className={styles.qTitle}>3. Discordへの参加経路</h3>
-          <p className={styles.qDesc}>Discordサーバーの招待はどこでもらいましたか？</p>
-          <div className={styles.optionList}>
+        <section className={sectionClass}>
+          <h3 className={qTitle}>3. Discordへの参加経路</h3>
+          <p className={qDesc}>Discordサーバーの招待はどこでもらいましたか？</p>
+          <div className={optionList}>
             {OPTIONS_DISCORD.map((opt) => (
-              <label key={opt} className={styles.optionLabel}>
+              <label key={opt} className={optionLabel}>
                 <input
                   type="radio"
                   name="discord_source"
                   checked={answers.discord_invite_source === opt}
                   onChange={() => setAnswers({ ...answers, discord_invite_source: opt })}
                 />
-                <span className={styles.optionText}>{opt}</span>
+                <span className={optionText}>{opt}</span>
                 {opt === "その他" && (
                   <>
                     <input
                       placeholder="その他を記入"
                       value={answers.discord_invite_other}
                       onChange={(e) => setAnswers({ ...answers, discord_invite_other: e.target.value })}
-                      className={styles.optionOtherInline}
+                      className={optionOtherInline}
                       aria-invalid={discordOtherMissing}
                     />
                     {discordOtherMissing && (
-                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                      <p className={`${fieldError} mt-1.5`}>「その他」を入力してください</p>
                     )}
                   </>
                 )}
@@ -187,29 +196,29 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
         </section>
 
         {/* 4. 希望する活動分野 */}
-        <section style={{ marginBottom: 20 }}>
-          <h3 className={styles.qTitle}>4. 希望する活動分野</h3>
-          <p className={styles.qDesc}>主に興味のある活動分野はなんですか？(複数選択可)</p>
-          <div className={styles.optionList}>
+        <section className={sectionClass}>
+          <h3 className={qTitle}>4. 希望する活動分野</h3>
+          <p className={qDesc}>主に興味のある活動分野はなんですか？(複数選択可)</p>
+          <div className={optionList}>
             {OPTIONS_FIELDS.map((opt) => (
-              <label key={opt} className={styles.optionLabel}>
+              <label key={opt} className={optionLabel}>
                 <input
                   type="checkbox"
                   checked={answers.interested_fields.includes(opt)}
                   onChange={() => toggleMulti("interested_fields", opt)}
                 />
-                <span className={styles.optionText}>{opt}</span>
+                <span className={optionText}>{opt}</span>
                 {opt === "その他" && (
                   <>
                     <input
                       placeholder="その他を記入"
                       value={answers.interested_fields_other}
                       onChange={(e) => setAnswers({ ...answers, interested_fields_other: e.target.value })}
-                      className={styles.optionOtherInline}
+                      className={optionOtherInline}
                       aria-invalid={fieldsOtherMissing}
                     />
                     {fieldsOtherMissing && (
-                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                      <p className={`${fieldError} mt-1.5`}>「その他」を入力してください</p>
                     )}
                   </>
                 )}
@@ -219,29 +228,29 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
         </section>
 
         {/* 5. 活動目的 */}
-        <section style={{ marginBottom: 20 }}>
-          <h3 className={styles.qTitle}>5. 活動目的</h3>
-          <p className={styles.qDesc}>当サークルに参加する主な目的は何ですか？(複数選択可)</p>
-          <div className={styles.optionList}>
+        <section className={sectionClass}>
+          <h3 className={qTitle}>5. 活動目的</h3>
+          <p className={qDesc}>当サークルに参加する主な目的は何ですか？(複数選択可)</p>
+          <div className={optionList}>
             {OPTIONS_MOTIVATION.map((opt) => (
-              <label key={opt} className={styles.optionLabel}>
+              <label key={opt} className={optionLabel}>
                 <input
                   type="checkbox"
                   checked={answers.motivations.includes(opt)}
                   onChange={() => toggleMulti("motivations", opt)}
                 />
-                <span className={styles.optionText}>{opt}</span>
+                <span className={optionText}>{opt}</span>
                 {opt === "その他" && (
                   <>
                     <input
                       placeholder="その他を記入"
                       value={answers.motivations_other}
                       onChange={(e) => setAnswers({ ...answers, motivations_other: e.target.value })}
-                      className={styles.optionOtherInline}
+                      className={optionOtherInline}
                       aria-invalid={motivationsOtherMissing}
                     />
                     {motivationsOtherMissing && (
-                      <p className={styles.errorText} style={{ marginTop: 6 }}>「その他」を入力してください</p>
+                      <p className={`${fieldError} mt-1.5`}>「その他」を入力してください</p>
                     )}
                   </>
                 )}
@@ -250,13 +259,13 @@ export default function FormStep3Survey({ onBack, onComplete }: Props) {
           </div>
         </section>
 
-        <div className={styles.surveyFooter}>
-          <button onClick={onBack} className={styles.secondary} style={{ padding: "10px 18px" }}>← 戻る</button>
+        <div className="mt-5 flex justify-between gap-3 border-t border-slate-200 pt-3">
+          <button type="button" onClick={onBack} className={btnSecondary}>← 戻る</button>
 
           <button
+            type="button"
             onClick={handleNext}
-            className={styles.primary}
-            style={{ padding: "10px 18px" }}
+            className={btnPrimary}
             disabled={hasOtherErrors}
           >
             次へ
