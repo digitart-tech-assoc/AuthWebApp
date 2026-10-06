@@ -280,7 +280,9 @@ async def send_otp(
 	# OTP レコードを DB に保存（bcrypt ハッシュ化: CPU-bound 処理を別スレッドにオフロード）
 	otp_id = f"otp_{uuid.uuid4().hex[:12]}"
 	code_hash = await asyncio.to_thread(hash_otp_code, otp_code)
-	student_repository.create_otp_record(otp_id, discord_id, email_aoyama, code_hash, otp_expires_at)
+	await asyncio.to_thread(
+		student_repository.create_otp_record, otp_id, discord_id, email_aoyama, code_hash, otp_expires_at
+	)
 
 	# メール送信
 	try:
@@ -344,12 +346,12 @@ async def verify_otp(
 		if member_role_id:
 			# MEMBER_ROLE_IDS が複数存在する場合は最初の1つを使用
 			member_role_id = member_role_id.split(",")[0].strip()
-			add_user_to_role(discord_id, member_role_id)
+			await asyncio.to_thread(add_user_to_role, discord_id, member_role_id)
 			logger.info("Added user %s to member role %s", discord_id, member_role_id)
 
 		pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "")
 		if pre_member_role_id:
-			remove_user_from_role(discord_id, pre_member_role_id)
+			await asyncio.to_thread(remove_user_from_role, discord_id, pre_member_role_id)
 			logger.info("Removed user %s from pre-member role %s", discord_id, pre_member_role_id)
 	except Exception as e:
 		logger.error("Failed to update role_member_assignments for user %s: %s", discord_id, str(e))
@@ -379,7 +381,7 @@ async def create_student_profile(
 
 	if not is_registered:
 		await _ensure_registration_eligible(discord_id)
-		verified_otp = student_repository.get_latest_verified_otp(discord_id)
+		verified_otp = await asyncio.to_thread(student_repository.get_latest_verified_otp, discord_id)
 		if verified_otp is None or not verified_otp["verified"]:
 			raise HTTPException(status_code=400, detail="OTP verification required")
 
@@ -390,7 +392,8 @@ async def create_student_profile(
 
 	# 資格確認後に失効・削除された場合に備え、本会員化と同一トランザクションで再検証する
 	try:
-		profile_id = student_repository.upsert_student_profile_and_promote(
+		profile_id = await asyncio.to_thread(
+			student_repository.upsert_student_profile_and_promote,
 			profile_id=f"prof_{uuid.uuid4().hex[:12]}",
 			discord_id=discord_id,
 			student_number=req.student_number,
