@@ -50,7 +50,7 @@ async def submit_survey(req: SurveyRequest, principal: dict = Depends(get_curren
     profile_id = profile.get("id") if profile else None
     student_number = profile.get("student_number") if profile else ""
 
-    payload = req.dict()
+    payload = req.model_dump()
 
     try:
         result = repository.save_member_survey_response(profile_id, student_number or "", req.join_request_id, payload)
