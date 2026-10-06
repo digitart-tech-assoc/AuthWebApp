@@ -105,8 +105,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	return (
 		<main className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
 			<p className="mb-3 text-sm text-slate-500">
-				サインイン中: {displayName}（ロール: {role}） {" "}
-				<a href="/auth/signout?callbackUrl=%2F" className="text-blue-600 underline hover:text-blue-700">ログアウト</a>
+				サインイン中: {displayName}（ロール: {role}）
 			</p>
 
 			{synced && !hasError ? (
