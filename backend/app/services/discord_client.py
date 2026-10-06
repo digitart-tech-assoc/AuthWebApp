@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
+# Bot 自身のユーザー ID はプロセス稼働中に変わらないため、トークンごとに初回取得後はメモリに保持する
+_bot_user_id_cache: dict[str, str] = {}
+
 
 def _int_color_to_hex(color: int) -> str:
 	return f"#{color:06x}"
@@ -25,17 +28,27 @@ def _hex_color_to_int(color: str) -> int:
 	return int(value, 16)
 
 
+async def _get_bot_user_id(client: httpx.AsyncClient, token: str, headers: dict[str, str]) -> str:
+	"""Bot 自身のユーザー ID を返す。2 回目以降はキャッシュを使い GET /users/@me を呼ばない。"""
+	cached = _bot_user_id_cache.get(token)
+	if cached is not None:
+		return cached
+	try:
+		me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
+		me_resp.raise_for_status()
+		bot_id = me_resp.json()["id"]
+	except httpx.HTTPStatusError as e:
+		raise Exception(f"Failed to get bot user info: {e.response.status_code} {e}") from e
+	_bot_user_id_cache[token] = bot_id
+	return bot_id
+
+
 async def fetch_guild_roles(guild_id: str, token: str) -> list[dict]:
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
 	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
 		# Get the bot's own user ID to identify our bot role
-		try:
-			me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
-			me_resp.raise_for_status()
-			bot_id = me_resp.json()["id"]
-		except httpx.HTTPStatusError as e:
-			raise Exception(f"Failed to get bot user info: {e.response.status_code} {e}") from e
+		bot_id = await _get_bot_user_id(client, token, headers)
 
 		try:
 			response = await client.get(url, headers=headers)
