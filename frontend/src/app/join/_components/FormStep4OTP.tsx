@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/studentRegistration";
 import OTPInput from "@/components/OTPInput";
-import styles from "../join.module.css";
+import { alertError, btnPrimary, btnSecondary, card, cardTitle, fieldLabel } from "./joinStyles";
 import type { StudentProfileInput } from "@/types/join";
 
 interface FormStep4Props {
@@ -74,44 +74,31 @@ export default function FormStep4OTP({
   };
 
   return (
-    <div className={styles.card}>
-      <h2 className={styles.cardTitle}>メール認証（OTP）</h2>
+    <div className={card}>
+      <h2 className={cardTitle}>メール認証（OTP）</h2>
 
-      <div style={{ marginTop: "16px" }}>
+      <div className="mt-4">
         {!otpSent ? (
           <div>
-            <p style={{ marginBottom: "16px", color: "#64748b" }}>
+            <p className="mb-4 text-sm leading-relaxed text-slate-500">
               登録した青山学院大学のメールアドレスに確認コードを送信します。
             </p>
 
-            <button
-              onClick={handleSendOTP}
-              disabled={loading}
-              style={{
-                padding: "12px 24px",
-                background: loading ? "#cbd5e1" : "#3b82f6",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontSize: "16px",
-                fontWeight: "600",
-              }}
-            >
+            <button type="button" onClick={handleSendOTP} disabled={loading} className={btnPrimary}>
               {loading ? "送信中..." : "確認コードを送信"}
             </button>
           </div>
         ) : (
           <div>
-            <p style={{ marginBottom: "8px", fontWeight: "600" }}>
+            <p className="mb-2 text-sm font-semibold text-slate-900">
               確認コードを {emailAoyama} に送信しました
             </p>
-            <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "16px" }}>
+            <p className="mb-4 text-xs text-slate-500">
               有効期限: {expiresIn ? `${Math.floor(expiresIn / 60)} 分` : "10 分"}
             </p>
 
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>
+            <div className="mb-4">
+              <label className={fieldLabel}>
                 確認コード (6桁)
               </label>
               <OTPInput
@@ -121,40 +108,24 @@ export default function FormStep4OTP({
               />
             </div>
 
-            <div style={{ display: "flex", gap: "12px", justifyContent: "space-between" }}>
+            <div className="flex justify-between gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setOtpCode("");
                   setOtpSent(false);
                 }}
                 disabled={submitting || resendCountdown > 0}
-                style={{
-                  padding: "12px 24px",
-                  background: submitting || resendCountdown > 0 ? "#cbd5e1" : "#e5e7eb",
-                  color: "#1f2937",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: submitting || resendCountdown > 0 ? "not-allowed" : "pointer",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                }}
+                className={btnSecondary}
               >
                 {resendCountdown > 0 ? `再送信 (${resendCountdown}s)` : "コードを再送信"}
               </button>
 
               <button
+                type="button"
                 onClick={handleVerifyOTP}
                 disabled={submitting || otpCode.length !== 6}
-                style={{
-                  padding: "12px 24px",
-                  background: submitting || otpCode.length !== 6 ? "#cbd5e1" : "#3b82f6",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: submitting || otpCode.length !== 6 ? "not-allowed" : "pointer",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                }}
+                className={btnPrimary}
               >
                 {submitting ? "検証中..." : "認証 →"}
               </button>
@@ -163,36 +134,14 @@ export default function FormStep4OTP({
         )}
 
         {error && (
-          <div
-            style={{
-              marginTop: "16px",
-              padding: "12px",
-              background: "#fee2e2",
-              color: "#dc2626",
-              borderRadius: "6px",
-              fontSize: "14px",
-            }}
-          >
+          <div className={`${alertError} mt-4`}>
             {error}
           </div>
         )}
       </div>
 
-      <div style={{ marginTop: "24px", borderTop: "1px solid #e5e7eb", paddingTop: "16px" }}>
-        <button
-          onClick={onBack}
-          disabled={submitting}
-          style={{
-            padding: "12px 24px",
-            background: submitting ? "#cbd5e1" : "#e5e7eb",
-            color: "#1f2937",
-            border: "none",
-            borderRadius: "6px",
-            cursor: submitting ? "not-allowed" : "pointer",
-            fontSize: "16px",
-            fontWeight: "600",
-          }}
-        >
+      <div className="mt-6 border-t border-slate-200 pt-4">
+        <button type="button" onClick={onBack} disabled={submitting} className={btnSecondary}>
           ← 戻る
         </button>
       </div>
