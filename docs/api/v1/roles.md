@@ -113,6 +113,11 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 - `502 Bad Gateway`:
   - Discord API との通信エラー。
 
+### Discord API の呼び出し
+- 検証用のロール一覧（`GET /guilds/{guild_id}/roles`）と、対象メンバーの現在のロール（`GET /guilds/{guild_id}/members/{user_id}`）は互いに依存しないため、並列に取得します。その後、ロールを一括更新（`PATCH /guilds/{guild_id}/members/{user_id}`）します。
+- Bot 自身のユーザー ID（`GET /users/@me`、Bot ロールの判定に使う）は、プロセスの稼働中に初回だけ取得し、以降はメモリ上のキャッシュを使います。
+- 並列に取得しても、エラーの判定順は「ロール一覧の取得失敗（502）→ 上記の 403 / 404 の検証 → メンバー情報の取得失敗（502）」のままです。
+
 ---
 
 ## GET `/api/v1/roles/lists`
