@@ -518,6 +518,16 @@ class SelfBatchPayload(BaseModel):
 	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
+def _unwrap_discord_fetch(result: object, label: str):
+	"""asyncio.gather(return_exceptions=True) の結果を取り出す。Discord API の失敗は 502 に変換する。"""
+	if isinstance(result, Exception):
+		raise HTTPException(status_code=502, detail=f"Discord API error ({label}): {result}") from result
+	if isinstance(result, BaseException):
+		# キャンセル等は握りつぶさずそのまま送出する
+		raise result
+	return result
+
+
 @router.post("/self-batch")
 async def self_batch_roles(
 	payload: SelfBatchPayload,
@@ -584,10 +594,13 @@ async def self_batch_roles(
 			)
 
 	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
-	try:
-		discord_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error (fetch roles): {exc}") from exc
+	# ロール一覧と対象メンバーの現在のロールは互いに依存しないため、並列に取得して待ち時間を減らす。
+	roles_result, member_result = await asyncio.gather(
+		fetch_guild_roles(DISCORD_GUILD_ID, token),
+		fetch_guild_member(DISCORD_GUILD_ID, discord_id, token),
+		return_exceptions=True,
+	)
+	discord_roles = _unwrap_discord_fetch(roles_result, "fetch roles")
 
 	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
 	bot_role = next((role for role in discord_roles if role.get("is_our_bot")), None)
@@ -601,11 +614,8 @@ async def self_batch_roles(
 		if bot_role and discord_role.get("position", 0) >= bot_role.get("position", 0):
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
 
-	# --- 2. 現在のメンバーロール取得 ---
-	try:
-		member_info = await fetch_guild_member(DISCORD_GUILD_ID, discord_id, token)
-	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error (fetch member): {exc}") from exc
+	# --- 2. 現在のメンバーロール取得（上で並列に取得済み。取得に失敗していても、検証で拒否した場合はそちらのエラーを優先する） ---
+	member_info = _unwrap_discord_fetch(member_result, "fetch member")
 
 	if member_info is None:
 		raise HTTPException(status_code=404, detail="ギルドメンバーが見つかりません。Discordサーバーに参加しているか確認してください。")
