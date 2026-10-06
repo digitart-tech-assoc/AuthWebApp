@@ -3,7 +3,7 @@
 import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { fetchManifest } from "@/actions/manifest";
-import RoleAccordion from "./_components/RoleAccordion";
+import RoleAccordion, { type PushResult } from "./_components/RoleAccordion";
 import MemberSelfView from "./_components/MemberSelfView";
 import { redirect } from "next/navigation";
 
@@ -45,6 +45,22 @@ type SearchParamsType = {
 type RolesPageProps = {
 	searchParams?: SearchParamsType | Promise<SearchParamsType>;
 };
+
+function toCount(value: string | undefined): number {
+	const n = Number(value ?? "0");
+	return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Discord 送信後のリロード（RoleAccordion の executeSave）で付与されたクエリパラメータから結果を読む */
+function parsePushResult(params: SearchParamsType | undefined): PushResult | null {
+	if (params?.pushed !== "1") return null;
+	return {
+		updated: toCount(params.updated),
+		created: toCount(params.created),
+		deleted: toCount(params.deleted),
+		reordered: toCount(params.reordered),
+	};
+}
 
 export default async function RolesPage({ searchParams }: RolesPageProps) {
 	const supabase = await createSupabaseServer();
@@ -95,12 +111,8 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	const synced = params?.synced === "1";
 	const hasError = params?.error === "1";
 	const syncedRoles = Number(params?.roles ?? "0");
-	const pushed = params?.pushed === "1";
 	const pushError = params?.push_error === "1";
-	const updated = Number(params?.updated ?? "0");
-	const created = Number(params?.created ?? "0");
-	const deleted = Number(params?.deleted ?? "0");
-	const reordered = Number(params?.reordered ?? "0");
+	const pushResult = pushError ? null : parsePushResult(params);
 
 	return (
 		<main className="mx-auto w-full max-w-5xl px-4 py-8 sm:py-12">
@@ -117,12 +129,6 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 			{hasError ? (
 				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
 					同期に失敗しました。しばらくしてから再実行してください。
-				</p>
-			) : null}
-			{pushed && !pushError ? (
-				<p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-					push完了: updated={updated}, created={created}, deleted={deleted},
-					reordered={reordered}
 				</p>
 			) : null}
 			{pushError ? (
@@ -148,6 +154,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 					roles={manifest.roles}
 					accessRole={role}
 					myDiscordId={myDiscordId}
+					pushResult={pushResult}
 				/>
 			)}
 		</main>
