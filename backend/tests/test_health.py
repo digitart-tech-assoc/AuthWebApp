@@ -22,6 +22,12 @@ def client():
 	return TestClient(main.app)
 
 
+@pytest.fixture(autouse=True)
+def reset_health_db_task(monkeypatch):
+	# 実行中の疎通確認はモジュール変数で共有するため、テスト間（イベントループ間）で持ち越さない
+	monkeypatch.setattr(main, "_health_db_task", None)
+
+
 def test_health_returns_ok_without_db(client, monkeypatch):
 	monkeypatch.setattr(main, "ping_database", MagicMock(side_effect=AssertionError("must not touch DB")))
 
@@ -63,6 +69,35 @@ def test_health_db_returns_503_on_timeout(client, monkeypatch):
 
 	assert response.status_code == 503
 	assert response.json()["database"] == "disconnected"
+
+
+@pytest.mark.asyncio
+async def test_health_db_does_not_stack_threads_after_timeout(monkeypatch):
+	"""タイムアウト後も疎通確認のスレッドは止まらないため、完了するまで新しいスレッドを起動しない。"""
+	monkeypatch.setattr(main, "HEALTH_DB_TIMEOUT_SECONDS", 0.05)
+	release = threading.Event()
+	calls = []
+
+	def slow_ping():
+		calls.append(threading.get_ident())
+		release.wait(5)
+
+	monkeypatch.setattr(main, "ping_database", slow_ping)
+
+	first = await main.health_db()
+	second = await main.health_db()
+
+	assert first.status_code == 503
+	assert second.status_code == 503
+	assert len(calls) == 1
+
+	# 実行中の疎通確認が終われば、次のリクエストで新しく確認を行う
+	release.set()
+	await main._health_db_task
+	third = await main.health_db()
+
+	assert third.status_code == 200
+	assert len(calls) == 2
 
 
 class TestPingDatabase:
