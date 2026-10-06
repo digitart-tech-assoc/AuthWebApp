@@ -18,12 +18,8 @@ export interface ContactResponse {
 }
 
 export async function submitContact(payload: ContactPayload): Promise<ContactResponse> {
-	console.log("[Contact] Submitting contact form:", JSON.stringify(payload, null, 2));
-	
 	try {
 		const url = "/api/v1/contact/submit";
-		console.log("[Contact] Fetching from:", url);
-		
 		const res = await fetchBackend(url, {
 			method: "POST",
 			headers: {
@@ -31,9 +27,6 @@ export async function submitContact(payload: ContactPayload): Promise<ContactRes
 			},
 			body: JSON.stringify(payload),
 		});
-
-		console.log("[Contact] Response status:", res.status);
-		console.log("[Contact] Response headers:", Object.fromEntries(res.headers));
 
 		if (!res.ok) {
 			const errorData = await res.json().catch(() => ({}));
@@ -43,7 +36,6 @@ export async function submitContact(payload: ContactPayload): Promise<ContactRes
 		}
 
 		const data = (await res.json()) as ContactResponse;
-		console.log("[Contact] Success response:", data);
 		return data;
 	} catch (error) {
 		const errorMsg = error instanceof Error ? error.message : String(error);

@@ -62,7 +62,6 @@ export default function ContactPage() {
 
   async function handleSubmit() {
     if (submittingRef.current) return;
-    console.log("contact 送信ボタン押下");
     setFormError(null);
     setFormSuccess(null);
     setEmailTouched(true);
@@ -89,16 +88,14 @@ export default function ContactPage() {
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const result = await submitContact({
+      await submitContact({
         email,
         name: name.trim(),
         subject: subject.trim() || null,
         affiliation: affiliation.trim() || null,
         message: message.trim() || null,
       });
-      
-      console.log("contact submitted successfully:", result);
-      
+
       // フォームをリセット
       setEmail("");
       setConfirmEmail("");
