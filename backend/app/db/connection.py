@@ -155,6 +155,14 @@ def _connect() -> _PooledConnection:
     return _PooledConnection(_get_pool().connect())
 
 
+def ping_database() -> None:
+    """DB へ疎通確認クエリ（SELECT 1）を実行する。接続・実行に失敗した場合は例外を送出する。"""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+
+
 def _should_log_to_stdout() -> bool:
 	"""Return True when the DATABASE_URL appears to target Supabase (so container logs should record requests)."""
 	try:
