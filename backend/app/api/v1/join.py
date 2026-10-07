@@ -149,8 +149,8 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 		)
 	except OTPTooManyAttemptsError as e:
 		raise HTTPException(status_code=429, detail=str(e))
-	except OTPVerificationBusyError:
-		raise HTTPException(status_code=409, detail="同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。")
+	except OTPVerificationBusyError as e:
+		raise HTTPException(status_code=409, detail=str(e))
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 

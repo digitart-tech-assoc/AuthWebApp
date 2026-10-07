@@ -15,6 +15,9 @@ from app.core.exceptions import OTPVerificationBusyError
 from app.db import otp_repository, student_repository
 
 
+BUSY_MESSAGE = "同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。"
+
+
 class _FakeCursor:
 	def __init__(self, conn):
 		self._conn = conn
@@ -88,16 +91,18 @@ def test_raises_busy_error_when_lock_wait_times_out(monkeypatch, module, verify)
 	conn = _FakeConnection(lock_error=pg_errors.LockNotAvailable("canceling statement due to lock timeout"))
 	monkeypatch.setattr(module, "_connect", lambda: conn)
 
-	with pytest.raises(OTPVerificationBusyError):
+	with pytest.raises(OTPVerificationBusyError) as error:
 		verify()
 
+	# 利用者向けの文言は例外クラスの既定メッセージを使う
+	assert str(error.value) == BUSY_MESSAGE
 	assert conn.rolled_back is True
 
 
 @pytest.mark.asyncio
 async def test_join_verify_returns_409_when_busy(monkeypatch):
 	def busy(**kwargs):
-		raise OTPVerificationBusyError("busy")
+		raise OTPVerificationBusyError()
 
 	monkeypatch.setattr(join_api.repository, "verify_otp", busy)
 
@@ -105,6 +110,7 @@ async def test_join_verify_returns_409_when_busy(monkeypatch):
 		await join_api.verify_otp(join_api.JoinVerifyRequest(join_request_id="request-id", otp_code="000000"))
 
 	assert error.value.status_code == 409
+	assert error.value.detail == BUSY_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -113,7 +119,7 @@ async def test_student_verify_returns_409_when_busy(monkeypatch):
 	monkeypatch.setattr(student_api, "_is_paid_invitation", lambda discord_id: True)
 
 	def busy(discord_id, code):
-		raise OTPVerificationBusyError("busy")
+		raise OTPVerificationBusyError()
 
 	monkeypatch.setattr(student_api.student_repository, "verify_otp_transactional", busy)
 
@@ -124,3 +130,4 @@ async def test_student_verify_returns_409_when_busy(monkeypatch):
 		)
 
 	assert error.value.status_code == 409
+	assert error.value.detail == BUSY_MESSAGE

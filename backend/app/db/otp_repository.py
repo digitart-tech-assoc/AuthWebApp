@@ -7,11 +7,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from psycopg2 import errors as pg_errors
-
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError
-from app.db.connection import _connect, _log_db_access, set_local_lock_timeout
+from app.db.connection import _connect, _log_db_access, limit_lock_wait
 from app.utils.otp import verify_otp_code
 
 
@@ -165,8 +163,7 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 			_log_db_access("verify_otp_attempt", {"join_request_id": join_request_id, "code_preview": (code_plain[:2] + "****") if code_plain else ""})
 			# Get latest unverified OTP for this join request with FOR UPDATE to prevent race conditions
 			# 並行リクエストがロック待ちのままコネクションを握り続けないよう、待ち時間に上限を設ける
-			set_local_lock_timeout(cur, OTP_LOCK_TIMEOUT_MS)
-			try:
+			with limit_lock_wait(cur, OTP_LOCK_TIMEOUT_MS, OTPVerificationBusyError):
 				cur.execute(
 					"""
 					SELECT id, code_hash, expires_at, attempt_count, verified_at
@@ -178,8 +175,6 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 					""",
 					(join_request_id,),
 				)
-			except pg_errors.LockNotAvailable as e:
-				raise OTPVerificationBusyError("OTP verification is already in progress") from e
 			row = cur.fetchone()
 			if row is None:
 				raise ValueError("No active OTP found")
