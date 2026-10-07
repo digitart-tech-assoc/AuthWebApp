@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/*
+ * ダークモードには対応しない（styling-guide.md 1. 原則 参照）。
+ * Tailwind 標準の dark: は OS / ブラウザの prefers-color-scheme に反応するため、
+ * .dark クラス配下でのみ有効になるよう上書きし、ブラウザの設定で配色が変わらないようにする。
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f4f5f7;
   --foreground: #1a1d23;
