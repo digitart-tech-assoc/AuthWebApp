@@ -82,7 +82,8 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 
 	try:
 		# Join request 作成
-		join_request = repository.create_join_request(
+		join_request = await asyncio.to_thread(
+			repository.create_join_request,
 			email=req.email,
 			name=req.name,
 			form_type=req.form_type,
@@ -94,10 +95,11 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 	try:
 		# OTP コード生成＆ハッシュ化
 		otp_code = generate_otp_code()
-		code_hash = hash_otp_code(otp_code)
+		code_hash = await asyncio.to_thread(hash_otp_code, otp_code)
 
 		# OTP コード保存
-		repository.create_otp_code(
+		await asyncio.to_thread(
+			repository.create_otp_code,
 			join_request_id=join_request["id"],
 			code_hash=code_hash,
 			expires_in_minutes=15,
@@ -171,7 +173,7 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 	if discord_invite_url:
 		try:
 			brevo = BrevoClient()
-			join_req = repository.get_join_request(req.join_request_id)
+			join_req = await asyncio.to_thread(repository.get_join_request, req.join_request_id)
 			if join_req:
 				email = join_req.get("email")
 				name = join_req.get("name")
