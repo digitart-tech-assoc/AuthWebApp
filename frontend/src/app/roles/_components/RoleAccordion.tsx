@@ -30,11 +30,20 @@ import {
 } from "./roleStyles";
 import type { Category, Role, Member } from "@/types/roles";
 
+/** Discord 送信（push）の結果件数。送信後のリロードでクエリパラメータから復元する */
+export type PushResult = {
+  updated: number;
+  created: number;
+  deleted: number;
+  reordered: number;
+};
+
 type Props = {
   categories: Category[];
   roles: Role[];
   accessRole: string;
   myDiscordId?: string | null;
+  pushResult?: PushResult | null;
 };
 
 type Status = {
@@ -44,9 +53,21 @@ type Status = {
 
 import { ChevronRight } from "lucide-react";
 
+/** push 結果を利用者向けの文言にする。0 件の項目は省く */
+function formatPushResultMessage({ updated, created, deleted, reordered }: PushResult): string {
+  const counts: [string, number][] = [
+    ["更新", updated],
+    ["作成", created],
+    ["削除", deleted],
+    ["並び替え", reordered],
+  ];
+  const details = counts.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n} 件`);
+  return details.length > 0 ? `Discord に反映しました（${details.join("・")}）` : "Discord に反映しました";
+}
+
 // ===== Component =====
 
-export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole, myDiscordId = null }: Props) {
+export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole, myDiscordId = null, pushResult = null }: Props) {
   const [query, setQuery] = useState("");
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
@@ -115,13 +136,20 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     [localCategories]
   );
 
-  function showStatus(s: Status, durationMs = 5000) {
+  const showStatus = useCallback((s: Status, durationMs = 5000) => {
     setStatus(s);
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     if (durationMs > 0) {
       statusTimerRef.current = setTimeout(() => setStatus(null), durationMs);
     }
-  }
+  }, []);
+
+  // Discord 送信後のリロードで渡された結果を表示し、再読み込みで再表示されないよう URL からクエリパラメータを消す
+  useEffect(() => {
+    if (!pushResult) return;
+    showStatus({ kind: "success", msg: formatPushResultMessage(pushResult) });
+    window.history.replaceState(null, "", "/roles");
+  }, [pushResult, showStatus]);
 
   useEffect(() => {
     const sortedRoles = initRoles.slice().sort((a, b) => b.position - a.position);
