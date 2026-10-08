@@ -2,6 +2,7 @@
 
 - 差分が 1 件だけのメンバーは、ほかのロールに触れない PUT / DELETE で反映する
 - 差分が 2 件以上のメンバーは、メンバーの現在のロールを取り直してから set_member_roles（PATCH）1 回で反映する
+- 反映の直前にメンバーの DB の割り当てを読み直し、push 開始後に変わった割り当てを元に反映する
 - push 開始時のメンバー情報より後に付与・解除されたロールを、PATCH で巻き戻さない
 - 差分の対象外のロール（DB 未登録・managed・Bot より上）は現在の状態のまま残る
 - 404 はスキップする。403 とその他の失敗は errors に記録して次のメンバーを処理する（403 の記録には Discord ID を含めない）
@@ -46,6 +47,7 @@ def run_diffs():
 	"""DB の割り当てと Discord のメンバー状態を与えて _apply_role_assignment_diffs を実行する。
 
 	latest_members を渡すと、PATCH 直前に取り直したメンバーの状態として返す（省略時は current_members と同じ）。
+	latest_assignments を渡すと、反映直前に読み直す DB の割り当てとして返す（省略時は desired_assignments と同じ）。
 	"""
 
 	async def _run(
@@ -53,6 +55,7 @@ def run_diffs():
 		current_members: list[dict],
 		*,
 		latest_members: dict[str, dict | None] | None = None,
+		latest_assignments: dict | None = None,
 		set_side_effect=None,
 		add_side_effect=None,
 		deleted_role_ids=None,
@@ -65,8 +68,14 @@ def run_diffs():
 		async def _fetch_member(_guild_id, user_id, _token, client=None):
 			return latest.get(user_id)
 
+		db_assignments = desired_assignments if latest_assignments is None else latest_assignments
+
+		def _fetch_assignments_for_user(user_id):
+			return {rid: [user_id] for rid, users in db_assignments.items() if user_id in users}
+
 		with patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \
 			patch.object(roles_api, "fetch_role_assignments", return_value=desired_assignments), \
+			patch.object(roles_api, "fetch_role_assignments_for_user", side_effect=_fetch_assignments_for_user), \
 			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, return_value=current_members), \
 			patch.object(
 				roles_api, "fetch_guild_roles", new_callable=AsyncMock,
@@ -167,6 +176,60 @@ class TestApplyRoleAssignmentDiffs:
 
 		run.set.assert_not_awaited()
 		assert run.result == (0, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_patch_keeps_role_assigned_in_db_after_push_started(self, run_diffs):
+		desired = {"role-a": ["user-1"], "role-b": ["user-1"]}
+		members = [_member("user-1", [])]
+		# push 開始後に、メンバーが self-batch で role-c を追加した（DB と Discord の両方に反映済み）
+		latest_db = {"role-a": ["user-1"], "role-b": ["user-1"], "role-c": ["user-1"]}
+		latest = {"user-1": _member("user-1", ["role-c"])}
+
+		run = await run_diffs(desired, members, latest_members=latest, latest_assignments=latest_db)
+
+		# 開始時の DB の割り当てを元に role-c を外さない
+		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b", "role-c"}}
+		assert run.result == (2, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_patch_does_not_restore_role_unassigned_in_db_after_push_started(self, run_diffs):
+		desired = {"role-a": ["user-1"], "role-b": ["user-1"], "role-c": ["user-1"]}
+		members = [_member("user-1", [])]
+		# push 開始後に、メンバーが self-batch で role-c を外した
+		latest_db = {"role-a": ["user-1"], "role-b": ["user-1"]}
+
+		run = await run_diffs(desired, members, latest_assignments=latest_db)
+
+		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b"}}
+		assert run.result == (2, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_single_diff_cancelled_in_db_after_push_started_is_not_sent(self, run_diffs):
+		desired = {"role-a": ["user-1"]}
+		members = [_member("user-1", ["role-b"])]
+		# push 開始後に、role-a の割り当てを外し role-b を割り当てた（Discord の現在の状態と一致する）
+		latest_db = {"role-b": ["user-1"]}
+
+		run = await run_diffs(desired, members, latest_assignments=latest_db)
+
+		run.add.assert_not_awaited()
+		run.remove.assert_not_awaited()
+		run.fetch.assert_not_awaited()
+		run.set.assert_not_awaited()
+		assert run.result == (0, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_single_diff_grown_in_db_after_push_started_uses_patch(self, run_diffs):
+		desired = {"role-a": ["user-1"], "role-b": ["user-2"]}
+		members = [_member("user-1", []), _member("user-2", ["role-b"])]
+		# push 開始後に、user-1 に role-b も割り当てた
+		latest_db = {"role-a": ["user-1"], "role-b": ["user-1", "user-2"]}
+
+		run = await run_diffs(desired, members, latest_assignments=latest_db)
+
+		run.add.assert_not_awaited()
+		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b"}}
+		assert run.result == (2, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_unmanageable_and_deleted_roles_are_excluded_from_diff(self, run_diffs):
