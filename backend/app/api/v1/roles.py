@@ -37,6 +37,7 @@ from app.db.repository import (
 )
 from app.services.discord_client import (
 	DiscordAPIError,
+	add_role_to_member,
 	build_role_create_payload,
 	build_role_edit_payload,
 	create_guild_role,
@@ -47,6 +48,7 @@ from app.services.discord_client import (
 	fetch_guild_member,
 	fetch_guild_members_with_role,
 	fetch_guild_roles,
+	remove_role_from_member,
 	reorder_guild_roles,
 	set_member_roles,
 )
@@ -252,9 +254,9 @@ async def _apply_role_assignment_diffs(
 ) -> tuple[int, int, list[str]]:
 	"""メンバーロール割り当ての差分適用
 
-	差分はメンバー単位にまとめ、1 メンバーにつき 1 回の PATCH /guilds/{guild_id}/members/{user_id}
-	（set_member_roles）で反映する。PATCH はロール一覧を丸ごと上書きするため、Discord 上の現在のロールを
-	元に設定後の一覧を組み立て、差分の対象外のロール（managed や DB 未登録のロール等）はそのまま残す。
+	差分はメンバー単位にまとめて反映する（反映方法は _apply_member_role_diff を参照）。
+	PATCH はロール一覧を丸ごと上書きするため、Discord 上の現在のロールを元に設定後の一覧を組み立て、
+	差分の対象外のロール（managed や DB 未登録のロール等）はそのまま残す。
 	"""
 	assigned_adds = 0
 	assigned_removes = 0
@@ -313,16 +315,18 @@ async def _apply_role_assignment_diffs(
 				removes = (current_roles & target_role_ids) - desired_roles
 				if not adds and not removes:
 					continue
-				new_roles = (current_roles - removes) | adds
 				try:
-					await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
-					assigned_adds += len(adds)
-					assigned_removes += len(removes)
-				except DiscordAPIError as e:
-					if e.status_code in (404, 403):
+					added, removed = await _apply_member_role_diff(
+						user_id, adds, removes, desired_roles, target_role_ids, token, client
+					)
+					assigned_adds += added
+					assigned_removes += removed
+				except (DiscordAPIError, httpx.HTTPStatusError) as e:
+					status_code = _error_status_code(e)
+					if status_code in (404, 403):
 						logger.warning(
 							"Skipped updating roles for a member (+%d/-%d): HTTP %s",
-							len(adds), len(removes), e.status_code,
+							len(adds), len(removes), status_code,
 						)
 						continue
 					errors.append(f"Failed to update roles for {user_id}: {e}")
@@ -332,6 +336,50 @@ async def _apply_role_assignment_diffs(
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
 	return assigned_adds, assigned_removes, errors
+
+
+async def _apply_member_role_diff(
+	user_id: str,
+	adds: set[str],
+	removes: set[str],
+	desired_roles: set[str],
+	target_role_ids: set[str],
+	token: str,
+	client: httpx.AsyncClient,
+) -> tuple[int, int]:
+	"""1 メンバー分のロール差分を Discord に反映し、(追加数, 削除数) を返す。
+
+	PATCH はロール一覧を丸ごと上書きするため、push 開始時に取得したロールを元にすると、その後に
+	付与・解除されたロールを巻き戻してしまう。これを避けるため、
+	- 差分が 1 件だけなら、ほかのロールに触れない PUT / DELETE で反映する
+	- 2 件以上なら、PATCH の直前にメンバーの現在のロールを取り直し、差分を計算し直して反映する
+	いずれも API 呼び出しは、ロールごとに PUT / DELETE する場合の回数以下になる。
+	"""
+	if len(adds) + len(removes) == 1:
+		if adds:
+			await add_role_to_member(DISCORD_GUILD_ID, user_id, next(iter(adds)), token, client=client)
+			return 1, 0
+		await remove_role_from_member(DISCORD_GUILD_ID, user_id, next(iter(removes)), token, client=client)
+		return 0, 1
+
+	member = await fetch_guild_member(DISCORD_GUILD_ID, user_id, token, client=client)
+	if member is None:
+		raise DiscordAPIError("Member not found", 404)
+	current_roles = set(member.get("role_ids", []))
+	latest_adds = desired_roles - current_roles
+	latest_removes = (current_roles & target_role_ids) - desired_roles
+	if not latest_adds and not latest_removes:
+		return 0, 0
+	new_roles = (current_roles - latest_removes) | latest_adds
+	await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
+	return len(latest_adds), len(latest_removes)
+
+
+def _error_status_code(exc: DiscordAPIError | httpx.HTTPStatusError) -> int | None:
+	"""Discord API 呼び出しの例外から HTTP ステータスを取り出す。"""
+	if isinstance(exc, DiscordAPIError):
+		return exc.status_code
+	return exc.response.status_code if exc.response is not None else None
 
 
 def _manageable_role_ids(roles: list[dict]) -> set[str]:
