@@ -135,6 +135,23 @@ class TestApplyRoleAssignmentDiffs:
 		assert "user-1" in errors[0]
 
 	@pytest.mark.asyncio
+	async def test_falls_back_to_initial_roles_when_refetching_roles_fails(self):
+		desired = {"role-a": ["user-1"], "role-new": ["user-1"], "role-above-bot": ["user-1"]}
+		members = [_member("user-1", [])]
+		with patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \
+			patch.object(roles_api, "fetch_role_assignments", return_value=desired), \
+			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, return_value=members), \
+			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, side_effect=Exception("boom")), \
+			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
+			adds, removes, errors = await roles_api._apply_role_assignment_diffs(
+				ACTUAL_BY_ID, {"role-new"}, set(), "token"
+			)
+
+		# 開始時のロール一覧で判定し、新規作成したロールも付与する。Bot より上のロールは付与しない
+		assert _patched_roles(mock_set) == {"user-1": {"role-a", "role-new"}}
+		assert (adds, removes, errors) == (2, 0, [])
+
+	@pytest.mark.asyncio
 	async def test_failure_to_fetch_members_is_recorded(self):
 		with patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \
 			patch.object(roles_api, "fetch_role_assignments", return_value={}), \
