@@ -109,6 +109,21 @@ class TestRateLimitRetry:
 		assert mock_patch.await_count == 2
 		mock_sleep.assert_awaited_once_with(1.0)
 
+	@pytest.mark.asyncio
+	async def test_rate_limit_logs_do_not_contain_discord_ids(self, mock_sleep, caplog):
+		guild_id = "100000000000000001"
+		user_id = "200000000000000002"
+		responses = [_rate_limited(retry_after=0.1) for _ in range(DISCORD_RATE_LIMIT_MAX_RETRIES + 1)]
+		with patch("httpx.AsyncClient.patch", new_callable=AsyncMock, side_effect=responses):
+			with caplog.at_level("WARNING", logger=discord_client.logger.name):
+				with pytest.raises(discord_client.DiscordAPIError):
+					await discord_client.set_member_roles(guild_id, user_id, [ROLE_ID], "token")
+
+		assert "Discord rate limited" in caplog.text
+		assert "/guilds/:id/members/:id" in caplog.text
+		assert guild_id not in caplog.text
+		assert user_id not in caplog.text
+
 
 class TestClientReuse:
 	@pytest.mark.asyncio
