@@ -323,11 +323,22 @@ async def _apply_role_assignment_diffs(
 					assigned_removes += removed
 				except (DiscordAPIError, httpx.HTTPStatusError) as e:
 					status_code = _error_status_code(e)
-					if status_code in (404, 403):
+					if status_code == 404:
+						# 開始時のメンバー一覧取得後にギルドを抜けたメンバー
 						logger.warning(
-							"Skipped updating roles for a member (+%d/-%d): HTTP %s",
-							len(adds), len(removes), status_code,
+							"Skipped updating roles for a member (+%d/-%d): HTTP 404",
+							len(adds), len(removes),
 						)
+						continue
+					if status_code == 403:
+						# 1 件でも操作できないロールがあると、そのメンバーの差分がすべて反映されないため errors に残す。
+						# レスポンスに含まれるため Discord ID は入れない
+						msg = (
+							f"Failed to update roles for a member (+{len(adds)}/-{len(removes)}): HTTP 403 "
+							"(check the bot's Manage Roles permission and role hierarchy)"
+						)
+						logger.warning("%s", msg)
+						errors.append(msg)
 						continue
 					errors.append(f"Failed to update roles for {user_id}: {e}")
 				except Exception as exc:
