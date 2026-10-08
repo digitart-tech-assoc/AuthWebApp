@@ -125,6 +125,42 @@ class TestRateLimitRetry:
 		assert user_id not in caplog.text
 
 
+def _ok_with_bucket(remaining: str, reset_after: str) -> httpx.Response:
+	headers = {"X-RateLimit-Remaining": remaining, "X-RateLimit-Reset-After": reset_after}
+	return httpx.Response(204, headers=headers, request=REQUEST)
+
+
+class TestProactiveThrottle:
+	@pytest.mark.asyncio
+	async def test_waits_for_bucket_reset_when_remaining_is_zero(self, mock_sleep):
+		with _patch_put([_ok_with_bucket("0", "1.25")]) as mock_put:
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+
+		assert mock_put.await_count == 1
+		mock_sleep.assert_awaited_once_with(1.25)
+
+	@pytest.mark.asyncio
+	async def test_does_not_wait_while_bucket_has_remaining(self, mock_sleep):
+		with _patch_put([_ok_with_bucket("3", "1.25")]):
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+
+		mock_sleep.assert_not_awaited()
+
+	@pytest.mark.asyncio
+	async def test_does_not_wait_when_reset_after_exceeds_max_wait(self, mock_sleep):
+		with _patch_put([_ok_with_bucket("0", str(DISCORD_RATE_LIMIT_MAX_WAIT + 1))]):
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+
+		mock_sleep.assert_not_awaited()
+
+	@pytest.mark.asyncio
+	async def test_does_not_wait_when_reset_after_is_invalid(self, mock_sleep):
+		with _patch_put([_ok_with_bucket("0", "invalid")]):
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+
+		mock_sleep.assert_not_awaited()
+
+
 class TestClientReuse:
 	@pytest.mark.asyncio
 	async def test_uses_given_client_without_creating_new_one(self, mock_sleep):
