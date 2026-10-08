@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import styles from "../join.module.css";
+import { card } from "./joinStyles";
 
 interface FormStep5Props {
   studentNumber: string;
@@ -13,57 +13,33 @@ export default function FormStep5Complete({
   name,
 }: FormStep5Props) {
   return (
-    <div className={styles.card}>
-      <div style={{ textAlign: "center", padding: "32px 16px" }}>
-        <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+    <div className={card}>
+      <div className="px-4 py-8 text-center">
+        <div className="mb-4 text-5xl">✅</div>
 
-        <h2 style={{ fontSize: "24px", fontWeight: "700", marginBottom: "12px" }}>
+        <h2 className="mb-3 text-2xl font-bold text-slate-900">
           入会登録完了！
         </h2>
 
-        <p style={{ fontSize: "16px", color: "#64748b", marginBottom: "24px" }}>
+        <p className="mb-6 text-base text-slate-500">
           {name} さん、本会員としての登録が完了しました。
         </p>
 
-        <div
-          style={{
-            background: "#f8fafc",
-            border: "1px solid #e5e7eb",
-            borderRadius: "8px",
-            padding: "20px",
-            marginBottom: "24px",
-            textAlign: "left",
-          }}
-        >
-          <h3 style={{ fontSize: "14px", fontWeight: "600", marginBottom: "8px" }}>
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-5 text-left">
+          <h3 className="mb-2 text-sm font-semibold text-slate-900">
             登録情報
           </h3>
-          <p style={{ fontSize: "14px", color: "#475569", margin: "4px 0" }}>
+          <p className="my-1 text-sm text-slate-700">
             <strong>学生番号:</strong> {studentNumber}
           </p>
-          <p style={{ fontSize: "14px", color: "#475569", margin: "4px 0" }}>
+          <p className="my-1 text-sm text-slate-700">
             <strong>名前:</strong> {name}
           </p>
         </div>
 
         <Link
           href="/contact"
-          style={{
-            display: "block",
-            padding: "12px 32px",
-            background: "#e5e7eb",
-            color: "#1f2937",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontSize: "16px",
-            fontWeight: "600",
-            textDecoration: "none",
-            width: "100%",
-            maxWidth: "300px",
-            margin: "0 auto",
-            textAlign: "center",
-          }}
+          className="mx-auto flex h-10 w-full max-w-75 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
           お問い合わせ
         </Link>
