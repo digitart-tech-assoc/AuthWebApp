@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -74,6 +75,15 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
 	return None
 
 
+# URL 内のスノーフレーク（ギルド / ユーザー / ロール ID）。ログに個人の Discord ID を残さないよう伏せる
+_SNOWFLAKE_PATTERN = re.compile(r"\d{15,}")
+
+
+def _loggable_url(url: str) -> str:
+	"""ログ出力用に、URL から API のベース部分を除き、ID を `:id` に置き換える。"""
+	return _SNOWFLAKE_PATTERN.sub(":id", url.removeprefix(DISCORD_API_BASE))
+
+
 async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
 	"""Discord API にリクエストを送り、429 を受けたら retry_after だけ待って再試行する。
 
@@ -93,14 +103,14 @@ async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -
 		if wait is None or wait > DISCORD_RATE_LIMIT_MAX_WAIT or retries >= DISCORD_RATE_LIMIT_MAX_RETRIES:
 			logger.warning(
 				"Discord rate limited and giving up: %s %s (scope=%s, retry_after=%s, retries=%d)",
-				method.upper(), url, scope, wait, retries,
+				method.upper(), _loggable_url(url), scope, wait, retries,
 			)
 			return response
 
 		retries += 1
 		logger.warning(
 			"Discord rate limited: %s %s (scope=%s); retrying in %.2fs (%d/%d)",
-			method.upper(), url, scope, wait, retries, DISCORD_RATE_LIMIT_MAX_RETRIES,
+			method.upper(), _loggable_url(url), scope, wait, retries, DISCORD_RATE_LIMIT_MAX_RETRIES,
 		)
 		await asyncio.sleep(wait)
 
