@@ -4,7 +4,7 @@
 - 差分が 2 件以上のメンバーは、メンバーの現在のロールを取り直してから set_member_roles（PATCH）1 回で反映する
 - push 開始時のメンバー情報より後に付与・解除されたロールを、PATCH で巻き戻さない
 - 差分の対象外のロール（DB 未登録・managed・Bot より上）は現在の状態のまま残る
-- 404 / 403 はスキップし、その他の失敗は errors に記録して次のメンバーを処理する
+- 404 はスキップする。403 とその他の失敗は errors に記録して次のメンバーを処理する（403 の記録には Discord ID を含めない）
 """
 from __future__ import annotations
 
@@ -191,16 +191,35 @@ class TestApplyRoleAssignmentDiffs:
 		assert run.result == (1, 0, [])
 
 	@pytest.mark.asyncio
-	@pytest.mark.parametrize("status_code", [403, 404])
-	async def test_forbidden_or_not_found_is_skipped_without_error(self, run_diffs, status_code):
+	async def test_not_found_is_skipped_without_error(self, run_diffs):
 		desired = {"role-a": ["user-1", "user-2"]}
 		members = [_member("user-1", []), _member("user-2", [])]
-		side_effect = [_http_error(status_code), None]
+		side_effect = [_http_error(404), None]
 
 		run = await run_diffs(desired, members, add_side_effect=side_effect)
 
 		assert run.add.await_count == 2
 		assert run.result == (1, 0, [])
+
+	@pytest.mark.asyncio
+	@pytest.mark.parametrize("path", ["single", "patch"])
+	async def test_forbidden_is_recorded_without_discord_id(self, run_diffs, path):
+		members = [_member("user-1", []), _member("user-2", [])]
+		if path == "single":
+			desired = {"role-a": ["user-1", "user-2"]}
+			run = await run_diffs(desired, members, add_side_effect=[_http_error(403), None])
+			expected_adds = 1
+		else:
+			desired = {"role-a": ["user-1", "user-2"], "role-b": ["user-1", "user-2"]}
+			run = await run_diffs(desired, members, set_side_effect=[DiscordAPIError("forbidden user-1", 403), None])
+			expected_adds = 2
+
+		adds, removes, errors = run.result
+		# 403 のメンバーは反映されず、次のメンバーは処理される。失敗は errors に残る
+		assert (adds, removes) == (expected_adds, 0)
+		assert len(errors) == 1
+		assert "HTTP 403" in errors[0]
+		assert "user-1" not in errors[0]
 
 	@pytest.mark.asyncio
 	async def test_other_failures_are_recorded_and_next_member_is_processed(self, run_diffs):
