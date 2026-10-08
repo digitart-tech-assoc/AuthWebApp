@@ -265,8 +265,14 @@ async def _apply_role_assignment_diffs(
 			desired_assignments = await asyncio.to_thread(fetch_role_assignments)
 			current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token, client=client)
 			# 並び替え後のロール階層で Bot が操作できるかを判定するため、ロール一覧を取得し直す
-			latest_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token, client=client)
-			manageable_role_ids = _manageable_role_ids(latest_roles)
+			try:
+				latest_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token, client=client)
+				manageable_role_ids = _manageable_role_ids(latest_roles)
+			except Exception as exc:
+				# 取り直しに失敗しても割り当ての反映は止めず、push 開始時のロール一覧で判定する。
+				# 新規作成したロールは開始時の一覧に無いが、最下位に作られ Bot より下にあるため操作できるものとして扱う
+				logger.warning("Failed to refetch guild roles; using roles fetched before sync: %s", exc)
+				manageable_role_ids = _manageable_role_ids(list(actual_by_id.values())) | created_real_ids
 
 			current_by_role: dict[str, set[str]] = {}
 			for m in current_members:
