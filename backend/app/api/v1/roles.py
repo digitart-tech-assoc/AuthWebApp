@@ -307,17 +307,20 @@ async def _apply_role_assignment_diffs(
 			if missing_members:
 				logger.warning("Skipped %d assigned users who are not in the guild", len(missing_members))
 
+			pending: list[tuple[str, set[str], set[str], set[str]]] = []
 			for m in sorted(current_members, key=lambda member: member["user_id"]):
 				user_id = m["user_id"]
 				current_roles = set(m.get("role_ids", []))
 				desired_roles = {rid for rid in target_role_ids if user_id in desired_by_role.get(rid, set())}
 				adds = desired_roles - current_roles
 				removes = (current_roles & target_role_ids) - desired_roles
-				if not adds and not removes:
-					continue
+				if adds or removes:
+					pending.append((user_id, current_roles, adds, removes))
+
+			for index, (user_id, current_roles, adds, removes) in enumerate(pending):
 				try:
 					added, removed = await _apply_member_role_diff(
-						user_id, adds, removes, desired_roles, target_role_ids, token, client
+						user_id, current_roles, target_role_ids, token, client
 					)
 					assigned_adds += added
 					assigned_removes += removed
@@ -351,21 +354,27 @@ async def _apply_role_assignment_diffs(
 
 async def _apply_member_role_diff(
 	user_id: str,
-	adds: set[str],
-	removes: set[str],
-	desired_roles: set[str],
+	current_roles: set[str],
 	target_role_ids: set[str],
 	token: str,
 	client: httpx.AsyncClient,
 ) -> tuple[int, int]:
 	"""1 メンバー分のロール差分を Discord に反映し、(追加数, 削除数) を返す。
 
-	PATCH はロール一覧を丸ごと上書きするため、push 開始時に取得したロールを元にすると、その後に
+	push 開始時に取得した DB の割り当てと Discord のロールを元にすると、その後に self-batch などで
 	付与・解除されたロールを巻き戻してしまう。これを避けるため、
-	- 差分が 1 件だけなら、ほかのロールに触れない PUT / DELETE で反映する
+	- 反映の直前に、そのメンバーの DB の割り当てを読み直して、あるべきロールを決め直す
+	- 差分が 1 件だけなら、ほかのロールに触れない PUT / DELETE で反映する（同じ状態への PUT / DELETE は変化しない）
 	- 2 件以上なら、PATCH の直前にメンバーの現在のロールを取り直し、差分を計算し直して反映する
-	いずれも API 呼び出しは、ロールごとに PUT / DELETE する場合の回数以下になる。
+	いずれも Discord API の呼び出しは、ロールごとに PUT / DELETE する場合の回数以下になる。
 	"""
+	latest_assignments = await asyncio.to_thread(fetch_role_assignments_for_user, user_id)
+	desired_roles = {rid for rid in latest_assignments if rid in target_role_ids}
+	adds = desired_roles - current_roles
+	removes = (current_roles & target_role_ids) - desired_roles
+	if not adds and not removes:
+		return 0, 0
+
 	if len(adds) + len(removes) == 1:
 		if adds:
 			await add_role_to_member(DISCORD_GUILD_ID, user_id, next(iter(adds)), token, client=client)
@@ -376,12 +385,12 @@ async def _apply_member_role_diff(
 	member = await fetch_guild_member(DISCORD_GUILD_ID, user_id, token, client=client)
 	if member is None:
 		raise DiscordAPIError("Member not found", 404)
-	current_roles = set(member.get("role_ids", []))
-	latest_adds = desired_roles - current_roles
-	latest_removes = (current_roles & target_role_ids) - desired_roles
+	latest_roles = set(member.get("role_ids", []))
+	latest_adds = desired_roles - latest_roles
+	latest_removes = (latest_roles & target_role_ids) - desired_roles
 	if not latest_adds and not latest_removes:
 		return 0, 0
-	new_roles = (current_roles - latest_removes) | latest_adds
+	new_roles = (latest_roles - latest_removes) | latest_adds
 	await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
 	return len(latest_adds), len(latest_removes)
 
