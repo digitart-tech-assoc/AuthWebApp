@@ -1,11 +1,19 @@
 """役割: Discord REST APIクライアント"""
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import httpx
 
-from app.core.config import DISCORD_API_TIMEOUT, DISCORD_MEMBER_FETCH_TIMEOUT
+from app.core.config import (
+	DISCORD_API_TIMEOUT,
+	DISCORD_MEMBER_FETCH_TIMEOUT,
+	DISCORD_RATE_LIMIT_MAX_RETRIES,
+	DISCORD_RATE_LIMIT_MAX_WAIT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +36,74 @@ def _hex_color_to_int(color: str) -> int:
 	return int(value, 16)
 
 
+@asynccontextmanager
+async def _client_scope(client: httpx.AsyncClient | None, timeout: float) -> AsyncGenerator[httpx.AsyncClient, None]:
+	"""呼び出し側から client が渡されればそれを使い回し、なければこの呼び出しの間だけ生成する。"""
+	if client is not None:
+		yield client
+		return
+	async with httpx.AsyncClient(timeout=timeout) as new_client:
+		yield new_client
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+	"""429 応答から待ち秒数を取り出す。ボディの retry_after（小数）を優先し、なければ Retry-After ヘッダーを使う。"""
+	try:
+		body = response.json()
+	except Exception:
+		body = None
+	if isinstance(body, dict) and body.get("retry_after") is not None:
+		try:
+			return max(float(body["retry_after"]), 0.0)
+		except (TypeError, ValueError):
+			pass
+	header = response.headers.get("Retry-After")
+	if header is not None:
+		try:
+			return max(float(header), 0.0)
+		except ValueError:
+			pass
+	return None
+
+
+async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
+	"""Discord API にリクエストを送り、429 を受けたら retry_after だけ待って再試行する。
+
+	待ち秒数が取れない・上限（DISCORD_RATE_LIMIT_MAX_WAIT）を超える・再試行回数（DISCORD_RATE_LIMIT_MAX_RETRIES）を
+	使い切った場合は、最後の 429 応答をそのまま返す。エラーとしての扱いは呼び出し側に任せる。
+	X-RateLimit-Scope が global / shared の場合も、待ち方は retry_after に従う。
+	"""
+	send = getattr(client, method.lower())
+	retries = 0
+	while True:
+		response = await send(url, **kwargs)
+		if response.status_code != 429:
+			return response
+
+		wait = _retry_after_seconds(response)
+		scope = response.headers.get("X-RateLimit-Scope", "unknown")
+		if wait is None or wait > DISCORD_RATE_LIMIT_MAX_WAIT or retries >= DISCORD_RATE_LIMIT_MAX_RETRIES:
+			logger.warning(
+				"Discord rate limited and giving up: %s %s (scope=%s, retry_after=%s, retries=%d)",
+				method.upper(), url, scope, wait, retries,
+			)
+			return response
+
+		retries += 1
+		logger.warning(
+			"Discord rate limited: %s %s (scope=%s); retrying in %.2fs (%d/%d)",
+			method.upper(), url, scope, wait, retries, DISCORD_RATE_LIMIT_MAX_RETRIES,
+		)
+		await asyncio.sleep(wait)
+
+
 async def _get_bot_user_id(client: httpx.AsyncClient, token: str, headers: dict[str, str]) -> str:
 	"""Bot 自身のユーザー ID を返す。2 回目以降はキャッシュを使い GET /users/@me を呼ばない。"""
 	cached = _bot_user_id_cache.get(token)
 	if cached is not None:
 		return cached
 	try:
-		me_resp = await client.get(f"{DISCORD_API_BASE}/users/@me", headers=headers)
+		me_resp = await _request(client, "GET", f"{DISCORD_API_BASE}/users/@me", headers=headers)
 		me_resp.raise_for_status()
 		bot_id = me_resp.json()["id"]
 	except httpx.HTTPStatusError as e:
@@ -43,15 +112,15 @@ async def _get_bot_user_id(client: httpx.AsyncClient, token: str, headers: dict[
 	return bot_id
 
 
-async def fetch_guild_roles(guild_id: str, token: str) -> list[dict]:
+async def fetch_guild_roles(guild_id: str, token: str, client: httpx.AsyncClient | None = None) -> list[dict]:
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
 		# Get the bot's own user ID to identify our bot role
 		bot_id = await _get_bot_user_id(client, token, headers)
 
 		try:
-			response = await client.get(url, headers=headers)
+			response = await _request(client, "GET", url, headers=headers)
 			response.raise_for_status()
 		except httpx.HTTPStatusError as e:
 			error_msg = f"Discord API error {e.response.status_code}: {e}"
@@ -85,11 +154,11 @@ def _headers(token: str) -> dict[str, str]:
 	}
 
 
-async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict) -> None:
+async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict, client: httpx.AsyncClient | None = None) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.patch(url, headers=_headers(token), json=payload)
-	
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "PATCH", url, headers=_headers(token), json=payload)
+
 	if response.status_code != 200:
 		error_msg = f"Failed to update role {role_id}: HTTP {response.status_code}"
 		try:
@@ -97,24 +166,24 @@ async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict
 			error_msg += f" - {error_details}"
 		except Exception:
 			error_msg += f" - {response.text}"
-		
+
 		if response.status_code == 403:
 			error_msg += "\n[LIKELY CAUSES]\n"
 			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
 			error_msg += "2. Bot's role is lower in hierarchy than the target role\n"
 			error_msg += "3. Attempting to modify a managed role\n"
 			error_msg += f"4. Payload sent: {payload}"
-		
+
 		raise Exception(error_msg)
-	
+
 	response.raise_for_status()
 
 
-async def create_guild_role(guild_id: str, token: str, payload: dict) -> dict:
+async def create_guild_role(guild_id: str, token: str, payload: dict, client: httpx.AsyncClient | None = None) -> dict:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.post(url, headers=_headers(token), json=payload)
-	
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "POST", url, headers=_headers(token), json=payload)
+
 	if response.status_code != 200 and response.status_code != 201:
 		error_msg = f"Failed to create role: HTTP {response.status_code}"
 		try:
@@ -122,15 +191,15 @@ async def create_guild_role(guild_id: str, token: str, payload: dict) -> dict:
 			error_msg += f" - {error_details}"
 		except Exception:
 			error_msg += f" - {response.text}"
-		
+
 		if response.status_code == 403:
 			error_msg += "\n[LIKELY CAUSES]\n"
 			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
 			error_msg += "2. Guild ID is invalid\n"
 			error_msg += f"3. Payload sent: {payload}"
-		
+
 		raise Exception(error_msg)
-	
+
 	response.raise_for_status()
 	role = response.json()
 	return {
@@ -140,11 +209,11 @@ async def create_guild_role(guild_id: str, token: str, payload: dict) -> dict:
 	}
 
 
-async def delete_guild_role(guild_id: str, role_id: str, token: str) -> None:
+async def delete_guild_role(guild_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.delete(url, headers=_headers(token))
-	
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "DELETE", url, headers=_headers(token))
+
 	if response.status_code != 204:
 		error_msg = f"Failed to delete role {role_id}: HTTP {response.status_code}"
 		try:
@@ -152,22 +221,22 @@ async def delete_guild_role(guild_id: str, role_id: str, token: str) -> None:
 			error_msg += f" - {error_details}"
 		except Exception:
 			error_msg += f" - {response.text}"
-		
+
 		if response.status_code == 403:
 			error_msg += "\n[LIKELY CAUSES]\n"
 			error_msg += "1. Bot lacks MANAGE_ROLES permission\n"
 			error_msg += "2. Bot's role is lower in hierarchy than the target role\n"
 			error_msg += "3. Attempting to delete a managed role (bot/integration role)"
-		
+
 		raise Exception(error_msg)
-	
+
 	response.raise_for_status()
 
 
-async def reorder_guild_roles(guild_id: str, token: str, positions: list[dict]) -> None:
+async def reorder_guild_roles(guild_id: str, token: str, positions: list[dict], client: httpx.AsyncClient | None = None) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.patch(url, headers=_headers(token), json=positions)
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "PATCH", url, headers=_headers(token), json=positions)
 	response.raise_for_status()
 
 
@@ -199,17 +268,18 @@ def build_role_create_payload(desired: dict) -> dict:
 	}
 
 
-async def fetch_all_guild_members(guild_id: str, token: str) -> list[dict]:
+async def fetch_all_guild_members(guild_id: str, token: str, client: httpx.AsyncClient | None = None) -> list[dict]:
 	"""ギルドの全メンバーをページネーションで取得し、各メンバーのロールIDリストも返す。"""
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members"
 	members = []
 	after = "0"
-	async with httpx.AsyncClient(timeout=DISCORD_MEMBER_FETCH_TIMEOUT) as client:
+	async with _client_scope(client, DISCORD_MEMBER_FETCH_TIMEOUT) as client:
 		while True:
 			params = {"limit": 1000, "after": after}
 			try:
-				resp = await client.get(url, headers=headers, params=params)
+				# 渡された client のタイムアウトに関わらず、メンバー一覧取得には長めのタイムアウトを使う
+				resp = await _request(client, "GET", url, headers=headers, params=params, timeout=DISCORD_MEMBER_FETCH_TIMEOUT)
 				resp.raise_for_status()
 			except httpx.HTTPStatusError as e:
 				if e.response.status_code == 404:
@@ -217,7 +287,7 @@ async def fetch_all_guild_members(guild_id: str, token: str) -> list[dict]:
 				elif e.response.status_code == 403:
 					raise Exception(f"Bot lacks permission to read members in guild {guild_id} (403). Is 'Server Members Intent' enabled in Discord Developer Portal?") from e
 				raise Exception(f"Discord API error {e.response.status_code}: {e}") from e
-			
+
 			batch = resp.json()
 			if not batch:
 				if after == "0":
@@ -238,23 +308,29 @@ async def fetch_all_guild_members(guild_id: str, token: str) -> list[dict]:
 	return members
 
 
-async def add_role_to_member(guild_id: str, user_id: str, role_id: str, token: str) -> None:
+async def add_role_to_member(guild_id: str, user_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
 	"""メンバーにロールを付与する。"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		resp = await client.put(url, headers=_headers(token))
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		resp = await _request(client, "PUT", url, headers=_headers(token))
 	resp.raise_for_status()
 
 
-async def remove_role_from_member(guild_id: str, user_id: str, role_id: str, token: str) -> None:
+async def remove_role_from_member(guild_id: str, user_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
 	"""メンバーからロールを剥奪する。"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		resp = await client.delete(url, headers=_headers(token))
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		resp = await _request(client, "DELETE", url, headers=_headers(token))
 	resp.raise_for_status()
 
 
-async def set_member_roles(guild_id: str, user_id: str, role_ids: list[str], token: str) -> None:
+async def set_member_roles(
+	guild_id: str,
+	user_id: str,
+	role_ids: list[str],
+	token: str,
+	client: httpx.AsyncClient | None = None,
+) -> None:
 	"""メンバーのロール一覧を一括設定する（PATCH /guilds/{guild_id}/members/{user_id}）。
 
 	個別の PUT/DELETE を N 回呼ぶ代わりに、Discord の Modify Guild Member エンドポイントで
@@ -265,11 +341,12 @@ async def set_member_roles(guild_id: str, user_id: str, role_ids: list[str], tok
 		user_id:  対象メンバーの Discord ユーザー ID
 		role_ids: 設定するロール ID の完全リスト（現在のロールは上書きされる）
 		token:    Bot トークン
+		client:   使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
 	"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
 	payload = {"roles": role_ids}
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		resp = await client.patch(url, headers=_headers(token), json=payload)
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		resp = await _request(client, "PATCH", url, headers=_headers(token), json=payload)
 
 	if resp.status_code not in (200, 204):
 		error_msg = f"Failed to set roles for member {user_id}: HTTP {resp.status_code}"
@@ -289,27 +366,28 @@ async def set_member_roles(guild_id: str, user_id: str, role_ids: list[str], tok
 		raise Exception(error_msg)
 
 
-async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str) -> list[dict]:
+async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> list[dict]:
 	"""ギルド内の特定のロールを持つメンバーを取得"""
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members"
-	
+
 	members = []
 	after = "0"
 	total_checked = 0
-	
+
 	try:
-		async with httpx.AsyncClient(timeout=DISCORD_MEMBER_FETCH_TIMEOUT) as client:
+		async with _client_scope(client, DISCORD_MEMBER_FETCH_TIMEOUT) as client:
 			while True:
 				params = {"limit": 1000, "after": after}
-				response = await client.get(url, headers=headers, params=params)
+				# 渡された client のタイムアウトに関わらず、メンバー一覧取得には長めのタイムアウトを使う
+				response = await _request(client, "GET", url, headers=headers, params=params, timeout=DISCORD_MEMBER_FETCH_TIMEOUT)
 				response.raise_for_status()
-				
+
 				batch = response.json()
 				logger.debug("fetch_members: role_id=%s (type=%s), batch size=%d", role_id, type(role_id).__name__, len(batch))
 				if not batch:
 					break
-				
+
 				total_checked += len(batch)
 				# ロールを持つメンバーをフィルタ
 				for i, member in enumerate(batch):
@@ -318,7 +396,7 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 					if i == 0:
 						logger.debug("  first member roles: %s (types: %s)", member_roles, [type(r).__name__ for r in member_roles])
 						logger.debug("  checking if %s in %s", role_id, member_roles)
-					
+
 					if str(role_id) in [str(r) for r in member_roles]:
 						user = member.get("user", {})
 						members.append({
@@ -328,34 +406,35 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str)
 							"display_name": member.get("nick") or user.get("global_name") or user.get("username", ""),
 							"avatar": user.get("avatar"),
 						})
-				
+
 				logger.debug("fetch_members: found %d total so far (checked %d)", len(members), total_checked)
 				after = batch[-1]["user"]["id"]
 	except Exception as e:
 		logger.exception("fetch_guild_members_with_role failed: %s", e)
 		raise
-	
+
 	logger.debug("fetch_members: role_id=%s final count=%d", role_id, len(members))
 	return members
 
 
-async def fetch_guild_member(guild_id: str, user_id: str, token: str) -> dict | None:
+async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: httpx.AsyncClient | None = None) -> dict | None:
 	"""ギルド内の特定メンバーの情報を取得。
-	
+
 	Args:
 		guild_id: Guild ID
 		user_id: User ID (Discord ID)
 		token: Bot token
-		
+		client: 使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
+
 	Returns:
 		{"user_id": "...", "username": "...", "display_name": "...", ...} or None if not found
 	"""
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
-	
+
 	try:
-		async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-			response = await client.get(url, headers=headers)
+		async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+			response = await _request(client, "GET", url, headers=headers)
 			if response.status_code == 404:
 				return None
 			response.raise_for_status()
@@ -376,7 +455,14 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str) -> dict | 
 		raise
 
 
-async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, max_age_seconds: int = 604800, unique: bool = True) -> dict:
+async def create_channel_invite(
+	channel_id: str,
+	token: str,
+	max_uses: int = 1,
+	max_age_seconds: int = 604800,
+	unique: bool = True,
+	client: httpx.AsyncClient | None = None,
+) -> dict:
 	"""Create a Discord invite for a specific channel.
 
 	Args:
@@ -385,6 +471,7 @@ async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, 
 		max_uses: Maximum number of uses (1 => single-use)
 		max_age_seconds: Expiration in seconds (604800 = 7 days)
 		unique: Whether to create a unique invite even if similar exists
+		client: 使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
 
 	Returns:
 		Invite payload as returned by Discord API.
@@ -397,13 +484,19 @@ async def create_channel_invite(channel_id: str, token: str, max_uses: int = 1, 
 		"temporary": False,
 		# target_type/target_user can be omitted for a normal invite
 	}
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.post(url, headers=_headers(token), json=payload)
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "POST", url, headers=_headers(token), json=payload)
 		response.raise_for_status()
 		return response.json()
 
 
-async def send_message_to_channel(channel_id: str, token: str, content: str | None = None, embed: dict | None = None) -> dict:
+async def send_message_to_channel(
+	channel_id: str,
+	token: str,
+	content: str | None = None,
+	embed: dict | None = None,
+	client: httpx.AsyncClient | None = None,
+) -> dict:
 	"""チャンネルにメッセージを送信する
 
 	Args:
@@ -411,34 +504,35 @@ async def send_message_to_channel(channel_id: str, token: str, content: str | No
 		token: Bot トークン
 		content: メッセージ本文（テキスト）
 		embed: 埋め込みオブジェクト（Discord Embed形式）
+		client: 使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
 
 	Returns:
 		送信されたメッセージのペイロード
 	"""
 	url = f"{DISCORD_API_BASE}/channels/{channel_id}/messages"
 	payload: dict = {}
-	
+
 	if content:
 		payload["content"] = content
 	if embed:
 		payload["embeds"] = [embed] if isinstance(embed, dict) else embed
-	
+
 	if not payload:
 		raise ValueError("content or embed must be provided")
-	
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
-		response = await client.post(url, headers=_headers(token), json=payload)
+
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "POST", url, headers=_headers(token), json=payload)
 		response.raise_for_status()
 		return response.json()
 
 
-async def fetch_bot_guilds(token: str) -> list[dict]:
+async def fetch_bot_guilds(token: str, client: httpx.AsyncClient | None = None) -> list[dict]:
 	"""Bot が参加しているギルド一覧を取得"""
 	headers = {"Authorization": f"Bot {token}"}
 	url = f"{DISCORD_API_BASE}/users/@me/guilds"
-	async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
 		try:
-			response = await client.get(url, headers=headers)
+			response = await _request(client, "GET", url, headers=headers)
 			response.raise_for_status()
 			guilds = response.json()
 			return [
