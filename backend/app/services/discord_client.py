@@ -55,6 +55,19 @@ async def _client_scope(client: httpx.AsyncClient | None, timeout: float) -> Asy
 		yield new_client
 
 
+def _bucket_reset_after_seconds(response: httpx.Response) -> float | None:
+	"""バケットの残り回数が 0 のとき、X-RateLimit-Reset-After（リセットまでの秒数）を返す。それ以外は None。"""
+	if response.headers.get("X-RateLimit-Remaining") != "0":
+		return None
+	header = response.headers.get("X-RateLimit-Reset-After")
+	if header is None:
+		return None
+	try:
+		return max(float(header), 0.0)
+	except ValueError:
+		return None
+
+
 def _retry_after_seconds(response: httpx.Response) -> float | None:
 	"""429 応答から待ち秒数を取り出す。ボディの retry_after（小数）を優先し、なければ Retry-After ヘッダーを使う。"""
 	try:
@@ -90,12 +103,22 @@ async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -
 	待ち秒数が取れない・上限（DISCORD_RATE_LIMIT_MAX_WAIT）を超える・再試行回数（DISCORD_RATE_LIMIT_MAX_RETRIES）を
 	使い切った場合は、最後の 429 応答をそのまま返す。エラーとしての扱いは呼び出し側に任せる。
 	X-RateLimit-Scope が global / shared の場合も、待ち方は retry_after に従う。
+
+	429 以外の応答でも、X-RateLimit-Remaining が 0 ならバケットのリセット（X-RateLimit-Reset-After）まで待ってから返す。
+	push のように同じバケットへ続けて送る処理で、429 を受ける前に送信ペースを落とすため。
 	"""
 	send = getattr(client, method.lower())
 	retries = 0
 	while True:
 		response = await send(url, **kwargs)
 		if response.status_code != 429:
+			reset_after = _bucket_reset_after_seconds(response)
+			if reset_after is not None and 0 < reset_after <= DISCORD_RATE_LIMIT_MAX_WAIT:
+				logger.debug(
+					"Discord rate limit bucket exhausted: %s %s; waiting %.2fs",
+					method.upper(), _loggable_url(url), reset_after,
+				)
+				await asyncio.sleep(reset_after)
 			return response
 
 		wait = _retry_after_seconds(response)
