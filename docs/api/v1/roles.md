@@ -58,6 +58,13 @@ DB 上で編集されたロール定義（Desired State）を Discord サーバ�
 }
 ```
 
+### Discord への反映方式
+* **メンバーのロール割り当て**: DB の割り当てと Discord 上の現在のロールの差分をメンバーごとにまとめ、1 メンバーにつき 1 回の `PATCH /guilds/{guild_id}/members/{user_id}` で反映します。
+  * 設定後のロール一覧は Discord 上の現在のロールを元に組み立てるため、DB で管理していないロール（managed ロールや DB 未登録のロール）は外れません。
+  * managed ロール、Bot のロール以上の位置にあるロール、push で削除したロールは差分の対象外です。
+  * 対象メンバーがサーバーにいない（404）・権限不足（403）の場合はスキップし、`errors` には含めません。
+* **レート制限（429）**: Discord から `429 Too Many Requests` を受けた場合は、レスポンスの `retry_after`（なければ `Retry-After` ヘッダー）の秒数だけ待って再試行します。再試行は最大 3 回、1 回の待ち時間は最大 10 秒です（`backend/app/core/config.py` の `DISCORD_RATE_LIMIT_MAX_RETRIES` / `DISCORD_RATE_LIMIT_MAX_WAIT`）。上限を超えた場合は失敗として `errors` に記録します。
+
 ---
 
 ## POST `/api/v1/roles/self-batch`
