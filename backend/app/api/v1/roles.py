@@ -326,6 +326,17 @@ async def _apply_role_assignment_diffs(
 					assigned_removes += removed
 				except (DiscordAPIError, httpx.HTTPStatusError) as e:
 					status_code = _error_status_code(e)
+					if status_code == 429:
+						# 再試行しても 429 のままなら、続けて送っても 429 を重ねるだけで、Discord の
+						# 無効リクエスト数の上限（超えると IP 単位で一時的に遮断される）に近づくため、残りは送らない
+						remaining = len(pending) - index
+						msg = (
+							f"Discord rate limited (HTTP 429); aborted updating roles for the remaining {remaining} members. "
+							"Run push again later"
+						)
+						logger.warning("%s", msg)
+						errors.append(msg)
+						break
 					if status_code == 404:
 						# 開始時のメンバー一覧取得後にギルドを抜けたメンバー
 						logger.warning(
