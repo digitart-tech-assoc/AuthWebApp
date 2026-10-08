@@ -245,9 +245,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
         initialAssignmentsRef.current
       );
 
-      // デバッグ: 送信する差分をコンソールで確認できるようにする
-      console.log("Sending payload (diff) to backend:", payload);
-
       // 差分が全く無い場合は早期リターン
       if (!hasDiff) {
         setHasUnsaved(false);
