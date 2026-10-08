@@ -23,6 +23,14 @@ DISCORD_API_BASE = "https://discord.com/api/v10"
 _bot_user_id_cache: dict[str, str] = {}
 
 
+class DiscordAPIError(Exception):
+	"""Discord API がエラーを返したことを表す例外。呼び出し側は status_code で HTTP ステータスを判別できる。"""
+
+	def __init__(self, message: str, status_code: int) -> None:
+		super().__init__(message)
+		self.status_code = status_code
+
+
 def _int_color_to_hex(color: int) -> str:
 	return f"#{color:06x}"
 
@@ -342,6 +350,9 @@ async def set_member_roles(
 		role_ids: 設定するロール ID の完全リスト（現在のロールは上書きされる）
 		token:    Bot トークン
 		client:   使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
+
+	Raises:
+		DiscordAPIError: Discord が 200 / 204 以外を返した場合（status_code に HTTP ステータスを持つ）
 	"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
 	payload = {"roles": role_ids}
@@ -363,7 +374,7 @@ async def set_member_roles(
 			error_msg += "3. Attempting to set a managed role\n"
 			error_msg += f"4. Payload sent: {payload}"
 
-		raise Exception(error_msg)
+		raise DiscordAPIError(error_msg, resp.status_code)
 
 
 async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> list[dict]:

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 from app.core.auth import require_admin, require_member
 from app.core.config import (
 	ADMIN_ROLE_NAMES,
+	DISCORD_API_TIMEOUT,
 	MEMBER_RESTRICTED_CATEGORY_NAMES,
 	MEMBER_ROLE_NAMES,
 	OBOG_ROLE_NAMES,
@@ -35,7 +36,7 @@ from app.db.repository import (
 	update_role_id,
 )
 from app.services.discord_client import (
-	add_role_to_member,
+	DiscordAPIError,
 	build_role_create_payload,
 	build_role_edit_payload,
 	create_guild_role,
@@ -46,7 +47,6 @@ from app.services.discord_client import (
 	fetch_guild_member,
 	fetch_guild_members_with_role,
 	fetch_guild_roles,
-	remove_role_from_member,
 	reorder_guild_roles,
 	set_member_roles,
 )
@@ -250,73 +250,95 @@ async def _apply_role_assignment_diffs(
 	deleted_role_ids: set[str],
 	token: str,
 ) -> tuple[int, int, list[str]]:
-	"""メンバーロール割り当ての差分適用"""
+	"""メンバーロール割り当ての差分適用
+
+	差分はメンバー単位にまとめ、1 メンバーにつき 1 回の PATCH /guilds/{guild_id}/members/{user_id}
+	（set_member_roles）で反映する。PATCH はロール一覧を丸ごと上書きするため、Discord 上の現在のロールを
+	元に設定後の一覧を組み立て、差分の対象外のロール（managed や DB 未登録のロール等）はそのまま残す。
+	"""
 	assigned_adds = 0
 	assigned_removes = 0
 	errors: list[str] = []
 
 	try:
-		desired_assignments = await asyncio.to_thread(fetch_role_assignments)
-		current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
-		current_by_role: dict[str, set[str]] = {}
-		for m in current_members:
-			for rid in m.get("role_ids", []):
-				current_by_role.setdefault(rid, set()).add(m["user_id"])
+		async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
+			desired_assignments = await asyncio.to_thread(fetch_role_assignments)
+			current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token, client=client)
+			# 並び替え後のロール階層で Bot が操作できるかを判定するため、ロール一覧を取得し直す
+			latest_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token, client=client)
+			manageable_role_ids = _manageable_role_ids(latest_roles)
 
-		for role_id, desired_users in desired_assignments.items():
-			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
-				continue
-			if role_id not in actual_by_id and role_id not in created_real_ids:
-				continue
-			desired_set = set(desired_users)
-			current_set = current_by_role.get(role_id, set())
-			for user_id in desired_set - current_set:
-				try:
-					await add_role_to_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_adds += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped add role %s to %s: HTTP %s", role_id, user_id, e.response.status_code)
-						continue
-					errors.append(f"Failed to add role {role_id} to {user_id}: {e}")
-				except Exception as exc:
-					errors.append(f"Failed to add role {role_id} to {user_id}: {exc}")
-			for user_id in current_set - desired_set:
-				try:
-					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_removes += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
-						continue
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
-				except Exception as exc:
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+			current_by_role: dict[str, set[str]] = {}
+			for m in current_members:
+				for rid in m.get("role_ids", []):
+					current_by_role.setdefault(rid, set()).add(m["user_id"])
+			desired_by_role = {rid: set(users) for rid, users in desired_assignments.items()}
 
-		for role_id, current_users in current_by_role.items():
-			if role_id in desired_assignments:
-				continue
-			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
-				continue
-			if role_id not in actual_by_id and role_id not in created_real_ids:
-				continue
-			if role_id in deleted_role_ids:
-				continue
-			for user_id in current_users:
+			target_role_ids: set[str] = set()
+			for role_id in set(desired_by_role) | set(current_by_role):
+				if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
+					continue
+				if role_id not in actual_by_id and role_id not in created_real_ids:
+					continue
+				if role_id in deleted_role_ids:
+					continue
+				if role_id not in manageable_role_ids:
+					# PATCH は 1 件でも操作できないロールを含むとメンバー全体が 403 になるため、差分から除く
+					if desired_by_role.get(role_id, set()) != current_by_role.get(role_id, set()):
+						logger.warning("Skipped role %s: managed or not lower than the bot role", role_id)
+					continue
+				target_role_ids.add(role_id)
+
+			member_ids = {m["user_id"] for m in current_members}
+			missing_members = {
+				user_id
+				for rid in target_role_ids
+				for user_id in desired_by_role.get(rid, set())
+				if user_id not in member_ids
+			}
+			if missing_members:
+				logger.warning("Skipped %d assigned users who are not in the guild", len(missing_members))
+
+			for m in sorted(current_members, key=lambda member: member["user_id"]):
+				user_id = m["user_id"]
+				current_roles = set(m.get("role_ids", []))
+				desired_roles = {rid for rid in target_role_ids if user_id in desired_by_role.get(rid, set())}
+				adds = desired_roles - current_roles
+				removes = (current_roles & target_role_ids) - desired_roles
+				if not adds and not removes:
+					continue
+				new_roles = (current_roles - removes) | adds
 				try:
-					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_removes += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
+					await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
+					assigned_adds += len(adds)
+					assigned_removes += len(removes)
+				except DiscordAPIError as e:
+					if e.status_code in (404, 403):
+						logger.warning(
+							"Skipped updating roles for a member (+%d/-%d): HTTP %s",
+							len(adds), len(removes), e.status_code,
+						)
 						continue
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
+					errors.append(f"Failed to update roles for {user_id}: {e}")
 				except Exception as exc:
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+					errors.append(f"Failed to update roles for {user_id}: {exc}")
 	except Exception as exc:
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
 	return assigned_adds, assigned_removes, errors
+
+
+def _manageable_role_ids(roles: list[dict]) -> set[str]:
+	"""Bot が付与・解除できるロール ID を返す（managed / @everyone / Bot ロール以上の位置のロールを除く）。"""
+	bot_role = next((role for role in roles if role.get("is_our_bot")), None)
+	bot_position = bot_role.get("position", 0) if bot_role else None
+	return {
+		role["role_id"]
+		for role in roles
+		if not role.get("managed")
+		and role["role_id"] != DISCORD_GUILD_ID
+		and (bot_position is None or role.get("position", 0) < bot_position)
+	}
 
 
 @router.post("/push")
