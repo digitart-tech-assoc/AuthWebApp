@@ -59,11 +59,16 @@ DB 上で編集されたロール定義（Desired State）を Discord サーバ�
 ```
 
 ### Discord への反映方式
-* **メンバーのロール割り当て**: DB の割り当てと Discord 上の現在のロールの差分をメンバーごとにまとめ、1 メンバーにつき 1 回の `PATCH /guilds/{guild_id}/members/{user_id}` で反映します。
-  * 設定後のロール一覧は Discord 上の現在のロールを元に組み立てるため、DB で管理していないロール（managed ロールや DB 未登録のロール）は外れません。
-  * managed ロール、Bot のロール以上の位置にあるロール、push で削除したロールは差分の対象外です。
-  * 対象メンバーがサーバーにいない（404）・権限不足（403）の場合はスキップし、`errors` には含めません。
+* **メンバーのロール割り当て**: DB の割り当てと Discord 上の現在のロールの差分をメンバーごとにまとめて反映します。
+  * 差分が 1 件だけのメンバーは、ほかのロールに触れない `PUT` / `DELETE /guilds/{guild_id}/members/{user_id}/roles/{role_id}` で反映します。
+  * 差分が 2 件以上のメンバーは、直前に `GET /guilds/{guild_id}/members/{user_id}` で現在のロールを取り直して差分を計算し直し、1 回の `PATCH /guilds/{guild_id}/members/{user_id}` で反映します。push の途中で付与・解除されたロールを、開始時の情報で上書きしないためです。
+  * 設定後のロール一覧は Discord 上の現在のロールを元に組み立てるため、managed ロールなど差分の対象外のロールは外れません。
+  * managed ロール、Bot のロール以上の位置にあるロール、push で削除したロールは差分の対象外です。並び替え後のロール一覧の取得に失敗した場合は、push 開始時のロール一覧で判定します。
+  * 対象メンバーがサーバーにいない（404）場合はスキップし、`errors` には含めません。
+  * 権限不足（403）の場合は、そのメンバーの差分がすべて反映されないため `errors` に記録します（Discord ID は含めません）。
 * **レート制限（429）**: Discord から `429 Too Many Requests` を受けた場合は、レスポンスの `retry_after`（なければ `Retry-After` ヘッダー）の秒数だけ待って再試行します。再試行は最大 3 回、1 回の待ち時間は最大 10 秒です（`backend/app/core/config.py` の `DISCORD_RATE_LIMIT_MAX_RETRIES` / `DISCORD_RATE_LIMIT_MAX_WAIT`）。上限を超えた場合は失敗として `errors` に記録します。
+  * 429 を受ける前でも、応答の `X-RateLimit-Remaining` が 0 であれば `X-RateLimit-Reset-After` の秒数（最大 10 秒）だけ待ってから次のリクエストを送ります。
+  * 429 の警告ログでは、URL 内の ID を `:id` に置き換えます。
 
 ---
 
