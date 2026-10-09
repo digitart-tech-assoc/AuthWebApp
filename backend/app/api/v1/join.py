@@ -10,7 +10,7 @@ import traceback
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
-from app.core.exceptions import OTPTooManyAttemptsError
+from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError
 from app.db import repository
 from app.services.brevo_client import BrevoClient
 from app.services.discord_client import create_channel_invite
@@ -151,6 +151,8 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 		)
 	except OTPTooManyAttemptsError as e:
 		raise HTTPException(status_code=429, detail=str(e))
+	except OTPVerificationBusyError as e:
+		raise HTTPException(status_code=409, detail=str(e))
 	except ValueError as e:
 		raise HTTPException(status_code=400, detail=str(e))
 

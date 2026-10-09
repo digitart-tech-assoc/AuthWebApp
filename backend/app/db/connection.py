@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
+from typing import Any, Iterator
 from urllib.parse import urlparse
 from datetime import datetime
 import json
 import threading
+from contextlib import contextmanager
 
 import psycopg2
+from psycopg2 import errors as pg_errors
 from sqlalchemy import event
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.pool import QueuePool
@@ -161,6 +163,20 @@ def ping_database() -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
             cur.fetchone()
+
+
+@contextmanager
+def limit_lock_wait(cur, timeout_ms: int, error_type: type[Exception]) -> Iterator[None]:
+    """現在のトランザクション内に限り行ロックを待つ上限時間を設定し、ブロック内で上限を超えたら error_type を送出する。
+
+    SET LOCAL のため、トランザクションの終了（commit / rollback）で元に戻り、プールの次の借用者には影響しない。
+    error_type は引数なしで生成するため、利用者向けの文言は例外クラスの既定メッセージで定義する。
+    """
+    cur.execute("SET LOCAL lock_timeout = %s", (f"{int(timeout_ms)}ms",))
+    try:
+        yield
+    except pg_errors.LockNotAvailable as e:
+        raise error_type() from e
 
 
 def _should_log_to_stdout() -> bool:
