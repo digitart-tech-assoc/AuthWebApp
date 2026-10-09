@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Mail, Info } from "lucide-react";
+import { useRef, useState } from "react";
+import { Mail, Info, LoaderCircle } from "lucide-react";
 import { submitContact } from "@/actions/contact";
 import NameInput from "@/components/forms/NameInput";
 import { validateFullName } from "@/lib/validation";
@@ -23,6 +23,9 @@ export default function ContactPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 連打・Enter の連続入力で多重送信しないためのロック。
+  // state（isSubmitting）は再レンダリングまで更新されないため、同期的に更新される ref で判定する
+  const submittingRef = useRef(false);
 
   const emailFormatValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -58,7 +61,7 @@ export default function ContactPage() {
   }
 
   async function handleSubmit() {
-    console.log("contact 送信ボタン押下");
+    if (submittingRef.current) return;
     setFormError(null);
     setFormSuccess(null);
     setEmailTouched(true);
@@ -82,18 +85,17 @@ export default function ContactPage() {
       return;
     }
     
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const result = await submitContact({
+      await submitContact({
         email,
         name: name.trim(),
         subject: subject.trim() || null,
         affiliation: affiliation.trim() || null,
         message: message.trim() || null,
       });
-      
-      console.log("contact submitted successfully:", result);
-      
+
       // フォームをリセット
       setEmail("");
       setConfirmEmail("");
@@ -109,6 +111,7 @@ export default function ContactPage() {
       console.error("Failed to submit contact:", error);
       setFormError(errorMessage);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -238,11 +241,19 @@ export default function ContactPage() {
               <div className="flex flex-col gap-3 pt-4">
                 <button
                   type="button"
-                  className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-cyan-700 transition-all hover:shadow-lg active:scale-95"
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-lg enabled:hover:from-blue-700 enabled:hover:to-cyan-700 transition-all enabled:hover:shadow-lg enabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={handleSubmit}
                   disabled={isSubmitting || !isNameValid}
+                  aria-busy={isSubmitting}
                 >
-                  {isSubmitting ? "送信中…" : "送信"}
+                  {isSubmitting ? (
+                    <>
+                      <LoaderCircle className="w-5 h-5 animate-spin" aria-hidden="true" />
+                      送信中…
+                    </>
+                  ) : (
+                    "送信"
+                  )}
                 </button>
               </div>
             </form>

@@ -157,6 +157,14 @@ def _connect() -> _PooledConnection:
     return _PooledConnection(_get_pool().connect())
 
 
+def ping_database() -> None:
+    """DB へ疎通確認クエリ（SELECT 1）を実行する。接続・実行に失敗した場合は例外を送出する。"""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+
+
 @contextmanager
 def limit_lock_wait(cur, timeout_ms: int, error_type: type[Exception]) -> Iterator[None]:
     """現在のトランザクション内に限り行ロックを待つ上限時間を設定し、ブロック内で上限を超えたら error_type を送出する。

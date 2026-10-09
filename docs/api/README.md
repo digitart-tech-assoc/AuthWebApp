@@ -109,7 +109,12 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 - `POST /api/v1/dev/switch-role` (Authenticated): 開発用ロール切替 → [詳細](./v1/dev.md#post-apiv1devswitch-role)
 
 ### 3.10. システムヘルスチェック
-- `GET /health` (Public): 稼働確認 (`{"status": "ok"}`)
+- `GET /health` (Public): 稼働確認 (`{"status": "ok"}`)。DB には接続しない（Liveness 用）。
+- `GET /health/db` (Public): DB 疎通確認。プールから接続を借りて `SELECT 1` を実行する（Readiness 確認・死活監視用）。
+  - 成功時: `200 OK` / `{"status": "ok", "database": "connected"}`
+  - 失敗時（接続・実行エラー、または 5 秒以内に応答がない場合）: `503 Service Unavailable` / `{"status": "error", "database": "disconnected", "detail": "Connection error"}`
+  - 失敗の原因（接続先・例外メッセージ）はレスポンスに含めず、Backend のログにだけ出力する。
+  - 疎通確認は同時に 1 つだけ実行する。5 秒を超えて 503 を返した後も確認処理は裏で続くため、それが終わるまでの後続リクエストは新たに確認を始めず、実行中の確認の結果を待つ（監視のたびにスレッドとプール接続が積み上がるのを防ぐ）。
 
 ---
 

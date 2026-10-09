@@ -86,3 +86,23 @@ PR 作成時およびレビュー時は以下を確認してください。
 
 - dnd-kit の `transform` / `transition` とロール色は、styling-guide.md の「インラインスタイルの例外」に従い `style` で指定する。
 - 複数コンポーネントで共有するクラス（ボタン等）は `roles/_components/roleStyles.ts` に className 文字列の定数として定義する。
+
+---
+
+## 6. 入会手続きフロー（`/join/_components`）の移行（Issue #99）
+
+`/join/member` の入会ウィザード（`FormStep1〜5`）と、仮入会フォームの `OTPModal` を移行し、`join.module.css` と `OTPModal.module.css` を削除した。
+
+| 順 | 対象 CSS / スタイル | 対象コンポーネント |
+| :--- | :--- | :--- |
+| 0 | —（基盤） | `join/_components/joinStyles.ts`（カード・ボタン・アラート等の共通クラス） |
+| 1 | `join.module.css` + インラインスタイル | `FormStep1Eligibility` |
+| 2 | `join.module.css` + インラインスタイル | `FormStep2Input` |
+| 3 | `join.module.css` + インラインスタイル | `FormStep3Survey` |
+| 4 | `join.module.css` + インラインスタイル | `FormStep4OTP` |
+| 5 | `join.module.css` + インラインスタイル | `FormStep5Complete` |
+| 6 | `OTPModal.module.css` + インラインスタイル | `OTPModal` |
+| 7 | —（削除） | `join.module.css` |
+
+- 複数コンポーネントで共有するクラスは `join/_components/joinStyles.ts` に className 文字列の定数として定義する。
+- `StudentProfileForm`（`components/forms/`）の `StudentProfileForm.module.css` は対象外（Issue #98 で対応する）。

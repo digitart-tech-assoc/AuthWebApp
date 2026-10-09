@@ -1,7 +1,7 @@
 "use client";
 
 import StudentProfileForm from "@/components/forms/StudentProfileForm";
-import styles from "../join.module.css";
+import { alertInfo, card, cardTitle } from "./joinStyles";
 import type { StudentProfileInput } from "@/types/join";
 
 interface FormStep2Props {
@@ -22,20 +22,11 @@ export default function FormStep2Input({
   };
 
   return (
-    <div className={styles.card}>
-      <h2 className={styles.cardTitle}>個人情報入力</h2>
-      
+    <div className={card}>
+      <h2 className={cardTitle}>個人情報入力</h2>
+
       {hasExistingProfile && (
-        <div
-          style={{
-            padding: "12px",
-            background: "#dbeafe",
-            color: "#1e40af",
-            borderRadius: "6px",
-            marginBottom: "16px",
-            fontSize: "14px",
-          }}
-        >
+        <div className={`${alertInfo} mb-4`}>
           💡 Pre-member として登録済みの情報を自動入力しました。変更があれば編集してください。
         </div>
       )}

@@ -53,7 +53,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <header className="w-full border-b border-black/10 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-black/50">
+        <header className="w-full border-b border-black/10 bg-white/80 backdrop-blur">
           <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
             <Link href="/" className="text-sm font-semibold tracking-wide">
               Digitart サークル認証システム
@@ -62,13 +62,13 @@ export default async function RootLayout({
               {user ? (
                 <>
                   {displayName && (
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    <span className="text-sm text-zinc-500">
                       {displayName}
                     </span>
                   )}
                   <a
                     href="/auth/signout?callbackUrl=%2F"
-                    className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+                    className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80"
                   >
                     Logout
                   </a>
@@ -76,14 +76,14 @@ export default async function RootLayout({
               ) : authRequired ? (
                 <a
                   href="/login?callbackUrl=%2Froles"
-                  className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80"
+                  className="rounded-md bg-black px-3 py-1.5 text-sm text-white hover:bg-black/80"
                 >
                   Login
                 </a>
               ) : (
                 <a
                   href="/login?callbackUrl=%2Froles"
-                  className="rounded-md border border-black/15 px-3 py-1.5 text-sm hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                  className="rounded-md border border-black/15 px-3 py-1.5 text-sm hover:bg-black/5"
                 >
                   Login
                 </a>

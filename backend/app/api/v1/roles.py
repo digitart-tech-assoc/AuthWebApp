@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 from app.core.auth import require_admin, require_member
 from app.core.config import (
 	ADMIN_ROLE_NAMES,
+	DISCORD_API_TIMEOUT,
 	MEMBER_RESTRICTED_CATEGORY_NAMES,
 	MEMBER_ROLE_NAMES,
 	OBOG_ROLE_NAMES,
@@ -34,6 +36,7 @@ from app.db.repository import (
 	update_role_id,
 )
 from app.services.discord_client import (
+	DiscordAPIError,
 	add_role_to_member,
 	build_role_create_payload,
 	build_role_edit_payload,
@@ -249,73 +252,178 @@ async def _apply_role_assignment_diffs(
 	deleted_role_ids: set[str],
 	token: str,
 ) -> tuple[int, int, list[str]]:
-	"""メンバーロール割り当ての差分適用"""
+	"""メンバーロール割り当ての差分適用
+
+	差分はメンバー単位にまとめて反映する（反映方法は _apply_member_role_diff を参照）。
+	PATCH はロール一覧を丸ごと上書きするため、Discord 上の現在のロールを元に設定後の一覧を組み立て、
+	差分の対象外のロール（managed や DB 未登録のロール等）はそのまま残す。
+	"""
 	assigned_adds = 0
 	assigned_removes = 0
 	errors: list[str] = []
 
 	try:
-		desired_assignments = await asyncio.to_thread(fetch_role_assignments)
-		current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
-		current_by_role: dict[str, set[str]] = {}
-		for m in current_members:
-			for rid in m.get("role_ids", []):
-				current_by_role.setdefault(rid, set()).add(m["user_id"])
+		async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
+			desired_assignments = await asyncio.to_thread(fetch_role_assignments)
+			current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token, client=client)
+			# 並び替え後のロール階層で Bot が操作できるかを判定するため、ロール一覧を取得し直す
+			try:
+				latest_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token, client=client)
+				manageable_role_ids = _manageable_role_ids(latest_roles)
+			except Exception as exc:
+				# 取り直しに失敗しても割り当ての反映は止めず、push 開始時のロール一覧で判定する。
+				# 新規作成したロールは開始時の一覧に無いが、最下位に作られ Bot より下にあるため操作できるものとして扱う
+				logger.warning("Failed to refetch guild roles; using roles fetched before sync: %s", exc)
+				manageable_role_ids = _manageable_role_ids(list(actual_by_id.values())) | created_real_ids
 
-		for role_id, desired_users in desired_assignments.items():
-			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
-				continue
-			if role_id not in actual_by_id and role_id not in created_real_ids:
-				continue
-			desired_set = set(desired_users)
-			current_set = current_by_role.get(role_id, set())
-			for user_id in desired_set - current_set:
-				try:
-					await add_role_to_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_adds += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped add role %s to %s: HTTP %s", role_id, user_id, e.response.status_code)
-						continue
-					errors.append(f"Failed to add role {role_id} to {user_id}: {e}")
-				except Exception as exc:
-					errors.append(f"Failed to add role {role_id} to {user_id}: {exc}")
-			for user_id in current_set - desired_set:
-				try:
-					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_removes += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
-						continue
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
-				except Exception as exc:
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+			current_by_role: dict[str, set[str]] = {}
+			for m in current_members:
+				for rid in m.get("role_ids", []):
+					current_by_role.setdefault(rid, set()).add(m["user_id"])
+			desired_by_role = {rid: set(users) for rid, users in desired_assignments.items()}
 
-		for role_id, current_users in current_by_role.items():
-			if role_id in desired_assignments:
-				continue
-			if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
-				continue
-			if role_id not in actual_by_id and role_id not in created_real_ids:
-				continue
-			if role_id in deleted_role_ids:
-				continue
-			for user_id in current_users:
+			target_role_ids: set[str] = set()
+			for role_id in set(desired_by_role) | set(current_by_role):
+				if role_id == DISCORD_GUILD_ID or role_id.startswith("draft-"):
+					continue
+				if role_id not in actual_by_id and role_id not in created_real_ids:
+					continue
+				if role_id in deleted_role_ids:
+					continue
+				if role_id not in manageable_role_ids:
+					# PATCH は 1 件でも操作できないロールを含むとメンバー全体が 403 になるため、差分から除く
+					if desired_by_role.get(role_id, set()) != current_by_role.get(role_id, set()):
+						logger.warning("Skipped role %s: managed or not lower than the bot role", role_id)
+					continue
+				target_role_ids.add(role_id)
+
+			member_ids = {m["user_id"] for m in current_members}
+			missing_members = {
+				user_id
+				for rid in target_role_ids
+				for user_id in desired_by_role.get(rid, set())
+				if user_id not in member_ids
+			}
+			if missing_members:
+				logger.warning("Skipped %d assigned users who are not in the guild", len(missing_members))
+
+			pending: list[tuple[str, set[str], set[str], set[str]]] = []
+			for m in sorted(current_members, key=lambda member: member["user_id"]):
+				user_id = m["user_id"]
+				current_roles = set(m.get("role_ids", []))
+				desired_roles = {rid for rid in target_role_ids if user_id in desired_by_role.get(rid, set())}
+				adds = desired_roles - current_roles
+				removes = (current_roles & target_role_ids) - desired_roles
+				if adds or removes:
+					pending.append((user_id, current_roles, adds, removes))
+
+			for index, (user_id, current_roles, adds, removes) in enumerate(pending):
 				try:
-					await remove_role_from_member(DISCORD_GUILD_ID, user_id, role_id, token)
-					assigned_removes += 1
-				except httpx.HTTPStatusError as e:
-					if e.response is not None and e.response.status_code in (404, 403):
-						logger.warning("Skipped remove role %s from %s: HTTP %s", role_id, user_id, e.response.status_code)
+					added, removed = await _apply_member_role_diff(
+						user_id, current_roles, target_role_ids, token, client
+					)
+					assigned_adds += added
+					assigned_removes += removed
+				except (DiscordAPIError, httpx.HTTPStatusError) as e:
+					status_code = _error_status_code(e)
+					if status_code == 429:
+						# 再試行しても 429 のままなら、続けて送っても 429 を重ねるだけで、Discord の
+						# 無効リクエスト数の上限（超えると IP 単位で一時的に遮断される）に近づくため、残りは送らない
+						remaining = len(pending) - index
+						msg = (
+							f"Discord rate limited (HTTP 429); aborted updating roles for the remaining {remaining} members. "
+							"Run push again later"
+						)
+						logger.warning("%s", msg)
+						errors.append(msg)
+						break
+					if status_code == 404:
+						# 開始時のメンバー一覧取得後にギルドを抜けたメンバー
+						logger.warning(
+							"Skipped updating roles for a member (+%d/-%d): HTTP 404",
+							len(adds), len(removes),
+						)
 						continue
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {e}")
+					if status_code == 403:
+						# 1 件でも操作できないロールがあると、そのメンバーの差分がすべて反映されないため errors に残す。
+						# レスポンスに含まれるため Discord ID は入れない
+						msg = (
+							f"Failed to update roles for a member (+{len(adds)}/-{len(removes)}): HTTP 403 "
+							"(check the bot's Manage Roles permission and role hierarchy)"
+						)
+						logger.warning("%s", msg)
+						errors.append(msg)
+						continue
+					errors.append(f"Failed to update roles for {user_id}: {e}")
 				except Exception as exc:
-					errors.append(f"Failed to remove role {role_id} from {user_id}: {exc}")
+					errors.append(f"Failed to update roles for {user_id}: {exc}")
 	except Exception as exc:
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
 	return assigned_adds, assigned_removes, errors
+
+
+async def _apply_member_role_diff(
+	user_id: str,
+	current_roles: set[str],
+	target_role_ids: set[str],
+	token: str,
+	client: httpx.AsyncClient,
+) -> tuple[int, int]:
+	"""1 メンバー分のロール差分を Discord に反映し、(追加数, 削除数) を返す。
+
+	push 開始時に取得した DB の割り当てと Discord のロールを元にすると、その後に self-batch などで
+	付与・解除されたロールを巻き戻してしまう。これを避けるため、
+	- 反映の直前に、そのメンバーの DB の割り当てを読み直して、あるべきロールを決め直す
+	- 差分が 1 件だけなら、ほかのロールに触れない PUT / DELETE で反映する（同じ状態への PUT / DELETE は変化しない）
+	- 2 件以上なら、PATCH の直前にメンバーの現在のロールを取り直し、差分を計算し直して反映する
+	いずれも Discord API の呼び出しは、ロールごとに PUT / DELETE する場合の回数以下になる。
+	"""
+	latest_assignments = await asyncio.to_thread(fetch_role_assignments_for_user, user_id)
+	desired_roles = {rid for rid in latest_assignments if rid in target_role_ids}
+	adds = desired_roles - current_roles
+	removes = (current_roles & target_role_ids) - desired_roles
+	if not adds and not removes:
+		return 0, 0
+
+	if len(adds) + len(removes) == 1:
+		if adds:
+			await add_role_to_member(DISCORD_GUILD_ID, user_id, next(iter(adds)), token, client=client)
+			return 1, 0
+		await remove_role_from_member(DISCORD_GUILD_ID, user_id, next(iter(removes)), token, client=client)
+		return 0, 1
+
+	member = await fetch_guild_member(DISCORD_GUILD_ID, user_id, token, client=client)
+	if member is None:
+		raise DiscordAPIError("Member not found", 404)
+	latest_roles = set(member.get("role_ids", []))
+	latest_adds = desired_roles - latest_roles
+	latest_removes = (latest_roles & target_role_ids) - desired_roles
+	if not latest_adds and not latest_removes:
+		return 0, 0
+	new_roles = (latest_roles - latest_removes) | latest_adds
+	await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
+	return len(latest_adds), len(latest_removes)
+
+
+def _error_status_code(exc: DiscordAPIError | httpx.HTTPStatusError) -> int | None:
+	"""Discord API 呼び出しの例外から HTTP ステータスを取り出す。"""
+	if isinstance(exc, DiscordAPIError):
+		return exc.status_code
+	return exc.response.status_code if exc.response is not None else None
+
+
+def _manageable_role_ids(roles: list[dict]) -> set[str]:
+	"""Bot が付与・解除できるロール ID を返す（managed / @everyone / Bot ロール以上の位置のロールを除く）。"""
+	bot_role = next((role for role in roles if role.get("is_our_bot")), None)
+	bot_position = bot_role.get("position", 0) if bot_role else None
+	return {
+		role["role_id"]
+		for role in roles
+		if not role.get("managed")
+		and role["role_id"] != DISCORD_GUILD_ID
+		and (bot_position is None or role.get("position", 0) < bot_position)
+	}
 
 
 @router.post("/push")
@@ -518,6 +626,16 @@ class SelfBatchPayload(BaseModel):
 	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
+def _unwrap_discord_fetch(result: object, label: str):
+	"""asyncio.gather(return_exceptions=True) の結果を取り出す。Discord API の失敗は 502 に変換する。"""
+	if isinstance(result, Exception):
+		raise HTTPException(status_code=502, detail=f"Discord API error ({label}): {result}") from result
+	if isinstance(result, BaseException):
+		# キャンセル等は握りつぶさずそのまま送出する
+		raise result
+	return result
+
+
 @router.post("/self-batch")
 async def self_batch_roles(
 	payload: SelfBatchPayload,
@@ -584,10 +702,13 @@ async def self_batch_roles(
 			)
 
 	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
-	try:
-		discord_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error (fetch roles): {exc}") from exc
+	# ロール一覧と対象メンバーの現在のロールは互いに依存しないため、並列に取得して待ち時間を減らす。
+	roles_result, member_result = await asyncio.gather(
+		fetch_guild_roles(DISCORD_GUILD_ID, token),
+		fetch_guild_member(DISCORD_GUILD_ID, discord_id, token),
+		return_exceptions=True,
+	)
+	discord_roles = _unwrap_discord_fetch(roles_result, "fetch roles")
 
 	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
 	bot_role = next((role for role in discord_roles if role.get("is_our_bot")), None)
@@ -601,11 +722,8 @@ async def self_batch_roles(
 		if bot_role and discord_role.get("position", 0) >= bot_role.get("position", 0):
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
 
-	# --- 2. 現在のメンバーロール取得 ---
-	try:
-		member_info = await fetch_guild_member(DISCORD_GUILD_ID, discord_id, token)
-	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error (fetch member): {exc}") from exc
+	# --- 2. 現在のメンバーロール取得（上で並列に取得済み。取得に失敗していても、検証で拒否した場合はそちらのエラーを優先する） ---
+	member_info = _unwrap_discord_fetch(member_result, "fetch member")
 
 	if member_info is None:
 		raise HTTPException(status_code=404, detail="ギルドメンバーが見つかりません。Discordサーバーに参加しているか確認してください。")

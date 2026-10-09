@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
@@ -46,14 +48,16 @@ async def submit_survey(req: SurveyRequest, principal: dict = Depends(get_curren
         raise HTTPException(status_code=401, detail="Discord account not linked")
 
     # Try to resolve profile by discord_id
-    profile = repository.get_student_profile(discord_id) if discord_id else None
+    profile = await asyncio.to_thread(repository.get_student_profile, discord_id) if discord_id else None
     profile_id = profile.get("id") if profile else None
     student_number = profile.get("student_number") if profile else ""
 
-    payload = req.dict()
+    payload = req.model_dump()
 
     try:
-        result = repository.save_member_survey_response(profile_id, student_number or "", req.join_request_id, payload)
+        result = await asyncio.to_thread(
+            repository.save_member_survey_response, profile_id, student_number or "", req.join_request_id, payload
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save survey response: {e}")
 
