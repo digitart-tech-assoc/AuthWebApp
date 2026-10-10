@@ -61,6 +61,9 @@
 ```
 
 ### エラーレスポンス
-* `400 Bad Request`: コードが誤っている場合、または試行回数上限（`attempt_count >= 5`）に達した場合。
-* `410 Gone`: コードの有効期限（15分）が切れている場合。
+* `400 Bad Request`: 次のいずれかの場合。`detail` に理由が入る。
+  * コードが誤っている（`"Invalid OTP code"`）。試行回数（`attempt_count`）を 1 増やす。
+  * コードの有効期限（15分）が切れている（`"OTP has expired"`）。
+  * 未検証の OTP が存在しない（`"No active OTP found"`）。
 * `409 Conflict`: 同じ OTP の検証が同時に行われており、行ロック（`SELECT ... FOR UPDATE`）の待ち時間が上限（`OTP_LOCK_TIMEOUT_MS` = 3 秒）を超えた場合。試行回数は消費しない。`detail` は `"同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。"`。
+* `429 Too Many Requests`: 試行回数上限（`attempt_count >= 5`）に達している場合（`"Maximum OTP attempts exceeded"`）。5 回目の誤入力の時点でコードは失効する。
