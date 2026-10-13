@@ -44,6 +44,12 @@ const footerClass =
   "flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4";
 const lockedMsgClass = "inline-flex items-center gap-1 text-xs font-medium text-slate-500";
 
+const UNKNOWN_MEMBER_LABEL = "未取得のユーザー";
+
+/** guild_members に未保存のユーザー（名前・アイコンを取得できていない）の表示用データ */
+function unknownMember(userId: string): Member {
+  return { user_id: userId, username: "", display_name: UNKNOWN_MEMBER_LABEL, avatar: null };
+}
 
 function MemberAvatar({ member }: { member: Member }) {
   const avatarUrl = member.avatar
@@ -83,10 +89,13 @@ export default function RoleMemberModal({
   const [selectedForRevoke, setSelectedForRevoke] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
-  const currentMembers = useMemo(
-    () => allMembers.filter((m) => localMemberIds.has(m.user_id)),
-    [allMembers, localMemberIds]
-  );
+  // 割り当てを基準にする。guild_members に未保存のユーザーも表示・削除できるよう、末尾に代替表示で加える
+  const currentMembers = useMemo(() => {
+    const known = allMembers.filter((m) => localMemberIds.has(m.user_id));
+    const knownIds = new Set(known.map((m) => m.user_id));
+    const unknown = [...localMemberIds].filter((id) => !knownIds.has(id)).map(unknownMember);
+    return [...known, ...unknown];
+  }, [allMembers, localMemberIds]);
 
   const filteredAll = useMemo(() => {
     const q = search.toLowerCase();
@@ -247,6 +256,7 @@ export default function RoleMemberModal({
                 />
                 <MemberAvatar member={m} />
                 <span className={memberNameClass}>{m.display_name || m.username}</span>
+                {!m.username && <span className="shrink-0 text-xs text-slate-500">{m.user_id}</span>}
                 {isSelfOnly && <span className={lockedBadgeClass}>操作不可</span>}
               </label>
             );
@@ -288,7 +298,7 @@ export default function RoleMemberModal({
           <div key={m.user_id} className={memberRowBaseClass}>
             <MemberAvatar member={m} />
             <span className={memberNameClass}>{displayName(m)}</span>
-            <span className="shrink-0 text-xs text-slate-500">@{m.username}</span>
+            <span className="shrink-0 text-xs text-slate-500">{m.username ? `@${m.username}` : m.user_id}</span>
           </div>
         ))}
       </div>
