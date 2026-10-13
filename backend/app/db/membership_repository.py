@@ -47,23 +47,30 @@ def sync_member_lists(
 	sub_user_role_ids: list[str] | None = None,
 ) -> dict[str, Any]:
 	"""
-	Discord ロール情報から user_memberships を同期。
-	user_memberships テーブルの新仕様に対応。
-	
+	Discord ロール情報から user_memberships を差分同期する。
+
+	種別ごとに、Discord でその種別のロールを持つメンバーの集合と DB の行を比べ、
+	Discord にいなくなった行だけを削除し、新しく現れたメンバーだけを追加する。
+	既存の行は残すため、assigned_by / assigned_at は保たれる。
+	対応するロールが Discord に見つからない種別は、誤って全件削除しないよう変更せず警告ログだけ出す。
+
 	Parameters:
 	- member_role_ids: member ロール ID のリスト
 	- obog_role_ids: OBOG ロール ID のリスト
 	- admin_role_ids: admin ロール ID のリスト
 	- pre_member_role_id: pre-member ロール ID（持っている場合）
 	- members: role_id -> [members] のマッピング（fetch_all_guild_members の結果から組み立てる）
-	
+	- sub_user_role_ids: sub_user（sub垢）ロール ID のリスト
+
 	Returns:
-	- {
-		'member_list': [list of user_memberships records],
-		'admin_list': [list of user_memberships records],
-		'pre_member_list': [list of user_memberships records],
-		'obog_list': [list of user_memberships records],
-	}
+	- 同期後の種別ごとの全行
+	  {
+		'member_list': [user_memberships records],
+		'sub_user_list': [user_memberships records],
+		'admin_list': [user_memberships records],
+		'pre_member_list': [user_memberships records],
+		'obog_list': [user_memberships records],
+	  }
 	"""
 	# Validation: すべての role_id がメンバーデータを持つことを確認
 	expected_role_ids = set(member_role_ids + obog_role_ids + admin_role_ids)
@@ -81,82 +88,94 @@ def sync_member_lists(
 		error_msg = f"Missing members data for role_ids: {missing_role_ids}. Aborting sync to prevent data loss."
 		logger.error(error_msg)
 		raise ValueError(error_msg)
-	
+
+	sync_targets = [
+		(member_role_ids, MembershipType.MEMBER, 'member_list'),
+		(sub_user_role_ids or [], MembershipType.SUB_USER, 'sub_user_list'),
+		(obog_role_ids, MembershipType.OBOG, 'obog_list'),
+		(admin_role_ids, MembershipType.ADMIN, 'admin_list'),
+		([pre_member_role_id] if pre_member_role_id else [], MembershipType.PRE_MEMBER, 'pre_member_list'),
+	]
+
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			# 既存データをバックアップ（念のため）
-			cur.execute("SELECT COUNT(*) FROM user_memberships")
-			old_count = cur.fetchone()[0]
-			logger.info(f"Backing up existing user_memberships: {old_count} records")
-			
-			# 既存データをクリア（全置換方式）
-			cur.execute("DELETE FROM user_memberships")
-			logger.info("Cleared user_memberships table")
-			
-			result = {
-				'member_list': [],
-				'sub_user_list': [],
-				'admin_list': [],
-				'pre_member_list': [],
-				'obog_list': []
-			}
-			
-			# ユーティリティ関数: タプルを辞書に変換（タイムスタンプをISO形式に）
-			def row_to_dict(row, description):
-				result = {}
-				for desc, val in zip(description, row):
-					col_name = desc[0]
-					# タイムスタンプ型はISO形式の文字列に変換
-					if col_name in ['assigned_at', 'created_at'] and val is not None:
-						result[col_name] = val.isoformat()
-					else:
-						result[col_name] = val
-				return result
-			
-			def _insert_membership_batch(role_ids, m_type, r_list):
-				discord_ids = set()
-				for role_id in role_ids:
-					for member in members.get(role_id, []):
-						discord_ids.add(member["user_id"])
-				if not discord_ids:
-					return
-				logger.info(f"Syncing {len(discord_ids)} members with membership_type='{m_type}'")
-				for discord_id in discord_ids:
-					cur.execute(
-						"""
-						INSERT INTO user_memberships 
-						(discord_id, membership_type, assigned_at, created_at)
-						VALUES (%s, %s, now(), now())
-						ON CONFLICT (discord_id, membership_type) DO NOTHING
-						RETURNING *
-						""",
-						(discord_id, m_type)
+			result: dict[str, list[dict[str, Any]]] = {}
+			for role_ids, m_type, list_key in sync_targets:
+				if not role_ids:
+					logger.warning(
+						"sync_member_lists: no Discord role matched for membership_type='%s'; left unchanged",
+						m_type,
 					)
-					row = cur.fetchone()
-					if row:
-						r_list.append(row_to_dict(row, cur.description))
+				else:
+					_sync_membership_type(cur, m_type, role_ids, members)
+				result[list_key] = _fetch_membership_rows(cur, m_type)
 
-			sync_targets = [
-				(member_role_ids, MembershipType.MEMBER, result['member_list']),
-				(sub_user_role_ids or [], MembershipType.SUB_USER, result['sub_user_list']),
-				(obog_role_ids, MembershipType.OBOG, result['obog_list']),
-				(admin_role_ids, MembershipType.ADMIN, result['admin_list']),
-				([pre_member_role_id] if pre_member_role_id else [], MembershipType.PRE_MEMBER, result['pre_member_list']),
-			]
-			for r_ids, m_type, r_list in sync_targets:
-				_insert_membership_batch(r_ids, m_type, r_list)
-			
 			conn.commit()
 
-			# 完了ログ
-			total_synced = sum(len(v) for v in result.values())
 			logger.info(
-				f"sync_member_lists completed: {total_synced} total records synced "
-				f"(member={len(result['member_list'])}, sub_user={len(result['sub_user_list'])}, "
-				f"admin={len(result['admin_list'])}, pre_member={len(result['pre_member_list'])}, obog={len(result['obog_list'])})"
+				"sync_member_lists completed: member=%d, sub_user=%d, admin=%d, pre_member=%d, obog=%d",
+				len(result['member_list']), len(result['sub_user_list']), len(result['admin_list']),
+				len(result['pre_member_list']), len(result['obog_list']),
 			)
 
 			return result
+
+
+def _sync_membership_type(
+	cur: Any,
+	m_type: str,
+	role_ids: list[str],
+	members: dict[str, list[dict[str, Any]]],
+) -> None:
+	"""1 種別分の user_memberships を、Discord でそのロールを持つメンバーの集合に合わせて差分更新する。"""
+	desired_ids = {member["user_id"] for role_id in role_ids for member in members.get(role_id, [])}
+
+	cur.execute("SELECT discord_id FROM user_memberships WHERE membership_type = %s", (m_type,))
+	existing_ids = {row[0] for row in cur.fetchall()}
+
+	removed_ids = existing_ids - desired_ids
+	added_ids = desired_ids - existing_ids
+	if removed_ids:
+		cur.execute(
+			"DELETE FROM user_memberships WHERE membership_type = %s AND discord_id = ANY(%s)",
+			(m_type, sorted(removed_ids)),
+		)
+	for discord_id in sorted(added_ids):
+		cur.execute(
+			"""
+			INSERT INTO user_memberships (discord_id, membership_type, assigned_at, created_at)
+			VALUES (%s, %s, now(), now())
+			ON CONFLICT (discord_id, membership_type) DO NOTHING
+			""",
+			(discord_id, m_type),
+		)
+	logger.info(
+		"sync_member_lists: membership_type='%s' added=%d removed=%d",
+		m_type, len(added_ids), len(removed_ids),
+	)
+
+
+def _fetch_membership_rows(cur: Any, m_type: str) -> list[dict[str, Any]]:
+	"""1 種別分の user_memberships の全行を、タイムスタンプを ISO 形式にした辞書で返す。"""
+	cur.execute(
+		"""
+		SELECT discord_id, membership_type, assigned_by, assigned_at, created_at
+		FROM user_memberships
+		WHERE membership_type = %s
+		ORDER BY assigned_at DESC
+		""",
+		(m_type,),
+	)
+	return [
+		{
+			"discord_id": row[0],
+			"membership_type": row[1],
+			"assigned_by": row[2],
+			"assigned_at": row[3].isoformat() if row[3] else None,
+			"created_at": row[4].isoformat() if row[4] else None,
+		}
+		for row in cur.fetchall()
+	]
 
 
 def get_member_lists() -> dict[str, list[dict[str, Any]]]:
