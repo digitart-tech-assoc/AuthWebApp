@@ -5,6 +5,8 @@
 - sub_user（sub垢）も同期する
 - 対応するロールが Discord に見つからない種別は変更しない
 - members/sync は sub垢 ロールを sub_user として sync_member_lists に渡し、sub_user_list を返す
+- sub垢 ロールを持つユーザーは member から除外する（#187）
+- ギルドメンバーが 0 件で返った場合は同期を中止する
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.v1 import roles as roles_api
 from app.db import membership_repository
@@ -181,6 +184,45 @@ class TestSyncMemberListsDiff:
 			run_sync({}, members={"role-member": []})
 
 
+class TestSyncMemberListsExcludesSubUserFromMember:
+	"""sub垢 ロールを持つユーザーは member から除外し、sub_user としてのみ同期する（#187）"""
+
+	def test_sub_account_with_member_role_is_synced_only_as_sub_user(self, run_sync):
+		members = _all_role_members(**{
+			"role-member": _members("user-main", "user-sub"),
+			"role-sub": _members("user-sub"),
+		})
+
+		result, table, _ = run_sync({}, members=members)
+
+		assert set(table) == {("user-main", "member"), ("user-sub", "sub_user")}
+		assert [row["discord_id"] for row in result["member_list"]] == ["user-main"]
+		assert [row["discord_id"] for row in result["sub_user_list"]] == ["user-sub"]
+
+	def test_removes_existing_member_row_of_sub_account(self, run_sync):
+		table = {("user-sub", "member"): _row(), ("user-sub", "sub_user"): _row(assigned_by="admin")}
+		members = _all_role_members(**{"role-member": _members("user-sub"), "role-sub": _members("user-sub")})
+
+		_, table, _ = run_sync(table, members=members)
+
+		assert set(table) == {("user-sub", "sub_user")}
+		assert table[("user-sub", "sub_user")]["assigned_by"] == "admin"
+
+	def test_does_not_exclude_from_member_when_sub_user_role_is_not_found(self, run_sync):
+		members = {"role-member": _members("user-main"), "role-obog": [], "role-admin": [], "role-pre": []}
+
+		_, table, _ = run_sync({}, sub_user_role_ids=(), members=members)
+
+		assert set(table) == {("user-main", "member")}
+
+	def test_does_not_exclude_sub_account_from_other_types(self, run_sync):
+		members = _all_role_members(**{"role-admin": _members("user-sub"), "role-sub": _members("user-sub")})
+
+		_, table, _ = run_sync({}, members=members)
+
+		assert set(table) == {("user-sub", "admin"), ("user-sub", "sub_user")}
+
+
 class TestMembersSyncPassesSubUser:
 	@pytest.mark.asyncio
 	async def test_passes_sub_user_role_and_returns_sub_user_list(self):
@@ -209,3 +251,23 @@ class TestMembersSyncPassesSubUser:
 		assert args[5] == ["role-sub"]
 		assert [m["user_id"] for m in args[4]["role-sub"]] == ["user-sub"]
 		assert result["sub_user_list"] == [{"discord_id": "user-sub"}]
+
+
+class TestMembersSyncAbortsOnEmptyGuild:
+	@pytest.mark.asyncio
+	async def test_aborts_without_saving_when_guild_members_are_empty(self):
+		discord_roles = [
+			{"role_id": "role-member", "name": "member"},
+			{"role_id": "role-sub", "name": "sub垢"},
+		]
+		with patch.object(roles_api, "_get_token", return_value="token"), \
+			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=discord_roles), \
+			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, return_value=[]), \
+			patch.object(roles_api, "save_guild_members") as mock_save, \
+			patch.object(roles_api, "sync_member_lists") as mock_sync:
+			with pytest.raises(HTTPException) as exc_info:
+				await roles_api.sync_members_from_discord({"app_role": "admin"})
+
+		assert exc_info.value.status_code == 502
+		mock_save.assert_not_called()
+		mock_sync.assert_not_called()
