@@ -201,6 +201,10 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 `user_memberships` は種別（`member` / `sub_user` / `obog` / `admin` / `pre_member`）ごとに差分で同期します。Discord で対応するロールを持たなくなったユーザーの行だけを削除し、新しくロールを持ったユーザーの行だけを追加します。既存の行の `assigned_by` / `assigned_at` は変更しません。対応するロール（`sub_user` は `sub垢`）が Discord に見つからない種別は変更せず、警告ログを出します。
 
+`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（サブアカウントは Bot の reconcile で member ロールも付与されるため）。
+
+Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
+
 レスポンスの `sub_user_list` には、同期後の `sub_user` の全行が入ります。
 
 * **認可レベル**: `Admin`
