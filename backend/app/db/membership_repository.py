@@ -53,6 +53,7 @@ def sync_member_lists(
 	Discord にいなくなった行だけを削除し、新しく現れたメンバーだけを追加する。
 	既存の行は残すため、assigned_by / assigned_at は保たれる。
 	対応するロールが Discord に見つからない種別は、誤って全件削除しないよう変更せず警告ログだけ出す。
+	sub垢 ロールを持つユーザーは member ロールを持っていても member には含めず、sub_user としてのみ同期する。
 
 	Parameters:
 	- member_role_ids: member ロール ID のリスト
@@ -89,25 +90,29 @@ def sync_member_lists(
 		logger.error(error_msg)
 		raise ValueError(error_msg)
 
+	# サブアカウントは Bot の reconcile で member ロールも付与されるため、
+	# sub垢 ロールを持つユーザーは member から除外し、sub_user としてのみ同期する（#187）
+	sub_user_ids = _role_member_ids(sub_user_role_ids or [], members)
+
 	sync_targets = [
-		(member_role_ids, MembershipType.MEMBER, 'member_list'),
-		(sub_user_role_ids or [], MembershipType.SUB_USER, 'sub_user_list'),
-		(obog_role_ids, MembershipType.OBOG, 'obog_list'),
-		(admin_role_ids, MembershipType.ADMIN, 'admin_list'),
-		([pre_member_role_id] if pre_member_role_id else [], MembershipType.PRE_MEMBER, 'pre_member_list'),
+		(member_role_ids, MembershipType.MEMBER, 'member_list', sub_user_ids),
+		(sub_user_role_ids or [], MembershipType.SUB_USER, 'sub_user_list', set()),
+		(obog_role_ids, MembershipType.OBOG, 'obog_list', set()),
+		(admin_role_ids, MembershipType.ADMIN, 'admin_list', set()),
+		([pre_member_role_id] if pre_member_role_id else [], MembershipType.PRE_MEMBER, 'pre_member_list', set()),
 	]
 
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			result: dict[str, list[dict[str, Any]]] = {}
-			for role_ids, m_type, list_key in sync_targets:
+			for role_ids, m_type, list_key, excluded_ids in sync_targets:
 				if not role_ids:
 					logger.warning(
 						"sync_member_lists: no Discord role matched for membership_type='%s'; left unchanged",
 						m_type,
 					)
 				else:
-					_sync_membership_type(cur, m_type, role_ids, members)
+					_sync_membership_type(cur, m_type, _role_member_ids(role_ids, members) - excluded_ids)
 				result[list_key] = _fetch_membership_rows(cur, m_type)
 
 			conn.commit()
@@ -121,15 +126,13 @@ def sync_member_lists(
 			return result
 
 
-def _sync_membership_type(
-	cur: Any,
-	m_type: str,
-	role_ids: list[str],
-	members: dict[str, list[dict[str, Any]]],
-) -> None:
-	"""1 種別分の user_memberships を、Discord でそのロールを持つメンバーの集合に合わせて差分更新する。"""
-	desired_ids = {member["user_id"] for role_id in role_ids for member in members.get(role_id, [])}
+def _role_member_ids(role_ids: list[str], members: dict[str, list[dict[str, Any]]]) -> set[str]:
+	"""role_ids のいずれかのロールを持つメンバーの Discord ID の集合を返す。"""
+	return {member["user_id"] for role_id in role_ids for member in members.get(role_id, [])}
 
+
+def _sync_membership_type(cur: Any, m_type: str, desired_ids: set[str]) -> None:
+	"""1 種別分の user_memberships を、desired_ids（その種別であるべき Discord ID の集合）に合わせて差分更新する。"""
 	cur.execute("SELECT discord_id FROM user_memberships WHERE membership_type = %s", (m_type,))
 	existing_ids = {row[0] for row in cur.fetchall()}
 
