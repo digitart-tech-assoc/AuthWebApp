@@ -592,6 +592,10 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		# /roles の表示や付与候補で名前・アイコンを引けるようにする
 		guild_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
 		logger.debug("Fetched %d guild members", len(guild_members))
+		# 0 件のまま同期すると全種別の行が削除されるため、取得失敗とみなして中止する
+		# （Server Members Intent が無効な場合などに 0 件で返ることがある）
+		if not guild_members:
+			raise RuntimeError("Discord returned 0 guild members. Aborting sync to prevent data loss.")
 
 		# 所属メンバーが 0 人のロールも空リストとして渡し、sync_member_lists の欠落チェックを通す
 		members_data: dict[str, list[dict]] = {
