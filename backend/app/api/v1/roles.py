@@ -46,7 +46,6 @@ from app.services.discord_client import (
 	fetch_all_guild_members,
 	fetch_bot_guilds,
 	fetch_guild_member,
-	fetch_guild_members_with_role,
 	fetch_guild_roles,
 	remove_role_from_member,
 	reorder_guild_roles,
@@ -583,19 +582,24 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			logger.error("%s", error_detail)
 			raise HTTPException(status_code=400, detail=error_detail)
 		
-		# Fetch members for each role
-		members_data = {}
-		all_unique_members = {}
-		for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else []):
-			if role_id:
-				members = await fetch_guild_members_with_role(DISCORD_GUILD_ID, role_id, token)
-				logger.debug("Fetched %d members for role %s", len(members), role_id)
-				members_data[role_id] = members
-				for m in members:
-					all_unique_members[m["user_id"]] = m
-		
-		logger.debug("Saving %d unique guild members metadata", len(all_unique_members))
-		await asyncio.to_thread(save_guild_members, list(all_unique_members.values()))
+		# ギルドの全メンバーを 1 回で取得し、ロールごとの所属メンバーはメンバーの role_ids から組み立てる。
+		# 対象ロールを持たないメンバー（sub垢 のみのアカウントや Bot など）も guild_members に保存し、
+		# /roles の表示や付与候補で名前・アイコンを引けるようにする
+		guild_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
+		logger.debug("Fetched %d guild members", len(guild_members))
+
+		# 所属メンバーが 0 人のロールも空リストとして渡し、sync_member_lists の欠落チェックを通す
+		members_data: dict[str, list[dict]] = {
+			role_id: []
+			for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else [])
+		}
+		for m in guild_members:
+			for role_id in m.get("role_ids", []):
+				if role_id in members_data:
+					members_data[role_id].append(m)
+
+		logger.debug("Saving %d guild members metadata", len(guild_members))
+		await asyncio.to_thread(save_guild_members, guild_members)
 		
 		# Sync to DB
 		logger.debug("Syncing role memberships to DB with members_data keys: %s", list(members_data.keys()))

@@ -55,7 +55,7 @@ def sync_member_lists(
 	- obog_role_ids: OBOG ロール ID のリスト
 	- admin_role_ids: admin ロール ID のリスト
 	- pre_member_role_id: pre-member ロール ID（持っている場合）
-	- members: role_id -> [members] のマッピング（fetch_guild_members_with_role から取得）
+	- members: role_id -> [members] のマッピング（fetch_all_guild_members の結果から組み立てる）
 	
 	Returns:
 	- {
