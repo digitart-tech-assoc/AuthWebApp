@@ -40,4 +40,3 @@
 - **Discord への差分 Push**: `POST /api/roles/push`
   - バックエンド `POST /api/v1/roles/push` または `sync` を呼び出し。
 - **ロールメンバー一覧取得**: `GET /api/roles/members`
-- **ロール権限更新**: `POST /api/roles/[roleId]/permissions`
