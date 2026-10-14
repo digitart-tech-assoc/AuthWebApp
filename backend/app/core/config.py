@@ -52,6 +52,7 @@ MEMBER_ROLE_NAMES: set[str] = {"member", "会員", "Member"}
 OBOG_ROLE_NAMES: set[str] = {"OBOG", "OB/OG", "OB-OG"}
 ADMIN_ROLE_NAMES: set[str] = {"administrator", "管理者", "Administrator"}
 PRE_MEMBER_ROLE_NAME: str = "pre-member"
+SUB_USER_ROLE_NAMES: set[str] = {"sub垢"}
 
 
 # ============================================================================

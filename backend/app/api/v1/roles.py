@@ -20,6 +20,7 @@ from app.core.config import (
 	MEMBER_ROLE_NAMES,
 	OBOG_ROLE_NAMES,
 	PRE_MEMBER_ROLE_NAME,
+	SUB_USER_ROLE_NAMES,
 )
 from app.db.repository import (
 	batch_update_user_roles,
@@ -527,8 +528,9 @@ def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 	obog_role_ids = [r["role_id"] for r in roles if r["name"] in OBOG_ROLE_NAMES]
 	admin_role_ids = [r["role_id"] for r in roles if r["name"] in ADMIN_ROLE_NAMES]
 	pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == PRE_MEMBER_ROLE_NAME), None)
+	sub_user_role_ids = [r["role_id"] for r in roles if r["name"] in SUB_USER_ROLE_NAMES]
 
-	all_matched = member_role_ids + obog_role_ids + admin_role_ids
+	all_matched = member_role_ids + obog_role_ids + admin_role_ids + sub_user_role_ids
 	if pre_member_role_id:
 		all_matched.append(pre_member_role_id)
 
@@ -537,13 +539,14 @@ def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 		"obog_role_ids": obog_role_ids,
 		"admin_role_ids": admin_role_ids,
 		"pre_member_role_id": pre_member_role_id,
+		"sub_user_role_ids": sub_user_role_ids,
 		"all_matched_role_ids": all_matched,
 	}
 
 
 @router.post("/members/sync")
 async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -> dict:
-	"""Discord ギルドメンバーから member_list / admin_list / pre_member_list を同期."""
+	"""Discord ギルドメンバーから member / sub_user / obog / admin / pre_member の user_memberships を差分同期する."""
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -563,6 +566,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		obog_role_ids = matched["obog_role_ids"]
 		admin_role_ids = matched["admin_role_ids"]
 		pre_member_role_id = matched["pre_member_role_id"]
+		sub_user_role_ids = matched["sub_user_role_ids"]
 		all_matched_role_ids = matched["all_matched_role_ids"]
 		
 		logger.debug("Matched roles:")
@@ -570,13 +574,14 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		logger.debug("  obog_role_ids=%s", obog_role_ids)
 		logger.debug("  admin_role_ids=%s", admin_role_ids)
 		logger.debug("  pre_member_role_id=%s", pre_member_role_id)
+		logger.debug("  sub_user_role_ids=%s", sub_user_role_ids)
 		
 		if not all_matched_role_ids:
 			available_names = [r["name"] for r in roles]
 			error_detail = (
 				f"Failed to match Discord role names to expected roles. "
 				f"Expected to find at least one of: member/会員/Member, OBOG/OB/OG/OB-OG, "
-				f"administrator/管理者, pre-member. "
+				f"administrator/管理者, pre-member, sub垢. "
 				f"Available Discord role names: {available_names}"
 			)
 			logger.error("%s", error_detail)
@@ -587,11 +592,15 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		# /roles の表示や付与候補で名前・アイコンを引けるようにする
 		guild_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
 		logger.debug("Fetched %d guild members", len(guild_members))
+		# 0 件のまま同期すると全種別の行が削除されるため、取得失敗とみなして中止する
+		# （Server Members Intent が無効な場合などに 0 件で返ることがある）
+		if not guild_members:
+			raise RuntimeError("Discord returned 0 guild members. Aborting sync to prevent data loss.")
 
 		# 所属メンバーが 0 人のロールも空リストとして渡し、sync_member_lists の欠落チェックを通す
 		members_data: dict[str, list[dict]] = {
 			role_id: []
-			for role_id in member_role_ids + obog_role_ids + admin_role_ids + ([pre_member_role_id] if pre_member_role_id else [])
+			for role_id in member_role_ids + obog_role_ids + admin_role_ids + sub_user_role_ids + ([pre_member_role_id] if pre_member_role_id else [])
 		}
 		for m in guild_members:
 			for role_id in m.get("role_ids", []):
@@ -609,7 +618,8 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			obog_role_ids,
 			admin_role_ids,
 			pre_member_role_id,
-			members_data
+			members_data,
+			sub_user_role_ids,
 		)
 		logger.debug("Sync result: %s", result)
 		
@@ -617,6 +627,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			"ok": True,
 			"guild_id": DISCORD_GUILD_ID,
 			"member_list": result["member_list"],
+			"sub_user_list": result["sub_user_list"],
 			"admin_list": result["admin_list"],
 			"pre_member_list": result["pre_member_list"],
 		}
