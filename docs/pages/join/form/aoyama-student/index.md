@@ -38,7 +38,7 @@
   | `S` | `s` | 専門職大学院 |
 
   出典: [AOYAMA-mail(M365)について](https://www.aim.aoyama.ac.jp/mail/aoyama-mail/m365/)、[graduate_abs_2018.pdf（33ページ）](https://www.aoyama.ac.jp/wp-content/uploads/2018/04/graduate_abs_2018.pdf)
-- 学部学科の自動選択に使う学生番号の対応表は `frontend/src/lib/validation.ts` の `DEPARTMENTS_FOR_CODE` にある。短期大学（`2`）は学科コードが未確認のため対応表に含めていない。
+- 学部学科の自動選択に使う学生番号の対応表は `frontend/src/lib/validation.ts` の `DEPARTMENTS_FOR_CODE` にある。短期大学（`2`）と統計データサイエンス学環（2027年度新設）は学科コードが未確認のため対応表に含めていない（統計データサイエンス学環は選択肢のみ追加）。
 - 後続 7 文字: 小文字化
 - ドメイン: `@aoyama.ac.jp`（例: `15823001` → `a5823001@aoyama.ac.jp`）
 
