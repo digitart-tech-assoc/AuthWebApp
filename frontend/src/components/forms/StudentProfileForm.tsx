@@ -38,7 +38,8 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
   const validate = (data = formData): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!data.student_number.match(/^(?:\d{8}|(?=.*[A-Z])[A-Z0-9]{7})$/i)) {
+    // Backend の StudentProfileRequest.student_number と同じ形式
+    if (!data.student_number.match(/^(?:[Aa]?\d{7}|[1234S][A-Za-z0-9]{7})$/)) {
       newErrors.student_number = "学生番号は8文字で有効な形式を入力してください";
     }
 
