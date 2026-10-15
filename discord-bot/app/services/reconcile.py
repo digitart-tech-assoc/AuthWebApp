@@ -2,6 +2,11 @@
 
 このモジュールでは Discord Bot がバックエンドの user_memberships を取得し、
 Discord 側のロール付与/剥奪を行います。
+
+user_memberships（DB）を正とし、各リストのユーザーに対応するロールを付与する。
+剥奪は、メンバー・sub_user になったユーザーの pre-member ロールだけを行う。
+リストにいないユーザーのロールは外さない。DB の割り当て（role_member_assignments）に
+合わせて外すのは POST /api/v1/roles/push の役割。
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 PRE_MEMBER_ROLE_ID = os.getenv("PRE_MEMBER_ROLE_ID", "")
 MEMBER_ROLE_IDS = os.getenv("MEMBER_ROLE_IDS", "")  # comma separated
+SUB_USER_ROLE_IDS = os.getenv("SUB_USER_ROLE_IDS", "")  # comma separated（sub垢 ロール）
 
 
 async def _add_role(client: httpx.AsyncClient, user_id: str, role_id: str) -> tuple[bool, int, str | None]:
@@ -49,6 +55,7 @@ async def run_reconcile() -> dict:
 		return {"ok": False, "error": "DISCORD_TOKEN or DISCORD_GUILD_ID not configured"}
 
 	member_role_ids = [r.strip() for r in MEMBER_ROLE_IDS.split(",") if r.strip()]
+	sub_user_role_ids = [r.strip() for r in SUB_USER_ROLE_IDS.split(",") if r.strip()]
 
 	async with httpx.AsyncClient(timeout=20.0) as client:
 		# 1) Get lists from backend internal endpoint
@@ -100,6 +107,16 @@ async def run_reconcile() -> dict:
 				else:
 					if status not in (404,):
 						errors.append(f"add member role {role_id} to {uid} failed: {status} {body}")
+
+		# 2-C) Ensure sub-users have sub-user (sub垢) roles
+		for uid in sub_user_list:
+			for role_id in sub_user_role_ids:
+				ok, status, body = await _add_role(client, uid, role_id)
+				if ok:
+					added += 1
+				else:
+					if status not in (404,):
+						errors.append(f"add sub-user role {role_id} to {uid} failed: {status} {body}")
 
 		# 3) Ensure pre-members have pre_member role (if not members or sub-users)
 		for uid in pre_member_list:
