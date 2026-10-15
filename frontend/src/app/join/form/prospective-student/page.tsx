@@ -26,7 +26,7 @@ export default function ProspectiveStudentFormPage() {
   const [otpEmail, setOtpEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const isYearValid = year.length === 0 || /^[0-9]+$/.test(year);
+  const isYearValid = /^[0-9]+$/.test(year);
   const isNameValid = validateFullName(name);
 
   const emailFormatValid = (value: string) => {
@@ -197,7 +197,7 @@ export default function ProspectiveStudentFormPage() {
               {/* 入学予定年度 */}
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-slate-900">
-                  入学予定年度
+                  入学予定年度<span className="text-red-600">*</span>
                 </label>
                 <TextInput
                   className="w-full px-4 py-3 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
@@ -207,18 +207,18 @@ export default function ProspectiveStudentFormPage() {
                   onBlur={() => setYearTouched(true)}
                   inputMode="numeric"
                   pattern="\d*"
-                  aria-invalid={!isYearValid}
+                  aria-invalid={yearTouched && !isYearValid}
                   aria-describedby="year-help"
                 />
                 {!isYearValid && yearTouched ? (
                   <p className="text-sm text-red-600 flex items-start gap-2" id="year-help">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    入学予定年度は半角数字のみで入力してください(例: 2027)。
+                    入学予定年度を半角数字で入力してください(例: 2027)。
                   </p>
                 ) : (
                   <p className="text-sm text-slate-600 flex items-start gap-2" id="year-help">
                     <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" />
-                    半角数字で入力してください(例: 2027)。任意入力です。
+                    半角数字で入力してください(例: 2027)。
                   </p>
                 )}
               </div>
@@ -244,7 +244,7 @@ export default function ProspectiveStudentFormPage() {
                 <button
                   type="button"
                   className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold rounded-lg hover:from-blue-700 hover:to-cyan-700 transition-all hover:shadow-lg active:scale-95"
-                  disabled={!isNameValid || !email || !confirmEmail}
+                  disabled={!isNameValid || !email || !confirmEmail || !isYearValid}
                   onClick={() => {
                     setFormError(null);
                     setEmailTouched(true);
@@ -267,7 +267,7 @@ export default function ProspectiveStudentFormPage() {
                     }
                     if (!isYearValid) {
                       setYearTouched(true);
-                      setFormError("入学予定年度は半角数字のみで入力してください。");
+                      setFormError("入学予定年度を半角数字で入力してください。");
                       return;
                     }
                     setOtpEmail(email);
@@ -321,7 +321,7 @@ export default function ProspectiveStudentFormPage() {
           email={otpEmail}
           name={name}
           formType="prospective-student"
-          metadata={year ? { year: Number(year) } : undefined}
+          metadata={{ year: Number(year) }}
           onClose={() => setShowOtp(false)}
         />
       )}
