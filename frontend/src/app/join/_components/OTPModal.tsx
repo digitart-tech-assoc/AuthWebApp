@@ -13,11 +13,12 @@ type Props = {
   email: string;
   name: string;
   formType: string;
+  metadata?: Record<string, unknown>;
   onClose?: () => void;
   autoSend?: boolean;
 };
 
-export default function OTPModal({ email, name, formType, onClose, autoSend }: Props) {
+export default function OTPModal({ email, name, formType, metadata, onClose, autoSend }: Props) {
   const [joinId, setJoinId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function OTPModal({ email, name, formType, onClose, autoSend }: P
     setError(null);
     setStatus("sending");
     try {
-      const res = await requestOtp({ email, confirm_email: email, name, form_type: formType });
+      const res = await requestOtp({ email, confirm_email: email, name, form_type: formType, metadata });
       setJoinId(res.id);
       setStatus("sent");
       // start resend cooldown

@@ -115,17 +115,13 @@ export default function AoyamaStudentFormPage() {
                 />
               </div>
 
-              {/* 質問等 */}
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-slate-900">
-                  質問等
-                </label>
-                <textarea
-                  className="w-full px-4 py-3 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition resize-none"
-                  placeholder="質問、連絡事項等あればご記入ください"
-                  rows={4}
-                />
-              </div>
+              {/* 質問はお問い合わせフォームへ誘導 */}
+              <p className="text-sm text-slate-600 flex items-start gap-2">
+                <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" />
+                <span>
+                  ご質問・ご連絡は<Link href="/contact" className="font-bold underline hover:opacity-80 transition">お問い合わせフォーム</Link>からお送りください。
+                </span>
+              </p>
 
               {/* エラーメッセージ */}
                 {formError && (
@@ -199,7 +195,16 @@ export default function AoyamaStudentFormPage() {
         </div>
       </section>
 
-      {showOtp && <OTPModal email={otpEmail} name={name} formType="aoyama-student" autoSend onClose={() => setShowOtp(false)} />}
+      {showOtp && (
+        <OTPModal
+          email={otpEmail}
+          name={name}
+          formType="aoyama-student"
+          metadata={{ student_id: normalizedStudentId.toUpperCase() }}
+          autoSend
+          onClose={() => setShowOtp(false)}
+        />
+      )}
     </main>
   );
 }
