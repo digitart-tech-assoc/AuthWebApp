@@ -18,11 +18,14 @@
   "name": "青山 太郎",
   "form_type": "prospective-student",
   "metadata": {
-    "high_school": "青学高等部",
-    "faculty": "理工学部"
+    "year": 2026
   }
 }
 ```
+
+* `metadata`: 任意。`join_requests` に専用カラムがないフォーム固有の項目を入れ、`join_requests.metadata`（JSONB）に保存する。省略時は `{}`。
+  * `prospective-student`: `year`（入学予定年度）
+  * `aoyama-student`: `student_id`（学生番号）
 
 ### レスポンス (200 OK)
 ```json
