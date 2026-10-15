@@ -137,7 +137,7 @@ def init_db() -> None:
                     """
                 )
 
-                # 統合メンバーシップテーブル（member / admin / pre_member / obog）
+                # 統合メンバーシップテーブル（member / admin / pre_member / obog / sub_user）
                 cur.execute(
 					"""
 					CREATE TABLE IF NOT EXISTS user_memberships (
