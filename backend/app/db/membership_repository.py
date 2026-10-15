@@ -615,7 +615,8 @@ def register_paid_invitation(
 	"""
 	# assigned_by が None の場合はデフォルト値を使用
 	final_assigned_by = assigned_by or "unknown"
-	_log_db_access("register_paid_invitation", {"discord_id": discord_id, "note": note, "assigned_by": final_assigned_by})
+	# 対象者・登録者の Discord ID はログに出さない
+	_log_db_access("register_paid_invitation", {"note": note})
 
 	with _connect() as conn:
 		with conn.cursor() as cur:

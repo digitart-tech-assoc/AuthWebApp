@@ -182,9 +182,10 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 				try:
 					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, name=name, form_type=join_req.get("form_type"))
 					if result.get("status") != "success":
-						logger.error("Failed to send invite email: %s", result)
+						# error にはメールアドレスを含む Brevo の応答本文が入ることがあるため出さない
+						logger.error("Failed to send invite email: status=%s", result.get("status"))
 					else:
-						logger.info("Invite email sent: %s", result)
+						logger.info("Invite email sent: message_id=%s", result.get("message_id"))
 				except Exception:
 					logger.exception("Error while sending invite email")
 		except Exception:

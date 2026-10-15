@@ -35,7 +35,8 @@ def create_join_request(
 	"""
 	request_id = str(uuid4())
 
-	_log_db_access("create_join_request", {"email": email, "name": name, "form_type": form_type, "metadata": metadata})
+	# メールアドレス・氏名・metadata（学生番号等）は個人情報のためログに出さない
+	_log_db_access("create_join_request", {"form_type": form_type})
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			try:
@@ -160,7 +161,8 @@ def verify_otp(join_request_id: str, code_plain: str) -> bool:
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			_log_db_access("verify_otp_attempt", {"join_request_id": join_request_id, "code_preview": (code_plain[:2] + "****") if code_plain else ""})
+			# 入力されたコードは一部でもログに出さない（総当たりの手がかりになるため）
+			_log_db_access("verify_otp_attempt", {"join_request_id": join_request_id})
 			# Get latest unverified OTP for this join request with FOR UPDATE to prevent race conditions
 			# 並行リクエストがロック待ちのままコネクションを握り続けないよう、待ち時間に上限を設ける
 			with limit_lock_wait(cur, OTP_LOCK_TIMEOUT_MS, OTPVerificationBusyError):
@@ -266,7 +268,7 @@ def save_member_survey_response(
 
 	Returns the newly created record metadata.
 	"""
-	_log_db_access("save_member_survey_response", {"student_number": student_number})
+	_log_db_access("save_member_survey_response", {"profile_id": profile_id, "join_request_id": join_request_id})
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(

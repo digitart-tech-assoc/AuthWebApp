@@ -23,7 +23,7 @@ from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
 from app.services.brevo_client import BrevoClient
-from app.services.discord_client import add_role_to_member
+from app.services.discord_client import add_role_to_member, redact_snowflakes
 
 
 
@@ -188,7 +188,7 @@ async def _notify_discord_bot_sync(discord_id: str) -> bool:
 		endpoint = discord_bot_url if discord_bot_url.rstrip("/").endswith("/internal/sync") \
 				   else f"{discord_bot_url.rstrip('/')}/internal/sync"
 		
-		logger.info("Calling Discord bot sync endpoint: %s for user_id=%s", endpoint, discord_id)
+		logger.info("Calling Discord bot sync endpoint: %s", endpoint)
 		
 		async with httpx.AsyncClient(timeout=10.0) as client:  # タイムアウト統一: 10秒
 			response = await client.post(
@@ -199,18 +199,22 @@ async def _notify_discord_bot_sync(discord_id: str) -> bool:
 			
 			if response.status_code == 200:
 				result = response.json()
-				logger.info("Bot sync succeeded: discord_id=%s, result=%s", discord_id, result)
+				# result の errors には Discord ID が含まれるため、件数だけを出す
+				summary = result.get("result", {}) if isinstance(result, dict) else {}
+				logger.info(
+					"Bot sync succeeded: added=%s, removed=%s, errors=%d",
+					summary.get("added"), summary.get("removed"), len(summary.get("errors") or []),
+				)
 				return True
 			else:
-				logger.warning("Bot sync failed: discord_id=%s, status=%s, response=%s", 
-							 discord_id, response.status_code, response.text[:200])
+				logger.warning("Bot sync failed: status=%s", response.status_code)
 				return False
 	
 	except httpx.TimeoutException as e:
-		logger.error("Bot sync timeout: discord_id=%s, error=%s", discord_id, e)
+		logger.error("Bot sync timeout: error=%s", e)
 		return False
 	except Exception as e:
-		logger.exception("Bot sync error: discord_id=%s, error=%s", discord_id, e)
+		logger.exception("Bot sync error: error=%s", e)
 		return False
 
 
@@ -272,7 +276,7 @@ async def send_otp(
 
 	await _ensure_registration_eligible(discord_id)
 
-	logger.info("send_otp called: discord_id=%s student_number=%s", discord_id, req.student_number)
+	logger.info("send_otp called: user=%s", principal.get("sub"))
 
 	email_aoyama = _generate_student_email(req.student_number)
 	otp_code = _generate_otp_code()
@@ -320,7 +324,7 @@ async def verify_otp(
 	# OTP 試行回数を消費させないよう、検証前に入会資格を確認する
 	await _ensure_registration_eligible(discord_id)
 
-	logger.info("verify_otp called: discord_id=%s", discord_id)
+	logger.info("verify_otp called: user=%s", principal.get("sub"))
 	
 	try:
 		is_valid = await asyncio.to_thread(
@@ -350,14 +354,14 @@ async def verify_otp(
 			# MEMBER_ROLE_IDS が複数存在する場合は最初の1つを使用
 			member_role_id = member_role_id.split(",")[0].strip()
 			await asyncio.to_thread(add_user_to_role, discord_id, member_role_id)
-			logger.info("Added user %s to member role %s", discord_id, member_role_id)
+			logger.info("Added user %s to member role %s", principal.get("sub"), member_role_id)
 
 		pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "")
 		if pre_member_role_id:
 			await asyncio.to_thread(remove_user_from_role, discord_id, pre_member_role_id)
-			logger.info("Removed user %s from pre-member role %s", discord_id, pre_member_role_id)
+			logger.info("Removed user %s from pre-member role %s", principal.get("sub"), pre_member_role_id)
 	except Exception as e:
-		logger.error("Failed to update role_member_assignments for user %s: %s", discord_id, str(e))
+		logger.error("Failed to update role_member_assignments for user %s: %s", principal.get("sub"), str(e))
 		# OTP 検証自体は成功したため、ここでエラーにはしない
 
 	return VerifyOTPResponse(
@@ -376,7 +380,7 @@ async def create_student_profile(
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
 
-	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
+	logger.info("create_student_profile called: user=%s", principal.get("sub"))
 	# 新規入会者は入会資格と OTP 検証済みであることを確認する
 	# （既に member/admin/obog の場合はプロフィール更新とみなしスキップ）
 	app_role = principal.get("app_role")
@@ -413,16 +417,16 @@ async def create_student_profile(
 		raise HTTPException(status_code=403, detail=str(e))
 
 	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与
-	logger.info("DB commit completed; applying member roles to Discord member: discord_id=%s", discord_id)
+	logger.info("DB commit completed; applying member roles to Discord member: user=%s", principal.get("sub"))
 	token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
 	guild_id = os.getenv("DISCORD_GUILD_ID")
 	if token and guild_id and member_role_ids:
 		for role_id in member_role_ids:
 			try:
 				await add_role_to_member(guild_id, discord_id, role_id, token)
-				logger.info("Successfully assigned role %s to student %s on Discord", role_id, discord_id)
+				logger.info("Successfully assigned role %s to student %s on Discord", role_id, principal.get("sub"))
 			except Exception as e:
-				logger.warning("Failed to assign role %s to student %s on Discord: %s", role_id, discord_id, e)
+				logger.warning("Failed to assign role %s to student %s on Discord: %s", role_id, principal.get("sub"), redact_snowflakes(e))
 
 	return StudentProfileResponse(
 		profile_id=profile_id,

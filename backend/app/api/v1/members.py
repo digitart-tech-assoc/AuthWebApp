@@ -20,7 +20,7 @@ from app.db.repository import (
     cleanup_expired_prospective_members,
     get_member_lists,
 )
-from app.services.discord_client import fetch_guild_member
+from app.services.discord_client import fetch_guild_member, redact_snowflakes
 
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
@@ -139,10 +139,10 @@ async def get_pre_member_list(
 							return result_member
 						except Exception as e:
 							if attempt < max_retries:
-								logger.warning("[RETRY %d] Failed to fetch Discord user %s: %s", attempt + 1, member['discord_id'], e)
+								logger.warning("[RETRY %d] Failed to fetch Discord user: %s", attempt + 1, redact_snowflakes(e))
 								await asyncio.sleep(0.5 * (attempt + 1))
 							else:
-								logger.error("[FAILED] Fetch Discord user %s failed after %d attempts: %s", member['discord_id'], max_retries + 1, e)
+								logger.error("[FAILED] Fetch Discord user failed after %d attempts: %s", max_retries + 1, redact_snowflakes(e))
 								return None
 					return None
 
@@ -205,7 +205,8 @@ async def register_paid_invitation_endpoint(
 			or "unknown"
 		)
 		
-		logger.info(f"register_paid_invitation: principal={_principal}, assigned_by={assigned_by}")
+		# principal（JWT のクレーム）にはメールアドレス等が含まれるため、内部 ID だけを出す
+		logger.info("register_paid_invitation: user=%s", _principal.get("sub"))
 		
 		result = await asyncio.to_thread(
 			register_paid_invitation,
