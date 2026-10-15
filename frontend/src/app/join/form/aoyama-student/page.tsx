@@ -11,6 +11,7 @@ import { validateFullName } from "../../../../lib/validation";
 const STUDENT_ID_PATTERN = /^[1234S][A-Za-z0-9]{7}$/;
 
 function buildAoyamaEmail(studentId: string): string {
+  // 1: 学部 / 2: 短期大学（推定） / 3: 修士・博士前期 / 4: 博士・博士後期 / S: 専門職大学院
   const headMap: Record<string, string> = {
     "1": "a",
     "2": "b",
