@@ -26,37 +26,47 @@ Discord API を直接呼び出して最新のロール一覧およびサーバ�
 
 ## POST `/api/v1/roles/push`
 
-DB 上で編集されたロール定義（Desired State）を Discord サーバーへ実際に適用（作成・更新・削除・並び順調整）します。また、完了時に Discord Bot へ同期通知を発行します。
+DB のマニフェスト（`role_manifests`）を Desired State として読み、Discord サーバーのロールへ適用（作成・更新・削除・並び順調整）します。続けて、DB のロール割り当て（`role_member_assignments`）と Discord 上のメンバーのロールの差分を反映し、最後に Discord Bot へ reconcile（同期）を依頼します。
 
 * **認可レベル**: `Admin`
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
-* **リクエストボディ**:
-```json
-{
-  "desired_roles": [
-    {
-      "role_id": "123456789012345678",
-      "name": "2024年度生",
-      "color": "#3498DB",
-      "hoist": false,
-      "mentionable": false,
-      "permissions": 0,
-      "position": 15
-    }
-  ]
-}
-```
+* **リクエストボディ**: なし（DB のマニフェストを読むため、ロール定義は送りません）
 
 ### レスポンス (200 OK)
 ```json
 {
   "ok": true,
-  "created": 1,
+  "guild_id": "1488327535132413974",
   "updated": 2,
+  "created": 1,
   "deleted": 0,
-  "reordered": 15
+  "reordered": 15,
+  "skipped_managed": 1,
+  "assigned_adds": 3,
+  "assigned_removes": 1,
+  "bot_reconciled": true,
+  "errors": []
 }
 ```
+
+| 項目 | 説明 |
+|---|---|
+| `ok` | `errors` が空のとき `true` |
+| `guild_id` | 対象のギルド ID |
+| `updated` | 定義を更新したロールの数（変更がないロールは数えない） |
+| `created` | Discord に新しく作成したロールの数 |
+| `deleted` | マニフェストにないため Discord から削除したロールの数（managed ロールと `@everyone` は削除しない） |
+| `reordered` | 並び順を送ったロールの数（並び替えに失敗した場合は `0`） |
+| `skipped_managed` | managed ロールまたは `@everyone` のため更新しなかったロールの数 |
+| `assigned_adds` | メンバーに付与したロールの延べ数 |
+| `assigned_removes` | メンバーから解除したロールの延べ数 |
+| `bot_reconciled` | Discord Bot への reconcile の依頼が成功したか |
+| `errors` | 失敗した操作の内容（文字列の配列） |
+
+### エラーレスポンス
+* 一部の操作（ロールの作成・更新・削除・並び替え、メンバーへの割り当て）が失敗しても、処理は続けて HTTP 200 を返します。この場合 `ok` は `false` になり、`errors` に失敗内容が入ります。
+* `500 Internal Server Error`: `DISCORD_TOKEN` が設定されていない場合。
+* `502 Bad Gateway`: 処理の開始時に Discord からロール一覧を取得できなかった場合（`"Discord fetch failed: ..."`）。この場合、Discord には何も反映しません。
 
 ### Discord への反映方式
 * **メンバーのロール割り当て**: DB の割り当てと Discord 上の現在のロールの差分をメンバーごとにまとめて反映します。
