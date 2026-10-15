@@ -78,6 +78,12 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 	if req.email != req.confirm_email:
 		raise HTTPException(status_code=400, detail="Emails do not match")
 
+	# 入学見込みフォームは入学予定年度（metadata.year、整数）を必須とする
+	if req.form_type == "prospective-student":
+		year = (req.metadata or {}).get("year")
+		if not isinstance(year, int) or isinstance(year, bool):
+			raise HTTPException(status_code=400, detail="metadata.year is required for prospective-student")
+
 	# メールアドレス形式チェック（Pydantic EmailStr で既に検証）
 
 	try:

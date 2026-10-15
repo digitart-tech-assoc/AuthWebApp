@@ -128,3 +128,32 @@ async def test_join_request_passes_form_metadata_to_repository(monkeypatch, form
 
 	assert saved["form_type"] == form_type
 	assert saved["metadata"] == metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+	"metadata",
+	[None, {}, {"year": None}, {"year": "2026"}, {"year": True}, {"year": 2026.5}],
+)
+async def test_prospective_join_request_requires_integer_year(monkeypatch, metadata):
+	"""入学見込みフォームは metadata.year（整数）がなければ申請を作らずに 400 を返す"""
+	created = []
+
+	monkeypatch.setattr(join_api.repository, "is_prospective_form_open", lambda: True)
+	monkeypatch.setattr(
+		join_api.repository, "create_join_request", lambda **kwargs: created.append(kwargs)
+	)
+
+	with pytest.raises(HTTPException) as error:
+		await join_api.request_otp(
+			join_api.JoinRequestCreate(
+				email="applicant@example.com",
+				confirm_email="applicant@example.com",
+				name="テスト 太郎",
+				form_type="prospective-student",
+				metadata=metadata,
+			)
+		)
+
+	assert error.value.status_code == 400
+	assert created == []
