@@ -25,6 +25,9 @@
 | 学生番号 | string | ○ | `/^[1234S][A-Za-z0-9]{7}$/` | 8桁の学生番号（先頭は1/2/3/4/S） |
 | メールアドレス | email | ○ | 自動導出 | 学生番号から自動生成（編集不可） |
 
+- 学生番号は `join_requests` に専用カラムがないため、`metadata.student_id` として送信する。
+- 質問・連絡事項の入力欄は設けない。フォーム内でお問い合わせフォーム（`/contact`）へ誘導する。
+
 ### 学生番号からのメール導出仕様 (`buildAoyamaEmail`)
 - 先頭文字変換: `1 → a`, `2 → b`, `3 → c`, `4 → d`, `S/s → s`
 - 先頭文字の意味:
@@ -67,7 +70,7 @@
   "email": "a5823001@aoyama.ac.jp",
   "confirm_email": "a5823001@aoyama.ac.jp",
   "name": "青山 太郎",
-  "form_type": "prospective-student",
+  "form_type": "aoyama-student",
   "metadata": {
     "student_id": "15823001"
   }
@@ -80,7 +83,7 @@
   "id": "req-uuid-1234-5678",
   "email": "a5823001@aoyama.ac.jp",
   "name": "青山 太郎",
-  "form_type": "prospective-student",
+  "form_type": "aoyama-student",
   "status": "pending",
   "message": "認証コードをメールアドレスに送信しました。"
 }

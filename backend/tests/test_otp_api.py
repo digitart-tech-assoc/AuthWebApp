@@ -83,3 +83,77 @@ async def test_join_otp_limit_uses_thread_and_returns_429(monkeypatch):
 	assert error.value.status_code == 429
 	assert verification_thread_ids
 	assert verification_thread_ids[0] != caller_thread_id
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+	("form_type", "metadata"),
+	[
+		("prospective-student", {"year": 2026}),
+		("aoyama-student", {"student_id": "1A234567"}),
+	],
+)
+async def test_join_request_passes_form_metadata_to_repository(monkeypatch, form_type, metadata):
+	"""フォーム固有の項目（入学予定年度・学生番号）が join_requests.metadata に保存される"""
+	saved = {}
+
+	def fake_create_join_request(**kwargs):
+		saved.update(kwargs)
+		return {
+			"id": "request-id",
+			"email": kwargs["email"],
+			"name": kwargs["name"],
+			"form_type": kwargs["form_type"],
+			"status": "pending",
+		}
+
+	class FakeBrevoClient:
+		async def send_otp_email(self, **kwargs):
+			return {"status": "success"}
+
+	monkeypatch.setattr(join_api.repository, "is_prospective_form_open", lambda: True)
+	monkeypatch.setattr(join_api.repository, "create_join_request", fake_create_join_request)
+	monkeypatch.setattr(join_api.repository, "create_otp_code", lambda **kwargs: None)
+	monkeypatch.setattr(join_api, "hash_otp_code", lambda code: "hashed")
+	monkeypatch.setattr(join_api, "BrevoClient", FakeBrevoClient)
+
+	await join_api.request_otp(
+		join_api.JoinRequestCreate(
+			email="applicant@example.com",
+			confirm_email="applicant@example.com",
+			name="テスト 太郎",
+			form_type=form_type,
+			metadata=metadata,
+		)
+	)
+
+	assert saved["form_type"] == form_type
+	assert saved["metadata"] == metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+	"metadata",
+	[None, {}, {"year": None}, {"year": "2026"}, {"year": True}, {"year": 2026.5}],
+)
+async def test_prospective_join_request_requires_integer_year(monkeypatch, metadata):
+	"""入学見込みフォームは metadata.year（整数）がなければ申請を作らずに 400 を返す"""
+	created = []
+
+	monkeypatch.setattr(join_api.repository, "is_prospective_form_open", lambda: True)
+	monkeypatch.setattr(
+		join_api.repository, "create_join_request", lambda **kwargs: created.append(kwargs)
+	)
+
+	with pytest.raises(HTTPException) as error:
+		await join_api.request_otp(
+			join_api.JoinRequestCreate(
+				email="applicant@example.com",
+				confirm_email="applicant@example.com",
+				name="テスト 太郎",
+				form_type="prospective-student",
+				metadata=metadata,
+			)
+		)
+
+	assert error.value.status_code == 400
+	assert created == []
