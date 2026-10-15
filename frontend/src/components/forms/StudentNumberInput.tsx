@@ -26,7 +26,7 @@ export default function StudentNumberInput({
       id="student_number"
       label={label ?? "学生番号"}
       className={className}
-      placeholder={placeholder ?? "1A34567"}
+      placeholder={placeholder ?? "15A23456"}
       value={value}
       onChange={(input) => onChange(input.toUpperCase())}
       error={error}
