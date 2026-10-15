@@ -23,8 +23,8 @@
 }
 ```
 
-* `metadata`: 任意。`join_requests` に専用カラムがないフォーム固有の項目を入れ、`join_requests.metadata`（JSONB）に保存する。省略時は `{}`。
-  * `prospective-student`: `year`（入学予定年度）
+* `metadata`: `join_requests` に専用カラムがないフォーム固有の項目を入れ、`join_requests.metadata`（JSONB）に保存する。省略時は `{}`。
+  * `prospective-student`: `year`（入学予定年度、整数）。**必須**。
   * `aoyama-student`: `student_id`（学生番号）
 
 ### レスポンス (200 OK)
@@ -38,6 +38,12 @@
   "message": "認証コードをメールアドレスに送信しました。"
 }
 ```
+
+### エラーレスポンス
+* `400 Bad Request`: 次のいずれかの場合。`detail` に理由が入る。
+  * `email` と `confirm_email` が一致しない（`"Emails do not match"`）。
+  * `form_type == "prospective-student"` で `metadata.year` が整数でない、または存在しない（`"metadata.year is required for prospective-student"`）。
+* `403 Forbidden`: `form_type == "prospective-student"` で受付期間外の場合。
 
 ---
 
