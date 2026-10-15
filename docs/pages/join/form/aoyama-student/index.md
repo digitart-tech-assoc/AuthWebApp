@@ -27,6 +27,18 @@
 
 ### 学生番号からのメール導出仕様 (`buildAoyamaEmail`)
 - 先頭文字変換: `1 → a`, `2 → b`, `3 → c`, `4 → d`, `S/s → s`
+- 先頭文字の意味:
+
+  | 先頭 | メール | 課程 |
+  |---|---|---|
+  | `1` | `a` | 学部 |
+  | `2` | `b` | 短期大学（推定） |
+  | `3` | `c` | 大学院 修士・博士前期課程 |
+  | `4` | `d` | 大学院 博士・博士後期課程 |
+  | `S` | `s` | 専門職大学院 |
+
+  出典: [AOYAMA-mail(M365)について](https://www.aim.aoyama.ac.jp/mail/aoyama-mail/m365/)、[graduate_abs_2018.pdf（33ページ）](https://www.aoyama.ac.jp/wp-content/uploads/2018/04/graduate_abs_2018.pdf)
+- 学部学科の自動選択に使う学生番号の対応表は `frontend/src/lib/validation.ts` の `DEPARTMENTS_FOR_CODE` にある。短期大学（`2`）と統計データサイエンス学環（2027年度新設）は学科コードが未確認のため対応表に含めていない（統計データサイエンス学環は選択肢のみ追加）。
 - 後続 7 文字: 小文字化
 - ドメイン: `@aoyama.ac.jp`（例: `15823001` → `a5823001@aoyama.ac.jp`）
 

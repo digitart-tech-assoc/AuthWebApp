@@ -111,6 +111,7 @@ def _generate_student_email(student_number: str) -> str:
 	s = student_number.strip()
 
 	# pre-member スタイルの先頭マップ
+	# 1: 学部 / 2: 短期大学（推定） / 3: 修士・博士前期 / 4: 博士・博士後期 / S: 専門職大学院
 	head_map = {"1": "a", "2": "b", "3": "c", "4": "d", "S": "s"}
 	if len(s) >= 1:
 		first = s[0].upper()
