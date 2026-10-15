@@ -50,7 +50,7 @@ class ManifestPatch(BaseModel):
 
 @router.get("/manifest", response_model=Manifest)
 async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
-	"""マニフェスト取得。member / obog / admin のみ許可。"""
+	"""マニフェスト取得。member / sub_user / obog / admin のみ許可。"""
 	data = await asyncio.to_thread(fetch_manifest)
 	return Manifest(**data)
 
