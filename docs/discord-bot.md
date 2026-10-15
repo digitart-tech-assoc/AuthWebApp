@@ -15,7 +15,12 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
    - コンテナオーケストレーション（Kubernetes / Docker）用の稼働確認エンドポイント。
 3. **ロール差分同期 (Reconciliation)**:
    - バックエンドの内部エンドポイント（`GET /api/v1/members/internal/lists`）から最新のメンバーおよび仮入会者リストを取得。
-   - Discord REST API（`/guilds/{guild_id}/members/{user_id}/roles/{role_id}`）を用いて、`PRE_MEMBER_ROLE_ID` および `MEMBER_ROLE_IDS` の付与・剥奪を最小限の呼び出しで実行。
+   - Discord REST API（`/guilds/{guild_id}/members/{user_id}/roles/{role_id}`）を用いて、`PRE_MEMBER_ROLE_ID`・`MEMBER_ROLE_IDS`・`SUB_USER_ROLE_IDS` の付与・剥奪を最小限の呼び出しで実行。
+   - DB（`user_memberships`）を正とし、各リストのユーザーにロールを付与する。
+     - `member_list`・`sub_user_list`: `MEMBER_ROLE_IDS` を付与し、`PRE_MEMBER_ROLE_ID` を外す。
+     - `sub_user_list`: さらに `SUB_USER_ROLE_IDS`（sub垢 ロール）を付与する。
+     - `pre_member_list`（メンバー・sub_user を除く）: `PRE_MEMBER_ROLE_ID` を付与する。
+   - リストにいないユーザーのロールは外さない。DB の割り当て（`role_member_assignments`）に合わせて外すのは `POST /api/v1/roles/push` の役割。
    - 処理結果（成功・失敗件数、エラー理由）を JSON レスポンスとして返却・ログ出力。
 4. **制約・例外処理**:
    - Bot 自身の最上位ロールより上位のロールは Discord の仕様上操作不可。
@@ -35,6 +40,7 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
 | `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット |
 | `PRE_MEMBER_ROLE_ID` | ○ | 仮入会者ロールの Discord ロール ID |
 | `MEMBER_ROLE_IDS` | ○ | 正式メンバーロールの Discord ロール ID（カンマ区切りで複数指定可） |
+| `SUB_USER_ROLE_IDS` | | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、sub垢 ロールは付与しない |
 
 ---
 
@@ -42,6 +48,7 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
 - Pod は Kubernetes 上で `ReplicaSet: 1`（二重起動による多重同期防止）。
 - livenessProbe / readinessProbe に `GET /internal/health` を設定。
 - 構文・コンパイル検証: `python -m compileall app/`
+- テスト: `python -m unittest discover -s tests -t .`（`discord-bot/` で実行。標準ライブラリの `unittest` を使う）
 - 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
 
 
