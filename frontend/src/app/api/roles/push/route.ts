@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 
 import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
+import { isAdmin } from "@/lib/permissions";
 
 export async function POST() {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin" && role !== "member") {
+		// バックエンドの /api/v1/roles/push は admin 限定（呼び出し元は admin 向けの RoleAccordion のみ）
+		if (!isAdmin(role)) {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 
