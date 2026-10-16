@@ -116,7 +116,12 @@ Digitart Technology Association
 				)
 				if response.status_code >= 400:
 					text = response.text
-					logger.error(f"Brevo API returned error ({operation_name}): status={response.status_code} body={text}")
+					try:
+						error_code = response.json().get("code")
+					except Exception:
+						error_code = None
+					# 本文には宛先のメールアドレスが含まれることがあるため、エラーコードだけを出す
+					logger.error(f"Brevo API returned error ({operation_name}): status={response.status_code} code={error_code}")
 					return {"error": f"{response.status_code} {text}", "status": "failed"}
 				try:
 					data = response.json()

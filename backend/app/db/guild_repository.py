@@ -111,8 +111,7 @@ def batch_update_user_roles(user_id: str, roles_to_add: list[str], roles_to_remo
 				)
 		conn.commit()
 		logger.info(
-			"batch_update_user_roles: user_id=%s added=%s removed=%s",
-			user_id,
+			"batch_update_user_roles: added=%s removed=%s",
 			roles_to_add,
 			roles_to_remove,
 		)

@@ -92,9 +92,14 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
 _SNOWFLAKE_PATTERN = re.compile(r"\d{15,}")
 
 
+def redact_snowflakes(text: object) -> str:
+	"""ログ出力用に、文字列（例外メッセージ等）に含まれる Discord の ID を `:id` に置き換える。"""
+	return _SNOWFLAKE_PATTERN.sub(":id", str(text))
+
+
 def _loggable_url(url: str) -> str:
 	"""ログ出力用に、URL から API のベース部分を除き、ID を `:id` に置き換える。"""
-	return _SNOWFLAKE_PATTERN.sub(":id", url.removeprefix(DISCORD_API_BASE))
+	return redact_snowflakes(url.removeprefix(DISCORD_API_BASE))
 
 
 async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
@@ -491,11 +496,12 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: ht
 				"avatar": member["user"].get("avatar"),
 				"role_ids": member.get("roles", []),
 			}
-	except httpx.HTTPStatusError:
-		logger.exception("fetch_guild_member returned an HTTP error for %s", user_id)
+	except httpx.HTTPStatusError as exc:
+		# 例外のメッセージには Discord ID を含む URL が入るため、ステータスだけを出す
+		logger.error("fetch_guild_member returned an HTTP error: status=%s", exc.response.status_code)
 		raise
 	except Exception as exc:
-		logger.error("fetch_guild_member failed for %s: %s", user_id, exc)
+		logger.error("fetch_guild_member failed: %s", redact_snowflakes(exc))
 		raise
 
 

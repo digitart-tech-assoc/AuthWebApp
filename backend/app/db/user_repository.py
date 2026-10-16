@@ -108,10 +108,8 @@ def _upsert_user_record(user_id: str, discord_id: str | None) -> dict[str, Any]:
 				# 既に discord_id がバインドされている場合、不一致の別 discord_id での上書きは防止
 				if current_discord_id and discord_id and current_discord_id != discord_id:
 					logger.warning(
-						"Discord ID conflict for user_id=%s: existing=%s, new=%s. Keeping existing.",
+						"Discord ID conflict for user_id=%s. Keeping existing.",
 						user_id,
-						current_discord_id,
-						discord_id,
 					)
 					effective_discord_id = current_discord_id
 				elif not current_discord_id and discord_id:
@@ -124,8 +122,7 @@ def _upsert_user_record(user_id: str, discord_id: str | None) -> dict[str, Any]:
 					conflict = cur.fetchone()
 					if conflict:
 						logger.error(
-							"Security Violation: discord_id=%s already bound to user_id=%s, rejecting for user_id=%s",
-							discord_id,
+							"Security Violation: discord_id already bound to user_id=%s, rejecting for user_id=%s",
 							conflict[1],
 							user_id,
 						)
@@ -164,9 +161,8 @@ def _upsert_user_record(user_id: str, discord_id: str | None) -> dict[str, Any]:
 				if by_discord is not None:
 					# 既に他人のアカウントがその Discord ID に紐づいているため、乗っ取り・上書きを禁止する
 					logger.error(
-						"Security Violation: Rejected user_id=%s attempting to claim existing discord_id=%s owned by user_id=%s",
+						"Security Violation: Rejected user_id=%s attempting to claim existing discord_id owned by user_id=%s",
 						user_id,
-						discord_id,
 						by_discord[1],
 					)
 					# Discord ID なしで一般ユーザーとして作成

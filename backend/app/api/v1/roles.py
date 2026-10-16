@@ -48,6 +48,7 @@ from app.services.discord_client import (
 	fetch_bot_guilds,
 	fetch_guild_member,
 	fetch_guild_roles,
+	redact_snowflakes,
 	remove_role_from_member,
 	reorder_guild_roles,
 	set_member_roles,
@@ -78,7 +79,12 @@ async def _notify_bot_to_reconcile() -> bool:
 				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
 			)
 			if resp.status_code == 200:
-				logger.info("Bot reconcile triggered successfully: %s", resp.json())
+				# reconcile の errors には Discord ID が含まれるため、件数だけを出す
+				summary = resp.json().get("result", {})
+				logger.info(
+					"Bot reconcile triggered successfully: added=%s, removed=%s, errors=%d",
+					summary.get("added"), summary.get("removed"), len(summary.get("errors") or []),
+				)
 				return True
 			else:
 				logger.warning("Bot reconcile failed with status %d: %s", resp.status_code, resp.text)
@@ -621,7 +627,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			members_data,
 			sub_user_role_ids,
 		)
-		logger.debug("Sync result: %s", result)
+		logger.debug("Sync result: %s", {key: len(rows) for key, rows in result.items()})
 		
 		return {
 			"ok": True,
@@ -770,8 +776,8 @@ async def self_batch_roles(
 		)
 	except Exception as exc:
 		logger.error(
-			"Failed to batch update role_member_assignments in DB for user_id=%s: %s",
-			discord_id, exc,
+			"Failed to batch update role_member_assignments in DB for user=%s: %s",
+			_principal.get("sub"), exc,
 		)
 		# 補償トランザクション: Discord 側を元のロール一覧にロールバック
 		rollback_succeeded = False
@@ -779,11 +785,11 @@ async def self_batch_roles(
 			await set_member_roles(DISCORD_GUILD_ID, discord_id, list(current_role_ids), token)
 			rollback_succeeded = True
 			logger.info(
-				"Compensating rollback succeeded for discord_id=%s", discord_id
+				"Compensating rollback succeeded for user=%s", _principal.get("sub")
 			)
 		except Exception as rollback_exc:
 			logger.critical(
-				"Compensating rollback FAILED for discord_id=%s: %s", discord_id, rollback_exc
+				"Compensating rollback FAILED for user=%s: %s", _principal.get("sub"), redact_snowflakes(rollback_exc)
 			)
 		detail = (
 			"Failed to persist role assignments to database. Discord state was reverted."

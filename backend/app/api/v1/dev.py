@@ -194,8 +194,8 @@ async def switch_role(
 		)
 
 	logger.info(
-		"[Dev] Role switch: discord_id=%s, target_role=%s, is_paid=%s",
-		discord_id, target_role, body.is_paid,
+		"[Dev] Role switch: user=%s, target_role=%s, is_paid=%s",
+		principal.get("sub"), target_role, body.is_paid,
 	)
 
 	# 単一トランザクションでアトミックにロールと支払いフラグを切り替え
