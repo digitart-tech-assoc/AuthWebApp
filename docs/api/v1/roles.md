@@ -221,7 +221,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 
-レスポンスの `sub_user_list` には、同期後の `sub_user` の全行が入ります。`obog_list` はレスポンスに含まれません（同期自体は行います）。
+レスポンスの各一覧（`member_list` / `sub_user_list` / `admin_list` / `pre_member_list` / `obog_list`）には、同期後のその種別の全行が入ります。
 
 * **認可レベル**: `Admin`
 * **リクエストボディ**: `{"role_id": "123456789012345678"}`
@@ -242,7 +242,8 @@ Discord から取得したギルドメンバーが 0 件の場合は、取得に
   ],
   "sub_user_list": [],
   "admin_list": [],
-  "pre_member_list": []
+  "pre_member_list": [],
+  "obog_list": []
 }
 ```
 

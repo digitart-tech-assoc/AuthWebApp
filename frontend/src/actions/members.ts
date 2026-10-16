@@ -19,7 +19,7 @@ export interface SyncedMembershipRow extends MemberItem {
 	created_at: string | null;
 }
 
-/** POST /api/v1/roles/members/sync のレスポンス（obog_list は含まれない） */
+/** POST /api/v1/roles/members/sync のレスポンス */
 export interface MemberListResponse {
 	ok: boolean;
 	guild_id: string;
@@ -27,6 +27,7 @@ export interface MemberListResponse {
 	sub_user_list: SyncedMembershipRow[];
 	admin_list: SyncedMembershipRow[];
 	pre_member_list: SyncedMembershipRow[];
+	obog_list: SyncedMembershipRow[];
 }
 
 /** GET /api/v1/roles/lists のレスポンス */

@@ -75,6 +75,13 @@ class TestSyncMembersSavesGuildMembers:
 		mock_fetch_all.assert_awaited_once()
 
 	@pytest.mark.asyncio
+	async def test_returns_lists_of_all_membership_types(self, run_sync):
+		# obog_list を含む全種別の同期結果を返す（#183）
+		result, _, _, _ = await run_sync()
+
+		assert result == {"ok": True, "guild_id": GUILD_ID, **EMPTY_RESULT}
+
+	@pytest.mark.asyncio
 	async def test_saves_members_without_synced_roles(self, run_sync):
 		_, _, mock_save, _ = await run_sync()
 
