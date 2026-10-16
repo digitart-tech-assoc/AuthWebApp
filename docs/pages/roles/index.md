@@ -46,7 +46,7 @@
 | ユーザー状態 | 動作 |
 |-----------|------|
 | 未認証 | `/login?callbackUrl=%2Froles` へリダイレクト |
-| 認証済みだが member/sub_user/obog/admin ではない | `/login?callbackUrl=%2Froles` へリダイレクト |
+| 認証済みだが member/sub_user/obog/admin ではない | エラーメッセージ表示 |
 | 権限を持たない場合 | エラーメッセージ表示 |
 | member/sub_user/obog/admin | ページ表示、権限に応じた編集可能 |
 
