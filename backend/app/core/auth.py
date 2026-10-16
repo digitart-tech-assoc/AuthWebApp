@@ -11,6 +11,7 @@ import jwt
 from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
 
+from app.core.config import MembershipType
 from app.db.user_repository import get_user_role, upsert_user
 
 
@@ -227,10 +228,14 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 	}
 
 
+def has_member_privilege(app_role: str | None) -> bool:
+	"""会員向け機能を利用できるか（member / sub_user / obog のいずれか、または admin）を判定する。"""
+	return app_role == MembershipType.ADMIN or app_role in MembershipType.MEMBER_PRIVILEGED
+
+
 def require_member(principal: dict = Depends(get_current_principal)) -> dict:
-	"""member / sub_user / obog / admin のみ許可する FastAPI Dependency。"""
-	allowed = {"member", "sub_user", "admin", "obog"}
-	if principal.get("app_role") not in allowed:
+	"""会員向け機能を利用できるユーザー（member / sub_user / obog / admin）のみ許可する FastAPI Dependency。"""
+	if not has_member_privilege(principal.get("app_role")):
 		raise HTTPException(status_code=403, detail="Membership required")
 	return principal
 

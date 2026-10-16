@@ -15,6 +15,8 @@ class MembershipType:
 	SUB_USER = "sub_user"
 
 	ALL = (MEMBER, ADMIN, PRE_MEMBER, OBOG, SUB_USER)
+	# アプリ上で member と同等の権限を持つ種別（obog / sub_user は member と同じ操作が可能）
+	MEMBER_PRIVILEGED = (MEMBER, SUB_USER, OBOG)
 
 
 # ============================================================================

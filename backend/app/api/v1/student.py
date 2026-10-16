@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_current_principal
+from app.core.auth import get_current_principal, has_member_privilege
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.utils.otp import hash_otp_code
@@ -140,10 +140,6 @@ def _is_pre_member(discord_id: str) -> bool:
 def _is_paid_invitation(discord_id: str) -> bool:
 	"""Discord IDが支払済リストにあるか確認"""
 	return student_repository.is_paid_invitation(discord_id)
-
-
-# 入会資格チェックを省略できる既存会員の app_role（プロフィール更新用）
-_REGISTERED_APP_ROLES = ("member", "admin", "obog")
 
 
 async def _ensure_registration_eligible(discord_id: str) -> None:
@@ -378,9 +374,8 @@ async def create_student_profile(
 
 	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
 	# 新規入会者は入会資格と OTP 検証済みであることを確認する
-	# （既に member/admin/obog の場合はプロフィール更新とみなしスキップ）
-	app_role = principal.get("app_role")
-	is_registered = app_role in _REGISTERED_APP_ROLES
+	# （既に会員向け機能を利用できる場合はプロフィール更新とみなしスキップ）
+	is_registered = has_member_privilege(principal.get("app_role"))
 
 	if not is_registered:
 		await _ensure_registration_eligible(discord_id)
