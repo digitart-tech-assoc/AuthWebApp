@@ -96,6 +96,44 @@ export default function MembersPanel() {
 
 					<div className="mb-4">
 						<h3 className="mb-2 text-sm font-semibold text-slate-900">
+							サブユーザー ({members.sub_user_list.length})
+						</h3>
+						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
+							{members.sub_user_list.length === 0 ? (
+								<p className="text-slate-500">サブユーザーなし</p>
+							) : (
+								<ul className="m-0 list-disc pl-5">
+									{members.sub_user_list.map((m: MemberItem) => (
+										<li key={m.discord_id} className="mb-1">
+											{m.discord_id} {m.assigned_at ? `(${new Date(m.assigned_at).toLocaleDateString()})` : ""}
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+					</div>
+
+					<div className="mb-4">
+						<h3 className="mb-2 text-sm font-semibold text-slate-900">
+							OB/OG ({members.obog_list.length})
+						</h3>
+						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">
+							{members.obog_list.length === 0 ? (
+								<p className="text-slate-500">OB/OGなし</p>
+							) : (
+								<ul className="m-0 list-disc pl-5">
+									{members.obog_list.map((m: MemberItem) => (
+										<li key={m.discord_id} className="mb-1">
+											{m.discord_id} {m.assigned_at ? `(${new Date(m.assigned_at).toLocaleDateString()})` : ""}
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+					</div>
+
+					<div className="mb-4">
+						<h3 className="mb-2 text-sm font-semibold text-slate-900">
 							管理者 ({members.admin_list.length})
 						</h3>
 						<div className="max-h-50 overflow-y-auto text-xs text-slate-700">

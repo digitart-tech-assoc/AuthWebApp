@@ -6,24 +6,25 @@ import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-export interface MemberListResponse {
-	ok: boolean;
-	guild_id: string;
-	member_list: number;
-	admin_list: number;
-	pre_member_list: number;
-}
-
 export interface MemberItem {
 	discord_id: string;
-	user_id: string | null;
+	user_id?: string | null;
+	assigned_by?: string | null;
 	assigned_at: string | null;
+	created_at?: string | null;
 }
 
 export interface MemberListsData {
 	member_list: MemberItem[];
+	sub_user_list: MemberItem[];
 	admin_list: MemberItem[];
 	pre_member_list: MemberItem[];
+	obog_list: MemberItem[];
+}
+
+export interface MemberListResponse extends MemberListsData {
+	ok: boolean;
+	guild_id: string;
 }
 
 export interface PreMember {
