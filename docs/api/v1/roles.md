@@ -89,7 +89,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
 ログインメンバーが、自分自身のロールを一括で付与・解除（バッチ更新）します。
 Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/members/{user_id}`）および DB の割り当て更新を 1 回のリクエストでアトミックに適用します。
 
-* **認可レベル**: `Member` (`member`, `admin`, `obog`)
+* **認可レベル**: `Member`（`member`, `sub_user`, `obog`, `admin`）
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
 * **リクエストボディ**:
 ```json
@@ -146,7 +146,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ## GET `/api/v1/roles/lists`
 
-環境変数で設定された管理対象ロール（`member`, `admin`, `pre_member`, `obog`）の名前設定およびメンバー一覧を取得します。
+`user_memberships` に登録されているメンバーの一覧を種別（`member` / `sub_user` / `admin` / `pre_member` / `obog`）ごとに取得します。各一覧は `assigned_at` の新しい順です。
 
 * **認可レベル**: `Admin`
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
@@ -154,11 +154,17 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 ### レスポンス (200 OK)
 ```json
 {
-  "admin_role_names": ["Admin", "運営"],
-  "member_role_names": ["Member", "部員"],
-  "obog_role_names": ["OB/OG"],
-  "pre_member_role_name": "仮入会",
-  "restricted_categories": ["会員情報", "学年"]
+  "member_list": [
+    {
+      "discord_id": "123456789012345678",
+      "assigned_by": null,
+      "assigned_at": "2026-04-01T12:00:00+00:00"
+    }
+  ],
+  "sub_user_list": [],
+  "admin_list": [],
+  "pre_member_list": [],
+  "obog_list": []
 }
 ```
 
@@ -215,10 +221,31 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 
-レスポンスの `sub_user_list` には、同期後の `sub_user` の全行が入ります。
+レスポンスの各一覧（`member_list` / `sub_user_list` / `admin_list` / `pre_member_list` / `obog_list`）には、同期後のその種別の全行が入ります。
 
 * **認可レベル**: `Admin`
 * **リクエストボディ**: `{"role_id": "123456789012345678"}`
+
+### レスポンス (200 OK)
+```json
+{
+  "ok": true,
+  "guild_id": "123456789012345678",
+  "member_list": [
+    {
+      "discord_id": "123456789012345678",
+      "membership_type": "member",
+      "assigned_by": null,
+      "assigned_at": "2026-04-01T12:00:00+00:00",
+      "created_at": "2026-04-01T12:00:00+00:00"
+    }
+  ],
+  "sub_user_list": [],
+  "admin_list": [],
+  "pre_member_list": [],
+  "obog_list": []
+}
+```
 
 ---
 

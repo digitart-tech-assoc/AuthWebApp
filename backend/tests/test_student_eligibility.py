@@ -145,7 +145,7 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("app_role", ["member", "admin", "obog"])
+@pytest.mark.parametrize("app_role", ["member", "sub_user", "obog", "admin"])
 async def test_create_profile_allows_registered_user_update(monkeypatch, app_role):
 	# 既存会員のプロフィール更新は入会資格・OTP 検証の対象外
 	monkeypatch.setattr(student_api, "_is_pre_member", _forbid("_is_pre_member"))

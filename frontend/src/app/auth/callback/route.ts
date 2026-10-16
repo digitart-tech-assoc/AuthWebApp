@@ -2,6 +2,7 @@
 
 import { createSupabaseRouteClient } from "@/lib/supabaseRoute";
 import { getBaseUrl } from "@/lib/url";
+import { hasMemberPrivilege } from "@/lib/permissions";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -22,7 +23,7 @@ async function resolvePostSignInPath(accessToken: string) {
 
         if (meRes.ok) {
             const me = (await meRes.json()) as AuthMeResponse;
-            if (["member", "obog", "admin"].includes(me.app_role ?? "none")) {
+            if (hasMemberPrivilege(me.app_role)) {
                 return "/roles";
             }
             if (me.app_role === "pre_member") {

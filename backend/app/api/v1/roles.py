@@ -636,6 +636,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			"sub_user_list": result["sub_user_list"],
 			"admin_list": result["admin_list"],
 			"pre_member_list": result["pre_member_list"],
+			"obog_list": result["obog_list"],
 		}
 	except Exception as exc:  # noqa: BLE001
 		logger.exception("Discord sync failed: %s", exc)

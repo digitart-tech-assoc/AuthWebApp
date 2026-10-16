@@ -15,6 +15,8 @@ class MembershipType:
 	SUB_USER = "sub_user"
 
 	ALL = (MEMBER, ADMIN, PRE_MEMBER, OBOG, SUB_USER)
+	# アプリ上で member と同等の権限を持つ種別（obog / sub_user は member と同じ操作が可能）
+	MEMBER_PRIVILEGED = (MEMBER, SUB_USER, OBOG)
 
 
 # ============================================================================
@@ -63,15 +65,16 @@ MEMBER_RESTRICTED_CATEGORY_NAMES: set[str] = RESTRICTED_CATEGORY_NAMES  # 後方
 
 
 # ============================================================================
-# メンバーシップ種別の優先度 SQL 断片
-# 優先順位: admin(1) > member/sub_user(2) > pre_member(3) > obog(4)
+# メンバーシップ種別の優先度 SQL 断片（app_role の解決に使用）
+# 優先順位: admin(1) > member(2) > sub_user(3) > obog(4) > pre_member(5)
+# member / sub_user / obog は同じ権限を持つが、app_role を一意に決めるため順位を分ける
 # ============================================================================
 MEMBERSHIP_PRIORITY_SQL: str = """
 ORDER BY CASE membership_type 
 	WHEN 'admin' THEN 1
 	WHEN 'member' THEN 2
-	WHEN 'sub_user' THEN 2
-	WHEN 'pre_member' THEN 3
+	WHEN 'sub_user' THEN 3
 	WHEN 'obog' THEN 4
+	WHEN 'pre_member' THEN 5
 END
 """
