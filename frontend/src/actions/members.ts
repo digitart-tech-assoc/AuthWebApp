@@ -6,22 +6,34 @@ import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
-export interface MemberListResponse {
-	ok: boolean;
-	guild_id: string;
-	member_list: number;
-	admin_list: number;
-	pre_member_list: number;
-}
-
+/** user_memberships の 1 行（GET /api/v1/roles/lists） */
 export interface MemberItem {
 	discord_id: string;
-	user_id: string | null;
+	assigned_by: string | null;
 	assigned_at: string | null;
 }
 
+/** POST /api/v1/roles/members/sync が返す同期後の user_memberships の 1 行 */
+export interface SyncedMembershipRow extends MemberItem {
+	membership_type: string;
+	created_at: string | null;
+}
+
+/** POST /api/v1/roles/members/sync のレスポンス（obog_list は含まれない） */
+export interface MemberListResponse {
+	ok: boolean;
+	guild_id: string;
+	member_list: SyncedMembershipRow[];
+	sub_user_list: SyncedMembershipRow[];
+	admin_list: SyncedMembershipRow[];
+	pre_member_list: SyncedMembershipRow[];
+}
+
+/** GET /api/v1/roles/lists のレスポンス */
 export interface MemberListsData {
 	member_list: MemberItem[];
+	sub_user_list: MemberItem[];
+	obog_list: MemberItem[];
 	admin_list: MemberItem[];
 	pre_member_list: MemberItem[];
 }
