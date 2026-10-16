@@ -168,7 +168,7 @@ class TestNoNestedCheckout:
 
 		user = upsert_user("user-1", "discord-1")
 
-		assert user == {"id": 1, "user_id": "user-1", "discord_id": "discord-1", "app_role": "member"}
+		assert user == {"id": 1, "user_id": "user-1", "discord_id": "discord-1", "app_role": "sub_user"}
 		assert single_slot_pool.call_count == 1
 
 	def test_upsert_new_user_with_single_connection(self, single_slot_pool):

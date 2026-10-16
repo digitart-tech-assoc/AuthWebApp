@@ -187,12 +187,14 @@ def init_db() -> None:
 						CASE 
 							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'admin') 
 								THEN 'admin'
-							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type IN ('member','sub_user')) 
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'member') 
 								THEN 'member'
-							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'obog') 
-								THEN 'obog'
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'sub_user') 
+								THEN 'sub_user'
 							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'pre_member') 
 								THEN 'pre_member'
+							WHEN EXISTS (SELECT 1 FROM user_memberships WHERE discord_id = u.discord_id AND membership_type = 'obog') 
+								THEN 'obog'
 							ELSE 'none'
 						END as app_role,
 						u.created_at,

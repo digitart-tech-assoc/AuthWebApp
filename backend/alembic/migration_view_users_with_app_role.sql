@@ -12,8 +12,9 @@ SELECT
          ORDER BY CASE membership_type 
            WHEN 'admin' THEN 1
            WHEN 'member' THEN 2
-           WHEN 'pre_member' THEN 3
-           WHEN 'obog' THEN 4
+           WHEN 'sub_user' THEN 3
+           WHEN 'pre_member' THEN 4
+           WHEN 'obog' THEN 5
          END LIMIT 1),
         'none'
     ) as app_role,
