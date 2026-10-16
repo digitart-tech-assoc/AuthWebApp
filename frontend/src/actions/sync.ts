@@ -1,14 +1,13 @@
 // 役割: 同期実行Action
 "use server";
 
-import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
-import { getSessionRole } from "@/lib/backendAuth";
+import { hasMemberPrivilege } from "@/lib/permissions";
 
 export async function triggerSync(): Promise<{ ok: boolean; guild_id?: string; roles?: number }> {
 	const role = await getSessionRole();
-	const allowed = new Set(["member", "admin", "obog"]);
-	if (!allowed.has(role)) {
+	if (!hasMemberPrivilege(role)) {
 		throw new Error("forbidden");
 	}
 

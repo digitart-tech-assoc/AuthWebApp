@@ -64,14 +64,23 @@ MEMBER_RESTRICTED_CATEGORY_NAMES: set[str] = RESTRICTED_CATEGORY_NAMES  # 後方
 
 # ============================================================================
 # メンバーシップ種別の優先度 SQL 断片
-# 優先順位: admin(1) > member/sub_user(2) > pre_member(3) > obog(4)
+# 優先順位: admin(1) > member(2) > sub_user(3) > pre_member(4) > obog(5)
 # ============================================================================
 MEMBERSHIP_PRIORITY_SQL: str = """
 ORDER BY CASE membership_type 
 	WHEN 'admin' THEN 1
 	WHEN 'member' THEN 2
-	WHEN 'sub_user' THEN 2
-	WHEN 'pre_member' THEN 3
-	WHEN 'obog' THEN 4
+	WHEN 'sub_user' THEN 3
+	WHEN 'pre_member' THEN 4
+	WHEN 'obog' THEN 5
 END
 """
+
+# 会員相当の操作権限（ロール自己管理・プロフィール編集等）を持つロール集合
+MEMBER_PRIVILEGE_ROLES: frozenset[str] = frozenset({
+	MembershipType.MEMBER,
+	MembershipType.SUB_USER,
+	MembershipType.OBOG,
+	MembershipType.ADMIN,
+})
+

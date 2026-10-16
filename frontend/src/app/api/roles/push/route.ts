@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 
 import { getBackendAuthorizationHeader, getSessionRole } from "@/lib/backendAuth";
 import { fetchBackend } from "@/lib/backendFetch";
+import { canManageAllRoles } from "@/lib/permissions";
 
 export async function POST() {
 	try {
 		const role = await getSessionRole();
-		if (role !== "admin" && role !== "member") {
+		if (!canManageAllRoles(role)) {
 			return NextResponse.json({ ok: false, detail: "Forbidden" }, { status: 403 });
 		}
 

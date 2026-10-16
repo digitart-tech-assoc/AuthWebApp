@@ -2,6 +2,7 @@
 
 import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { canUseSelfRoleView } from "@/lib/permissions";
 import { fetchManifest } from "@/actions/manifest";
 import RoleAccordion, { type PushResult } from "./_components/RoleAccordion";
 import MemberSelfView from "./_components/MemberSelfView";
@@ -75,7 +76,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 	}
 
 	const { app_role: role, discord_id: myDiscordId, display_name: backendName, avatar: backendAvatar } = await resolveUserInfoFromBackend(authorization);
-	const isMember = role === "member";
+	const showSelfRoleView = canUseSelfRoleView(role);
 
 	const displayName =
 		backendName ??
@@ -117,7 +118,7 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 				<p className="mt-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{accessError}</p>
 			) : null}
 
-			{isMember ? (
+			{showSelfRoleView ? (
 				<MemberSelfView
 					categories={manifest.categories}
 					roles={manifest.roles}

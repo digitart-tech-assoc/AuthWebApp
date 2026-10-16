@@ -15,8 +15,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_current_principal
-from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
+from app.core.auth import get_current_principal, has_member_privilege
+from app.core.config import MEMBER_PRIVILEGE_ROLES, OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
@@ -143,7 +143,7 @@ def _is_paid_invitation(discord_id: str) -> bool:
 
 
 # 入会資格チェックを省略できる既存会員の app_role（プロフィール更新用）
-_REGISTERED_APP_ROLES = ("member", "admin", "obog")
+_REGISTERED_APP_ROLES = tuple(MEMBER_PRIVILEGE_ROLES)
 
 
 async def _ensure_registration_eligible(discord_id: str) -> None:
@@ -378,11 +378,11 @@ async def create_student_profile(
 
 	logger.info("create_student_profile called: discord_id=%s student_number=%s", discord_id, req.student_number)
 	# 新規入会者は入会資格と OTP 検証済みであることを確認する
-	# （既に member/admin/obog の場合はプロフィール更新とみなしスキップ）
+	# （既に会員相当の権限 member / sub_user / obog / admin を持つ場合はプロフィール更新とみなしスキップ）
 	app_role = principal.get("app_role")
-	is_registered = app_role in _REGISTERED_APP_ROLES
+	can_update_profile_without_otp = has_member_privilege(app_role)
 
-	if not is_registered:
+	if not can_update_profile_without_otp:
 		await _ensure_registration_eligible(discord_id)
 		verified_otp = await asyncio.to_thread(student_repository.get_latest_verified_otp, discord_id)
 		if verified_otp is None or not verified_otp["verified"]:
@@ -407,7 +407,7 @@ async def create_student_profile(
 			phone=req.phone,
 			email_aoyama=email_aoyama,
 			member_role_ids=member_role_ids,
-			require_eligibility=not is_registered,
+			require_eligibility=not can_update_profile_without_otp,
 		)
 	except RegistrationNotEligibleError as e:
 		raise HTTPException(status_code=403, detail=str(e))

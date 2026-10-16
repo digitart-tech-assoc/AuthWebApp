@@ -1,5 +1,6 @@
 import { createSupabaseServer } from "@/lib/supabase";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { hasMemberPrivilege } from "@/lib/permissions";
 import { getStudentProfile } from "@/actions/studentRegistration";
 import ProfileForm from "./_components/ProfileForm";
 import { redirect } from "next/navigation";
@@ -38,8 +39,8 @@ export default async function ProfilePage() {
   }
 
   const role = await resolveRoleFromBackend(authorization);
-  const isMember = role === "member" || role === "admin" || role === "obog";
-  if (!isMember) {
+  const canEditProfile = hasMemberPrivilege(role);
+  if (!canEditProfile) {
     // not allowed
     redirect(`/login?callbackUrl=%2Fprofile`);
   }

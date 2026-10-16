@@ -124,11 +124,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [baseCategories, setBaseCategories] = useState<Category[]>(initCategories);
 
   const isAdmin = accessRole === "admin";
-  const isMember = accessRole === "member";
-  const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
-  const canCreateCategory = isAdmin || isMember;
+  const isMember = false;
+  const canCreateRole = isAdmin;
+  const canCreateCategory = isAdmin;
   const canManageMembers = isAdmin;
-  const canEditManifest = isAdmin || isMember;
+  const canEditManifest = isAdmin;
 
   // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
   const restrictedCategoryIds = useMemo(
@@ -548,9 +548,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       <div className={statusBanner("info")}>
         {isAdmin
           ? "adminモード: すべての管理操作が有効です。"
-          : isMember
-          ? "memberモード: ロール・カテゴリの作成および自分へのロール付与ができます。会員全体のロール管理は無効です。"
-          : "obogモード: ロール作成のみ可能です。"}
+          : "管理操作には管理者（admin）権限が必要です。"}
       </div>
 
       {/* Category creation selection bar */}
