@@ -6,7 +6,7 @@
 
 - 学生プロフィール情報の表示・編集
 - ユーザー認証チェック（未認証時はログインへリダイレクト）
-- バックエンド認可チェック（`app_role` が member/admin/obog であることを確認）
+- バックエンド認可チェック（`app_role` が member/sub_user/obog/admin であることを確認）
 - プロフィール情報の取得・更新
 - フォームベースのUI（ProfileForm コンポーネント）
 
@@ -32,8 +32,8 @@
 | ユーザー状態 | 動作 |
 |-----------|------|
 | 未認証 | `/login?callbackUrl=%2Fprofile` へリダイレクト |
-| 認証済みだが member/admin/obog ではない | `/login?callbackUrl=%2Fprofile` へリダイレクト |
-| member/admin/obog | ページ表示、プロフィール編集可能 |
+| 認証済みだが member/sub_user/obog/admin ではない | `/login?callbackUrl=%2Fprofile` へリダイレクト |
+| member/sub_user/obog/admin | ページ表示、プロフィール編集可能 |
 
 ## 操作
 
@@ -41,7 +41,7 @@
    - Supabase より現在ユーザー情報を取得
    - 未認証の場合：ログインページへリダイレクト
    - バックエンド `/api/v1/auth/me` より `app_role` を取得
-   - `app_role` が member/admin/obog でない場合：ログインページへリダイレクト
+   - `app_role` が member/sub_user/obog/admin でない場合：ログインページへリダイレクト
 
 2. **プロフィール表示**
    - 既存プロフィールがあれば取得して表示
@@ -60,7 +60,7 @@
 **レスポンス**
 ```json
 {
-  "app_role": "member" | "admin" | "obog" | "pre_member" | "none",
+  "app_role": "member" | "sub_user" | "admin" | "obog" | "pre_member" | "none",
   "discord_id": "string | null",
   "display_name": "string",
   "avatar": "string"

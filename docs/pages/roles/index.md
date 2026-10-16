@@ -1,6 +1,6 @@
 ## 概要
 
-ロール管理ページ（`/roles`）は Discord ロール管理の中核ページです。member/admin/obog ユーザーがロール構成を確認・編集し、Discord サーバーと同期します。member 権限は自分の権限のみ表示、admin/obog 権限はアコーディオン形式で全ロール編集可能です。
+ロール管理ページ（`/roles`）は Discord ロール管理の中核ページです。member/sub_user/obog/admin ユーザーがロール構成を確認・編集し、Discord サーバーと同期します。member/sub_user/obog は同じ権限を持ち、自分の権限のみ表示します。admin 権限はアコーディオン形式で全ロール編集可能です。
 
 ## 主要要件
 
@@ -23,9 +23,9 @@
 | 項目 | 表示対象 | 説明 |
 |-----|---------|------|
 | ユーザー名 | 全員 | Discord 表示名・アバター |
-| 現在の権限 | 全員 | member/admin/obog など |
-| 自分の権限 | member 権限者 | 自分に付与されているロール |
-| 全ロール編集 | admin/obog 権限者 | カテゴリ別アコーディオン |
+| 現在の権限 | 全員 | member/sub_user/obog/admin など |
+| 自分の権限 | member/sub_user/obog 権限者 | 自分に付与されているロール |
+| 全ロール編集 | admin 権限者 | カテゴリ別アコーディオン |
 
 ### Query パラメータ（Discord 送信結果フィードバック）
 `RoleAccordion` の「保存してDiscordへ送信」が成功したとき、次のパラメータを付けて `/roles` をリロードする。
@@ -46,9 +46,9 @@
 | ユーザー状態 | 動作 |
 |-----------|------|
 | 未認証 | `/login?callbackUrl=%2Froles` へリダイレクト |
-| 認証済みだが member/admin/obog ではない | `/login?callbackUrl=%2Froles` へリダイレクト |
+| 認証済みだが member/sub_user/obog/admin ではない | `/login?callbackUrl=%2Froles` へリダイレクト |
 | 権限を持たない場合 | エラーメッセージ表示 |
-| member/admin/obog | ページ表示、権限に応じた編集可能 |
+| member/sub_user/obog/admin | ページ表示、権限に応じた編集可能 |
 
 ## 操作
 
@@ -58,11 +58,11 @@
    - マニフェスト取得（バックエンド `/api/v1/manifest`）
    - Query パラメータから前回操作結果を解析して表示
 
-2. **Member 権限の場合**
+2. **Member 権限（member/sub_user/obog）の場合**
    - 自分のロールのみ表示（`MemberSelfView` コンポーネント）
    - 削除・追加操作可能
 
-3. **Admin/OBOG 権限の場合**
+3. **Admin 権限の場合**
    - 全ロール管理画面表示（`RoleAccordion` コンポーネント）
    - カテゴリ別にアコーディオン展開・折りたたみ
    - ロール追加・削除・並び替え可能
@@ -99,7 +99,7 @@
 **レスポンス**
 ```json
 {
-  "app_role": "member" | "admin" | "obog" | "pre_member" | "none",
+  "app_role": "member" | "sub_user" | "admin" | "obog" | "pre_member" | "none",
   "discord_id": "string",
   "display_name": "string",
   "avatar": "string"
@@ -135,7 +135,7 @@
 ## 備考
 
 - Member 権限ユーザーは、バックエンドの権限チェックで自分のロールのみ表示するよう制限
-- Admin/OBOG 権限で Discord API へのロール操作を実行
+- Admin 権限で Discord API へのロール操作を実行
 - 同期タイムアウト設定あり（推定30秒〜1分）
 - アバターは Discord CDN から取得（`https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png`）
 

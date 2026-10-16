@@ -89,7 +89,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
 ログインメンバーが、自分自身のロールを一括で付与・解除（バッチ更新）します。
 Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/members/{user_id}`）および DB の割り当て更新を 1 回のリクエストでアトミックに適用します。
 
-* **認可レベル**: `Member` (`member`, `admin`, `obog`)
+* **認可レベル**: `Member`（`member`, `sub_user`, `obog`, `admin`）
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
 * **リクエストボディ**:
 ```json

@@ -1,6 +1,6 @@
 # ロール管理 一般メンバー表示仕様 (`MemberSelfView`)
 
-本ドキュメントは、一般メンバー（`app_role === "member"`）としてログインした際に `/roles` で表示される個人用ロール管理ビュー（`MemberSelfView`）の画面要件・操作仕様です。
+本ドキュメントは、一般メンバー（`app_role` が `member` / `sub_user` / `obog` のいずれか）としてログインした際に `/roles` で表示される個人用ロール管理ビュー（`MemberSelfView`）の画面要件・操作仕様です。
 
 ---
 
@@ -13,7 +13,7 @@ UI上で変更をトグル選択し、「変更を保存してDiscordへ反映�
 ## 2. 画面構成要素
 
 1. **ユーザープロフィールヘッダー**:
-   - Discord アバター、表示名、現在の権限（`member`）を表示。
+   - Discord アバター、表示名、現在の権限（`member` / `sub_user` / `obog`）を表示。
    - ログアウトリンク（`/auth/signout?callbackUrl=/`）。
 2. **ステータス・フィードバックバナー**:
    - 保存中（`saving`）、保存完了（`saved`）、エラー（`error`）の視覚的通知。

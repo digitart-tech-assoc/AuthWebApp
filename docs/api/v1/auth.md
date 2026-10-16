@@ -52,7 +52,8 @@
 }
 ```
 
-* `app_role` の値: `"admin"`, `"member"`, `"obog"`, `"pre_member"`, `"none"`
+* `app_role` の値: `"admin"`, `"member"`, `"sub_user"`, `"obog"`, `"pre_member"`, `"none"`
+* `member` / `sub_user` / `obog` はアプリ上で同じ権限を持ちます。複数のメンバーシップを持つ場合は `admin` > `member` > `sub_user` > `obog` > `pre_member` の順で 1 つに決まります。
 
 ---
 
