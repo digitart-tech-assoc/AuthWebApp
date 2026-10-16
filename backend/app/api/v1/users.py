@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.core.auth import get_current_principal
-from app.db.user_repository import find_user_by_sub, is_paid_invitation, get_guild_member_info
+from app.db.user_repository import find_user_by_sub, get_user_role, is_paid_invitation, get_guild_member_info
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -89,7 +89,8 @@ async def get_role_by_sub(
 		return UserMeResponse(sub=sub, discord_id=None, app_role="none", is_paid=False)
 
 	discord_id = user.get("discord_id")
-	app_role = user.get("app_role", "none")
+	# find_user_by_sub は app_role を含まないため、user_memberships から計算する
+	app_role = await asyncio.to_thread(get_user_role, sub)
 
 	paid = False
 	if discord_id and app_role == "none":
