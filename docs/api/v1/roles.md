@@ -146,7 +146,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ## GET `/api/v1/roles/lists`
 
-環境変数で設定された管理対象ロール（`member`, `admin`, `pre_member`, `obog`）の名前設定およびメンバー一覧を取得します。
+`user_memberships` に登録されているメンバーの一覧を種別（`member` / `sub_user` / `admin` / `pre_member` / `obog`）ごとに取得します。各一覧は `assigned_at` の新しい順です。
 
 * **認可レベル**: `Admin`
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
@@ -154,11 +154,17 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 ### レスポンス (200 OK)
 ```json
 {
-  "admin_role_names": ["Admin", "運営"],
-  "member_role_names": ["Member", "部員"],
-  "obog_role_names": ["OB/OG"],
-  "pre_member_role_name": "仮入会",
-  "restricted_categories": ["会員情報", "学年"]
+  "member_list": [
+    {
+      "discord_id": "123456789012345678",
+      "assigned_by": null,
+      "assigned_at": "2026-04-01T12:00:00+00:00"
+    }
+  ],
+  "sub_user_list": [],
+  "admin_list": [],
+  "pre_member_list": [],
+  "obog_list": []
 }
 ```
 
@@ -215,10 +221,30 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 
-レスポンスの `sub_user_list` には、同期後の `sub_user` の全行が入ります。
+レスポンスの `sub_user_list` には、同期後の `sub_user` の全行が入ります。`obog_list` はレスポンスに含まれません（同期自体は行います）。
 
 * **認可レベル**: `Admin`
 * **リクエストボディ**: `{"role_id": "123456789012345678"}`
+
+### レスポンス (200 OK)
+```json
+{
+  "ok": true,
+  "guild_id": "123456789012345678",
+  "member_list": [
+    {
+      "discord_id": "123456789012345678",
+      "membership_type": "member",
+      "assigned_by": null,
+      "assigned_at": "2026-04-01T12:00:00+00:00",
+      "created_at": "2026-04-01T12:00:00+00:00"
+    }
+  ],
+  "sub_user_list": [],
+  "admin_list": [],
+  "pre_member_list": []
+}
+```
 
 ---
 
