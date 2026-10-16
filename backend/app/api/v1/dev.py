@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.auth import get_current_principal
+from app.core.config import MEMBERSHIP_PRIORITY_SQL
 from app.core.constants import DEV_ENVS
 from app.db.connection import _connect
 
@@ -110,23 +111,16 @@ def _switch_role_tx(discord_id: str, target_role: str, is_paid: bool) -> None:
 def _get_current_state(discord_id: str) -> tuple[str, bool]:
 	"""現在のロールと支払い状態を単一接続・単一トランザクションで取得する。
 
-	優先度順位: admin > member > sub_user > pre_member > obog (memberをsub_userより明確に優先)
+	優先度順位は app_role の解決と同じ（admin > member > sub_user > obog > pre_member）。
 	"""
 	conn = _connect()
 	try:
 		with conn.cursor() as cur:
 			cur.execute(
-				"""
+				f"""
 				SELECT membership_type FROM user_memberships
 				WHERE discord_id = %s
-				ORDER BY CASE membership_type
-					WHEN 'admin' THEN 1
-					WHEN 'member' THEN 2
-					WHEN 'sub_user' THEN 3
-					WHEN 'pre_member' THEN 4
-					WHEN 'obog' THEN 5
-					ELSE 6
-				END, membership_type ASC
+				{MEMBERSHIP_PRIORITY_SQL}
 				LIMIT 1
 				""",
 				(discord_id,),

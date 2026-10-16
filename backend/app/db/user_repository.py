@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.core.config import MEMBERSHIP_PRIORITY_SQL
 from app.db.repository import _connect
 
 logger = logging.getLogger(__name__)
@@ -39,8 +40,7 @@ def find_user_by_sub(user_id: str) -> dict[str, Any] | None:
 
 def _resolve_role_from_memberships(discord_id: str | None) -> str:
 	"""user_memberships から app_role を解決する。
-	優先順位: admin > member > pre_member > obog > none
-	'sub_user' は 'member' と同等として扱う。
+	優先順位: admin > member > sub_user > obog > pre_member > none
 	"""
 	if not discord_id:
 		return "none"
@@ -49,23 +49,17 @@ def _resolve_role_from_memberships(discord_id: str | None) -> str:
 		with conn.cursor() as cur:
 			try:
 				cur.execute(
-					"""
+					f"""
 					SELECT membership_type FROM user_memberships 
 					WHERE discord_id = %s 
-					ORDER BY CASE membership_type 
-								WHEN 'admin' THEN 1
-								WHEN 'member' THEN 2
-								WHEN 'sub_user' THEN 2
-								WHEN 'pre_member' THEN 3
-								WHEN 'obog' THEN 4
-					END LIMIT 1
+					{MEMBERSHIP_PRIORITY_SQL}
+					LIMIT 1
 					""",
 					(discord_id,)
 				)
 				row = cur.fetchone()
 				if row is not None:
-					role = row[0]
-					return "member" if role == "sub_user" else role
+					return row[0]
 			except Exception:
 				# user_memberships テーブル未作成などの環境では none を返す
 				return "none"
@@ -193,8 +187,7 @@ def get_user_role(user_id: str) -> str:
 	"""ユーザーの app_role を返す。未登録の場合は 'none' を返す。
 	
 	app_role は user_memberships から計算される値です。
-	優先順位: admin > member > pre_member > obog > none
-	'sub_user' は 'member' として扱う。
+	優先順位: admin > member > sub_user > obog > pre_member > none
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -208,23 +201,18 @@ def get_user_role(user_id: str) -> str:
 			
 			# user_memberships から membership_type を取得
 			cur.execute(
-				"""
+				f"""
 				SELECT membership_type FROM user_memberships 
 				WHERE discord_id = %s 
-				ORDER BY CASE membership_type 
-						WHEN 'admin' THEN 1
-						WHEN 'member' THEN 2
-						WHEN 'sub_user' THEN 2
-						WHEN 'pre_member' THEN 3
-						WHEN 'obog' THEN 4
-				END LIMIT 1
+				{MEMBERSHIP_PRIORITY_SQL}
+				LIMIT 1
 				""",
 				(discord_id,)
 			)
 			result = cur.fetchone()
 			if not result:
 				return "none"
-			return "member" if result[0] == "sub_user" else result[0]
+			return result[0]
 
 
 def update_user_role(user_id: str, role: str) -> None:

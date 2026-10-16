@@ -217,7 +217,7 @@ def get_member_lists() -> dict[str, list[dict[str, Any]]]:
 def get_user_membership_type(discord_id: str) -> str:
 	"""user_memberships から membership_type を取得。
 	
-	優先順位: admin > member/sub_user > pre_member > obog > none
+	優先順位: admin > member > sub_user > obog > pre_member > none
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
