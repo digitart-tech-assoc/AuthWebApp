@@ -123,6 +123,8 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [baseRoles, setBaseRoles] = useState<Role[]>(initRoles);
   const [baseCategories, setBaseCategories] = useState<Category[]>(initCategories);
 
+  // NOTE: /roles では admin のみ RoleAccordion を表示し、member / sub_user / obog は MemberSelfView を表示する（roles/page.tsx）。
+  // そのため accessRole は常に "admin" で、以下の member / obog モード向けの分岐（isMember や「obogモード」の表示）は現在使われていない。
   const isAdmin = accessRole === "admin";
   const isMember = accessRole === "member";
   const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
