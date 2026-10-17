@@ -124,7 +124,7 @@ class TestApplyRoleAssignmentDiffs:
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b", "role-unknown", "role-booster"}}
 		run.add.assert_not_awaited()
 		run.remove.assert_not_awaited()
-		assert run.result == (2, 1, [])
+		assert run.result == (2, 1, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_single_add_uses_put_without_refetch(self, run_diffs):
@@ -136,7 +136,7 @@ class TestApplyRoleAssignmentDiffs:
 		assert _single_calls(run.add) == [("user-2", "role-a")]
 		run.fetch.assert_not_awaited()
 		run.set.assert_not_awaited()
-		assert run.result == (1, 0, [])
+		assert run.result == (1, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_single_remove_uses_delete_without_refetch(self, run_diffs):
@@ -148,7 +148,7 @@ class TestApplyRoleAssignmentDiffs:
 		assert _single_calls(run.remove) == [("user-1", "role-b")]
 		run.fetch.assert_not_awaited()
 		run.set.assert_not_awaited()
-		assert run.result == (0, 1, [])
+		assert run.result == (0, 1, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_patch_is_based_on_latest_member_roles(self, run_diffs):
@@ -161,7 +161,7 @@ class TestApplyRoleAssignmentDiffs:
 
 		# 開始時の情報で上書きせず、取り直したロールを残したうえで role-b だけを追加する
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b", "role-booster"}}
-		assert run.result == (1, 0, [])
+		assert run.result == (1, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_member_already_up_to_date_after_refetch_is_not_patched(self, run_diffs):
@@ -172,7 +172,7 @@ class TestApplyRoleAssignmentDiffs:
 		run = await run_diffs(desired, members, latest_members=latest)
 
 		run.set.assert_not_awaited()
-		assert run.result == (0, 0, [])
+		assert run.result == (0, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_member_who_left_before_refetch_is_skipped(self, run_diffs):
@@ -182,7 +182,7 @@ class TestApplyRoleAssignmentDiffs:
 		run = await run_diffs(desired, members, latest_members={"user-1": None})
 
 		run.set.assert_not_awaited()
-		assert run.result == (0, 0, [])
+		assert run.result == (0, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_patch_keeps_role_assigned_in_db_after_push_started(self, run_diffs):
@@ -196,7 +196,7 @@ class TestApplyRoleAssignmentDiffs:
 
 		# 開始時の DB の割り当てを元に role-c を外さない
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b", "role-c"}}
-		assert run.result == (2, 0, [])
+		assert run.result == (2, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_patch_does_not_restore_role_unassigned_in_db_after_push_started(self, run_diffs):
@@ -208,7 +208,7 @@ class TestApplyRoleAssignmentDiffs:
 		run = await run_diffs(desired, members, latest_assignments=latest_db)
 
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b"}}
-		assert run.result == (2, 0, [])
+		assert run.result == (2, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_single_diff_cancelled_in_db_after_push_started_is_not_sent(self, run_diffs):
@@ -223,7 +223,7 @@ class TestApplyRoleAssignmentDiffs:
 		run.remove.assert_not_awaited()
 		run.fetch.assert_not_awaited()
 		run.set.assert_not_awaited()
-		assert run.result == (0, 0, [])
+		assert run.result == (0, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_single_diff_grown_in_db_after_push_started_uses_patch(self, run_diffs):
@@ -236,7 +236,7 @@ class TestApplyRoleAssignmentDiffs:
 
 		run.add.assert_not_awaited()
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-b"}}
-		assert run.result == (2, 0, [])
+		assert run.result == (2, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_unmanageable_and_deleted_roles_are_excluded_from_diff(self, run_diffs):
@@ -248,17 +248,17 @@ class TestApplyRoleAssignmentDiffs:
 		# managed / Bot より上 / 削除済みのロールは付与しない
 		assert _single_calls(run.add) == [("user-1", "role-a")]
 		run.set.assert_not_awaited()
-		assert run.result == (1, 0, [])
+		assert run.result == (1, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_users_not_in_guild_are_skipped(self, run_diffs):
-		desired = {"role-a": ["user-1", "user-left"]}
+		desired = {"role-a": ["user-1", "user-left"], "role-b": ["user-left"]}
 		members = [_member("user-1", [])]
 
 		run = await run_diffs(desired, members)
 
 		assert _single_calls(run.add) == [("user-1", "role-a")]
-		assert run.result == (1, 0, [])
+		assert run.result == (1, 0, 1, [])
 
 	@pytest.mark.asyncio
 	async def test_not_found_is_skipped_without_error(self, run_diffs):
@@ -269,7 +269,7 @@ class TestApplyRoleAssignmentDiffs:
 		run = await run_diffs(desired, members, add_side_effect=side_effect)
 
 		assert run.add.await_count == 2
-		assert run.result == (1, 0, [])
+		assert run.result == (1, 0, 0, [])
 
 	@pytest.mark.asyncio
 	@pytest.mark.parametrize("path", ["single", "patch"])
@@ -284,7 +284,7 @@ class TestApplyRoleAssignmentDiffs:
 			run = await run_diffs(desired, members, set_side_effect=[DiscordAPIError("forbidden user-1", 403), None])
 			expected_adds = 2
 
-		adds, removes, errors = run.result
+		adds, removes, _skipped_members, errors = run.result
 		# 403 のメンバーは反映されず、次のメンバーは処理される。失敗は errors に残る
 		assert (adds, removes) == (expected_adds, 0)
 		assert len(errors) == 1
@@ -300,7 +300,7 @@ class TestApplyRoleAssignmentDiffs:
 		run = await run_diffs(desired, members, set_side_effect=side_effect)
 
 		assert run.set.await_count == 2
-		adds, _removes, errors = run.result
+		adds, _removes, _skipped_members, errors = run.result
 		assert adds == 2
 		assert len(errors) == 1
 		assert "user-1" in errors[0]
@@ -333,7 +333,7 @@ class TestApplyRoleAssignmentDiffs:
 			for c in mock.await_args_list
 		}
 		assert sent_users == {"user-1", "user-2"}
-		adds, removes, errors = run.result
+		adds, removes, _skipped_members, errors = run.result
 		assert adds + removes in (1, 2)
 		assert len(errors) == 1
 		assert "HTTP 429" in errors[0]
@@ -349,7 +349,7 @@ class TestApplyRoleAssignmentDiffs:
 
 		# 開始時のロール一覧で判定し、新規作成したロールも付与する。Bot より上のロールは付与しない
 		assert _patched_roles(run.set) == {"user-1": {"role-a", "role-new"}}
-		assert run.result == (2, 0, [])
+		assert run.result == (2, 0, 0, [])
 
 	@pytest.mark.asyncio
 	async def test_failure_to_fetch_members_is_recorded(self):
@@ -357,8 +357,36 @@ class TestApplyRoleAssignmentDiffs:
 			patch.object(roles_api, "fetch_role_assignments", return_value={}), \
 			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, side_effect=Exception("boom")), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
-			adds, removes, errors = await roles_api._apply_role_assignment_diffs(ACTUAL_BY_ID, set(), set(), "token")
+			adds, removes, skipped_members, errors = await roles_api._apply_role_assignment_diffs(
+				ACTUAL_BY_ID, set(), set(), "token"
+			)
 
 		mock_set.assert_not_awaited()
-		assert (adds, removes) == (0, 0)
+		assert (adds, removes, skipped_members) == (0, 0, 0)
 		assert errors == ["Failed to apply assignment diffs: boom"]
+
+
+class TestPushRolesResponse:
+	@pytest.mark.asyncio
+	async def test_returns_skipped_member_count_without_treating_it_as_an_error(self):
+		with patch.object(roles_api, "_get_token", return_value="token"), \
+			patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \
+			patch.object(roles_api, "fetch_manifest", return_value={"roles": []}), \
+			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=[]), \
+			patch.object(
+				roles_api, "_sync_role_definitions",
+				new_callable=AsyncMock,
+				return_value=(0, 0, 0, 0, set(), set(), [], {}, {}),
+			), \
+			patch.object(roles_api, "_reorder_roles", new_callable=AsyncMock, return_value=(0, [])), \
+			patch.object(
+				roles_api, "_apply_role_assignment_diffs",
+				new_callable=AsyncMock,
+				return_value=(0, 0, 3, []),
+			), \
+			patch.object(roles_api, "_notify_bot_to_reconcile", new_callable=AsyncMock, return_value=True):
+			result = await roles_api.push_roles_to_discord({})
+
+		assert result["ok"] is True
+		assert result["skipped_members"] == 3
+		assert result["errors"] == []

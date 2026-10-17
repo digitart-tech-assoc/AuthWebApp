@@ -37,6 +37,7 @@ type SearchParamsType = {
 	created?: string;
 	deleted?: string;
 	reordered?: string;
+	skipped_members?: string;
 };
 
 type RolesPageProps = {
@@ -56,6 +57,7 @@ function parsePushResult(params: SearchParamsType | undefined): PushResult | nul
 		created: toCount(params.created),
 		deleted: toCount(params.deleted),
 		reordered: toCount(params.reordered),
+		skippedMembers: toCount(params.skipped_members),
 	};
 }
 
