@@ -44,6 +44,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
   "skipped_managed": 1,
   "assigned_adds": 3,
   "assigned_removes": 1,
+  "skipped_members": 0,
   "bot_reconciled": true,
   "errors": []
 }
@@ -60,6 +61,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
 | `skipped_managed` | managed ロールまたは `@everyone` のため更新しなかったロールの数 |
 | `assigned_adds` | メンバーに付与したロールの延べ数 |
 | `assigned_removes` | メンバーから解除したロールの延べ数 |
+| `skipped_members` | ギルド外のため割り当て反映をスキップしたユーザー数。割り当てはDBに保持し、削除しない |
 | `bot_reconciled` | Discord Bot への reconcile の依頼が成功したか |
 | `errors` | 失敗した操作の内容（文字列の配列） |
 
@@ -76,6 +78,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
   * 設定後のロール一覧は Discord 上の現在のロールを元に組み立てるため、managed ロールなど差分の対象外のロールは外れません。
   * managed ロール、Bot のロール以上の位置にあるロール、push で削除したロールは差分の対象外です。並び替え後のロール一覧の取得に失敗した場合は、push 開始時のロール一覧で判定します。
   * 対象メンバーがサーバーにいない（404）場合はスキップし、`errors` には含めません。
+  * Discordから取得したギルドメンバーに含まれない割り当てはDiscord APIへ送信せず、`skipped_members` に人数を返します。DBの割り当ては自動削除しません。
   * 権限不足（403）の場合は、そのメンバーの差分がすべて反映されないため `errors` に記録します（Discord ID は含めません）。
 * **レート制限（429）**: Discord から `429 Too Many Requests` を受けた場合は、レスポンスの `retry_after`（なければ `Retry-After` ヘッダー）の秒数だけ待って再試行します。再試行は最大 3 回、1 回の待ち時間は最大 10 秒です（`backend/app/core/config.py` の `DISCORD_RATE_LIMIT_MAX_RETRIES` / `DISCORD_RATE_LIMIT_MAX_WAIT`）。上限を超えた場合は失敗として `errors` に記録します。
   * メンバーのロール割り当ての反映中に上限を超えた場合は、続けて送っても 429 を重ねるだけで、Discord の無効リクエスト数の上限（超えると IP 単位で一時的に遮断される）に近づくため、残りのメンバーへの反映を打ち切ります。`errors` には反映できなかった残りの人数を記録します（Discord ID は含めません）。時間をおいて push をやり直してください。

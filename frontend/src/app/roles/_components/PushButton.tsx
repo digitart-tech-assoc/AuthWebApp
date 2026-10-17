@@ -27,6 +27,7 @@ export default function PushButton({ onSuccess, onError }: Props) {
         created: body.created ?? 0,
         deleted: body.deleted ?? 0,
         reordered: body.reordered ?? 0,
+        skipped_members: body.skipped_members ?? 0,
       });
     } catch {
       onError?.();

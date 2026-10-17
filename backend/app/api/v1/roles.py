@@ -257,7 +257,7 @@ async def _apply_role_assignment_diffs(
 	created_real_ids: set[str],
 	deleted_role_ids: set[str],
 	token: str,
-) -> tuple[int, int, list[str]]:
+) -> tuple[int, int, int, list[str]]:
 	"""メンバーロール割り当ての差分適用
 
 	差分はメンバー単位にまとめて反映する（反映方法は _apply_member_role_diff を参照）。
@@ -266,6 +266,7 @@ async def _apply_role_assignment_diffs(
 	"""
 	assigned_adds = 0
 	assigned_removes = 0
+	skipped_members = 0
 	errors: list[str] = []
 
 	try:
@@ -310,6 +311,7 @@ async def _apply_role_assignment_diffs(
 				for user_id in desired_by_role.get(rid, set())
 				if user_id not in member_ids
 			}
+			skipped_members = len(missing_members)
 			if missing_members:
 				logger.warning("Skipped %d assigned users who are not in the guild", len(missing_members))
 
@@ -366,7 +368,7 @@ async def _apply_role_assignment_diffs(
 	except Exception as exc:
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
-	return assigned_adds, assigned_removes, errors
+	return assigned_adds, assigned_removes, skipped_members, errors
 
 
 async def _apply_member_role_diff(
@@ -456,7 +458,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		desired_roles, actual_by_id, created_real_ids, token
 	)
 
-	assigned_adds, assigned_removes, assign_errors = await _apply_role_assignment_diffs(
+	assigned_adds, assigned_removes, skipped_members, assign_errors = await _apply_role_assignment_diffs(
 		actual_by_id, created_real_ids, deleted_role_ids, token
 	)
 
@@ -476,6 +478,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		"skipped_managed": skipped_managed,
 		"assigned_adds": assigned_adds,
 		"assigned_removes": assigned_removes,
+		"skipped_members": skipped_members,
 		"bot_reconciled": bot_reconciled,
 		"errors": all_errors,
 	}
