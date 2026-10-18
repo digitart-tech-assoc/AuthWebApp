@@ -11,6 +11,7 @@ export interface PushRolesResponse {
   created?: number;
   deleted?: number;
   reordered?: number;
+  skipped_members?: number;
   errors?: string[];
 }
 
