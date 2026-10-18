@@ -182,7 +182,7 @@ async def _sync_role_definitions(
 					created_real_ids.add(real_id)
 			except Exception as exc:
 				msg = f"Failed to create role locally {role_id}: {exc}"
-				logger.exception("%s", msg)
+				_log_push_error("create role", exc, target_id=role_id)
 				errors.append(msg)
 			continue
 		if actual.get("managed") or role_id == DISCORD_GUILD_ID:
@@ -196,7 +196,7 @@ async def _sync_role_definitions(
 			updated += 1
 		except Exception as exc:
 			msg = f"Failed to update role in discord {role_id}: {exc}"
-			logger.error("%s", msg)
+			_log_push_error("update role", exc, target_id=role_id)
 			errors.append(msg)
 
 	for role in actual_roles:
@@ -211,7 +211,7 @@ async def _sync_role_definitions(
 			deleted_role_ids.add(role_id)
 		except Exception as exc:
 			msg = f"Failed to delete role {role_id}: {exc}"
-			logger.error("%s", msg)
+			_log_push_error("delete role", exc, target_id=role_id)
 			errors.append(msg)
 
 	return (
@@ -246,7 +246,7 @@ async def _reorder_roles(
 			reordered = len(position_payload)
 		except Exception as exc:
 			msg = f"Failed to reorder roles: {exc}"
-			logger.error("%s", msg)
+			_log_push_error("reorder roles", exc)
 			errors.append(msg)
 			reordered = 0
 	return reordered, errors
@@ -280,7 +280,7 @@ async def _apply_role_assignment_diffs(
 			except Exception as exc:
 				# 取り直しに失敗しても割り当ての反映は止めず、push 開始時のロール一覧で判定する。
 				# 新規作成したロールは開始時の一覧に無いが、最下位に作られ Bot より下にあるため操作できるものとして扱う
-				logger.warning("Failed to refetch guild roles; using roles fetched before sync: %s", exc)
+				_log_push_error("refetch guild roles; using roles fetched before sync", exc, level=logging.WARNING)
 				manageable_role_ids = _manageable_role_ids(list(actual_by_id.values())) | created_real_ids
 
 			current_by_role: dict[str, set[str]] = {}
@@ -362,10 +362,13 @@ async def _apply_role_assignment_diffs(
 						logger.warning("%s", msg)
 						errors.append(msg)
 						continue
+					_log_push_error("update member roles", e)
 					errors.append(f"Failed to update roles for {user_id}: {e}")
 				except Exception as exc:
+					_log_push_error("update member roles", exc)
 					errors.append(f"Failed to update roles for {user_id}: {exc}")
 	except Exception as exc:
+		_log_push_error("apply role assignment diffs", exc)
 		errors.append(f"Failed to apply assignment diffs: {exc}")
 
 	return assigned_adds, assigned_removes, skipped_members, errors
@@ -414,11 +417,36 @@ async def _apply_member_role_diff(
 	return len(latest_adds), len(latest_removes)
 
 
-def _error_status_code(exc: DiscordAPIError | httpx.HTTPStatusError) -> int | None:
+def _error_status_code(exc: Exception) -> int | None:
 	"""Discord API 呼び出しの例外から HTTP ステータスを取り出す。"""
 	if isinstance(exc, DiscordAPIError):
 		return exc.status_code
-	return exc.response.status_code if exc.response is not None else None
+	if isinstance(exc, httpx.HTTPStatusError):
+		return exc.response.status_code if exc.response is not None else None
+	return None
+
+
+def _log_push_error(
+	operation: str,
+	exc: Exception,
+	*,
+	target_id: str | None = None,
+	level: int = logging.ERROR,
+) -> None:
+	"""Push失敗を個人情報やDiscordの例外メッセージを含めずに記録する。"""
+	status_code = _error_status_code(exc)
+	target = f" for target {target_id}" if target_id is not None else ""
+	if status_code is not None:
+		logger.log(level, "Discord role push %s%s failed with HTTP %d", operation, target, status_code)
+	else:
+		logger.log(
+			level,
+			"Discord role push %s%s failed (%s)",
+			operation,
+			target,
+			type(exc).__name__,
+			exc_info=True,
+		)
 
 
 def _manageable_role_ids(roles: list[dict]) -> set[str]:
@@ -463,6 +491,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	)
 
 	all_errors = sync_errors + reorder_errors + assign_errors
+	logger.info("Discord role push completed with %d error(s)", len(all_errors))
 
 	# Notify Discord Bot to reconcile member_list / pre_member_list
 	logger.debug("Notifying Discord Bot to reconcile member lists...")

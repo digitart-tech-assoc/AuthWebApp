@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -307,7 +308,7 @@ class TestApplyRoleAssignmentDiffs:
 
 	@pytest.mark.asyncio
 	@pytest.mark.parametrize("path", ["single_add", "single_remove", "refetch", "patch"])
-	async def test_rate_limited_aborts_remaining_members(self, run_diffs, path):
+	async def test_rate_limited_aborts_remaining_members(self, run_diffs, path, caplog):
 		members = [_member("user-1", []), _member("user-2", []), _member("user-3", [])]
 		both_roles = {"role-a": ["user-1", "user-2", "user-3"], "role-b": ["user-1", "user-2", "user-3"]}
 		if path == "single_add":
@@ -324,7 +325,8 @@ class TestApplyRoleAssignmentDiffs:
 			desired = both_roles
 			kwargs = {"set_side_effect": [None, DiscordAPIError("rate limited user-2", 429)]}
 
-		run = await run_diffs(desired, members, **kwargs)
+		with caplog.at_level(logging.WARNING, logger=roles_api.logger.name):
+			run = await run_diffs(desired, members, **kwargs)
 
 		# user-1 は反映し、429 を受けた user-2 で打ち切って user-3 には送らない
 		sent_users = {
@@ -339,6 +341,23 @@ class TestApplyRoleAssignmentDiffs:
 		assert "HTTP 429" in errors[0]
 		assert "remaining 2 members" in errors[0]
 		assert "user-2" not in errors[0]
+		assert "HTTP 429" in caplog.text
+		assert all(user_id not in caplog.text for user_id in ("user-1", "user-2", "user-3"))
+
+	@pytest.mark.asyncio
+	async def test_other_discord_failures_are_logged_with_status_without_member_ids(self, run_diffs, caplog):
+		desired = {"role-a": ["user-1"], "role-b": ["user-1"]}
+		members = [_member("user-1", [])]
+
+		with caplog.at_level(logging.ERROR, logger=roles_api.logger.name):
+			await run_diffs(
+				desired,
+				members,
+				set_side_effect=DiscordAPIError("failed for user-1", 500),
+			)
+
+		assert "HTTP 500" in caplog.text
+		assert "user-1" not in caplog.text
 
 	@pytest.mark.asyncio
 	async def test_falls_back_to_initial_roles_when_refetching_roles_fails(self, run_diffs):
@@ -366,6 +385,35 @@ class TestApplyRoleAssignmentDiffs:
 		assert errors == ["Failed to apply assignment diffs: boom"]
 
 
+class TestPushErrorLogging:
+	def test_logs_target_id_and_traceback_for_errors_without_http_status(self, caplog):
+		with caplog.at_level(logging.ERROR, logger=roles_api.logger.name):
+			try:
+				raise RuntimeError("internal failure")
+			except RuntimeError as exc:
+				roles_api._log_push_error("create role", exc, target_id="role-123")
+
+		record = caplog.records[-1]
+		assert "role-123" in record.message
+		assert "RuntimeError" in record.message
+		assert record.exc_info is not None
+		assert "internal failure" in caplog.text
+
+	def test_logs_http_status_and_target_id_without_exception_message(self, caplog):
+		with caplog.at_level(logging.ERROR, logger=roles_api.logger.name):
+			roles_api._log_push_error(
+				"update role",
+				DiscordAPIError("contains internal details", 500),
+				target_id="role-456",
+			)
+
+		record = caplog.records[-1]
+		assert "role-456" in record.message
+		assert "HTTP 500" in record.message
+		assert "contains internal details" not in caplog.text
+		assert record.exc_info is None
+
+
 class TestPushRolesResponse:
 	@pytest.mark.asyncio
 	async def test_returns_skipped_member_count_without_treating_it_as_an_error(self):
@@ -390,3 +438,29 @@ class TestPushRolesResponse:
 		assert result["ok"] is True
 		assert result["skipped_members"] == 3
 		assert result["errors"] == []
+
+	@pytest.mark.asyncio
+	async def test_logs_error_count_once_for_each_push(self, caplog):
+		with patch.object(roles_api, "_get_token", return_value="token"), \
+			patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \
+			patch.object(roles_api, "fetch_manifest", return_value={"roles": []}), \
+			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=[]), \
+			patch.object(
+				roles_api, "_sync_role_definitions",
+				new_callable=AsyncMock,
+				return_value=(0, 0, 0, 0, set(), set(), [], {}, {}),
+			), \
+			patch.object(roles_api, "_reorder_roles", new_callable=AsyncMock, return_value=(0, [])), \
+			patch.object(
+				roles_api, "_apply_role_assignment_diffs",
+				new_callable=AsyncMock,
+				return_value=(0, 0, 0, ["failure"]),
+			), \
+			patch.object(roles_api, "_notify_bot_to_reconcile", new_callable=AsyncMock, return_value=True), \
+			caplog.at_level(logging.INFO, logger=roles_api.logger.name):
+			result = await roles_api.push_roles_to_discord({})
+
+		assert result["ok"] is False
+		assert [record.message for record in caplog.records if "push completed with" in record.message] == [
+			"Discord role push completed with 1 error(s)",
+		]

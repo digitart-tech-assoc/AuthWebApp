@@ -291,8 +291,14 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       const pushBody = await pushRolesToDiscord();
 
       if (!pushBody.ok) {
-        const errMsg = pushBody.errors?.[0] ?? "Discord への送信に失敗しました";
-        showStatus({ kind: "error", msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}` });
+        const pushErrors = pushBody.errors ?? [];
+        const errMsg = pushErrors[0] ?? "Discord への送信に失敗しました";
+        const additionalErrorCount = Math.max(0, pushErrors.length - 1);
+        const additionalErrors = additionalErrorCount > 0 ? `（他 ${additionalErrorCount} 件）` : "";
+        showStatus({
+          kind: "error",
+          msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}${additionalErrors}`,
+        });
         return;
       }
 
