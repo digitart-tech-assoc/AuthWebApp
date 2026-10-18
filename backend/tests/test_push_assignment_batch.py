@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -307,7 +308,7 @@ class TestApplyRoleAssignmentDiffs:
 
 	@pytest.mark.asyncio
 	@pytest.mark.parametrize("path", ["single_add", "single_remove", "refetch", "patch"])
-	async def test_rate_limited_aborts_remaining_members(self, run_diffs, path):
+	async def test_rate_limited_aborts_remaining_members(self, run_diffs, path, caplog):
 		members = [_member("user-1", []), _member("user-2", []), _member("user-3", [])]
 		both_roles = {"role-a": ["user-1", "user-2", "user-3"], "role-b": ["user-1", "user-2", "user-3"]}
 		if path == "single_add":
@@ -324,7 +325,8 @@ class TestApplyRoleAssignmentDiffs:
 			desired = both_roles
 			kwargs = {"set_side_effect": [None, DiscordAPIError("rate limited user-2", 429)]}
 
-		run = await run_diffs(desired, members, **kwargs)
+		with caplog.at_level(logging.WARNING, logger=roles_api.logger.name):
+			run = await run_diffs(desired, members, **kwargs)
 
 		# user-1 は反映し、429 を受けた user-2 で打ち切って user-3 には送らない
 		sent_users = {
@@ -339,6 +341,23 @@ class TestApplyRoleAssignmentDiffs:
 		assert "HTTP 429" in errors[0]
 		assert "remaining 2 members" in errors[0]
 		assert "user-2" not in errors[0]
+		assert "HTTP 429" in caplog.text
+		assert all(user_id not in caplog.text for user_id in ("user-1", "user-2", "user-3"))
+
+	@pytest.mark.asyncio
+	async def test_other_discord_failures_are_logged_with_status_without_member_ids(self, run_diffs, caplog):
+		desired = {"role-a": ["user-1"], "role-b": ["user-1"]}
+		members = [_member("user-1", [])]
+
+		with caplog.at_level(logging.ERROR, logger=roles_api.logger.name):
+			await run_diffs(
+				desired,
+				members,
+				set_side_effect=DiscordAPIError("failed for user-1", 500),
+			)
+
+		assert "HTTP 500" in caplog.text
+		assert "user-1" not in caplog.text
 
 	@pytest.mark.asyncio
 	async def test_falls_back_to_initial_roles_when_refetching_roles_fails(self, run_diffs):
