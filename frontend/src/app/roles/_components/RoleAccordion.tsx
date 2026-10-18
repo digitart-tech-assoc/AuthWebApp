@@ -36,6 +36,7 @@ export type PushResult = {
   created: number;
   deleted: number;
   reordered: number;
+  skippedMembers: number;
 };
 
 type Props = {
@@ -54,7 +55,7 @@ type Status = {
 import { ChevronRight } from "lucide-react";
 
 /** push 結果を利用者向けの文言にする。0 件の項目は省く */
-function formatPushResultMessage({ updated, created, deleted, reordered }: PushResult): string {
+function formatPushResultMessage({ updated, created, deleted, reordered, skippedMembers }: PushResult): string {
   const counts: [string, number][] = [
     ["更新", updated],
     ["作成", created],
@@ -62,7 +63,11 @@ function formatPushResultMessage({ updated, created, deleted, reordered }: PushR
     ["並び替え", reordered],
   ];
   const details = counts.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n} 件`);
-  return details.length > 0 ? `Discord に反映しました（${details.join("・")}）` : "Discord に反映しました";
+  const summary = details.length > 0 ? `Discord に反映しました（${details.join("・")}）` : "Discord に反映しました";
+  if (skippedMembers > 0) {
+    return `${summary}。ギルド外のメンバー ${skippedMembers} 人分の割り当てはDBに保持し、反映をスキップしました`;
+  }
+  return summary;
 }
 
 // ===== Component =====
@@ -149,7 +154,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   // Discord 送信後のリロードで渡された結果を表示し、再読み込みで再表示されないよう URL からクエリパラメータを消す
   useEffect(() => {
     if (!pushResult) return;
-    showStatus({ kind: "success", msg: formatPushResultMessage(pushResult) });
+    showStatus({
+      kind: pushResult.skippedMembers > 0 ? "info" : "success",
+      msg: formatPushResultMessage(pushResult),
+    });
     window.history.replaceState(null, "", "/roles");
   }, [pushResult, showStatus]);
 
@@ -295,7 +303,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       }
 
       // 5. 全て成功 → ページリロード
-      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&t=${Date.now()}`;
+      window.location.href = `/roles?pushed=1&updated=${pushBody.updated ?? 0}&created=${pushBody.created ?? 0}&deleted=${pushBody.deleted ?? 0}&reordered=${pushBody.reordered ?? 0}&skipped_members=${pushBody.skipped_members ?? 0}&t=${Date.now()}`;
     } catch {
       setSaveState("error");
       showStatus({ kind: "error", msg: "保存に失敗しました。接続を確認してください。" });
