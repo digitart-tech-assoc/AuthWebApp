@@ -182,7 +182,7 @@ async def _sync_role_definitions(
 					created_real_ids.add(real_id)
 			except Exception as exc:
 				msg = f"Failed to create role locally {role_id}: {exc}"
-				_log_push_error("create role", exc)
+				_log_push_error("create role", exc, target_id=role_id)
 				errors.append(msg)
 			continue
 		if actual.get("managed") or role_id == DISCORD_GUILD_ID:
@@ -196,7 +196,7 @@ async def _sync_role_definitions(
 			updated += 1
 		except Exception as exc:
 			msg = f"Failed to update role in discord {role_id}: {exc}"
-			_log_push_error("update role", exc)
+			_log_push_error("update role", exc, target_id=role_id)
 			errors.append(msg)
 
 	for role in actual_roles:
@@ -211,7 +211,7 @@ async def _sync_role_definitions(
 			deleted_role_ids.add(role_id)
 		except Exception as exc:
 			msg = f"Failed to delete role {role_id}: {exc}"
-			_log_push_error("delete role", exc)
+			_log_push_error("delete role", exc, target_id=role_id)
 			errors.append(msg)
 
 	return (
@@ -426,13 +426,27 @@ def _error_status_code(exc: Exception) -> int | None:
 	return None
 
 
-def _log_push_error(operation: str, exc: Exception, *, level: int = logging.ERROR) -> None:
-	"""Push失敗を、IDやDiscordの例外メッセージを含めずに記録する。"""
+def _log_push_error(
+	operation: str,
+	exc: Exception,
+	*,
+	target_id: str | None = None,
+	level: int = logging.ERROR,
+) -> None:
+	"""Push失敗を個人情報やDiscordの例外メッセージを含めずに記録する。"""
 	status_code = _error_status_code(exc)
+	target = f" for target {target_id}" if target_id is not None else ""
 	if status_code is not None:
-		logger.log(level, "Discord role push %s failed with HTTP %d", operation, status_code)
+		logger.log(level, "Discord role push %s%s failed with HTTP %d", operation, target, status_code)
 	else:
-		logger.log(level, "Discord role push %s failed (%s)", operation, type(exc).__name__)
+		logger.log(
+			level,
+			"Discord role push %s%s failed (%s)",
+			operation,
+			target,
+			type(exc).__name__,
+			exc_info=True,
+		)
 
 
 def _manageable_role_ids(roles: list[dict]) -> set[str]:
@@ -477,6 +491,7 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	)
 
 	all_errors = sync_errors + reorder_errors + assign_errors
+	logger.info("Discord role push completed with %d error(s)", len(all_errors))
 
 	# Notify Discord Bot to reconcile member_list / pre_member_list
 	logger.debug("Notifying Discord Bot to reconcile member lists...")
