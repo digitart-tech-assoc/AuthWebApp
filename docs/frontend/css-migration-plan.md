@@ -80,7 +80,7 @@ PR 作成時およびレビュー時は以下を確認してください。
 | 2 | `newrole.module.css` | `NewRoleModal`, `EditCategoryModal` |
 | 3 | `permission.module.css` | `PermissionEditor` |
 | 4 | `memberself.module.css` | `MemberSelfView` |
-| 5 | `roles.module.css`（モーダル・ボタン） | `RoleDiffModal`, `PushButton`, `SyncButton` |
+| 5 | `roles.module.css`（モーダル・ボタン） | `RoleDiffModal`, `PushButton` |
 | 6 | `roles.module.css`（本体） | `RoleAccordion`, `RoleList`, `SortableCategoryItem` |
 | 7 | —（インラインスタイル） | `roles/page.tsx`, `MembersPanel` |
 

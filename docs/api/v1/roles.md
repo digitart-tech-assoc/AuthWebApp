@@ -2,25 +2,7 @@
 
 本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除、権限変更に関する API 仕様です。
 
----
-
-## POST `/api/v1/roles/refresh`
-
-Discord API を直接呼び出して最新のロール一覧およびサーバー参加メンバーを取得し、DB（`role_manifests`, `guild_members`, `role_member_assignments`）へ同期・上書きします。
-
-* **認可レベル**: `Member`（`member`, `sub_user`, `obog`, `admin`）
-* **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
-* **リクエストボディ**: なし
-
-### レスポンス (200 OK)
-```json
-{
-  "ok": true,
-  "guild_id": "1488327535132413974",
-  "roles": 32,
-  "members": 150
-}
-```
+ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord の状態を DB に取り込み直す API はありません（Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります）。
 
 ---
 

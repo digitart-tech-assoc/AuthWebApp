@@ -106,24 +106,6 @@
 }
 ```
 
-### POST /api/v1/sync
-ロール同期実行指示（FastAPI から Discord Bot への同期命令発行）
-
-**リクエスト**
-```json
-{
-  "action": "sync_roles"
-}
-```
-
-**レスポンス**
-```json
-{
-  "status": "ok",
-  "result": { ... }
-}
-```
-
 ## 関連DB
 
 - `role_manifests` テーブル（ロールマニフェスト：ロール名、色、権限、位置、カテゴリ等）

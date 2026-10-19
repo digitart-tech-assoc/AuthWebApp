@@ -15,11 +15,6 @@ export interface PushRolesResponse {
   errors?: string[];
 }
 
-export interface RefreshRolesResponse {
-  ok?: boolean;
-  roles?: number;
-}
-
 export interface SelfBatchPayload {
   roles_to_add: string[];
   roles_to_remove: string[];
@@ -73,24 +68,6 @@ export async function pushRolesToDiscord(): Promise<PushRolesResponse> {
     headers: { "Content-Type": "application/json" },
   });
   const data = (await res.json()) as PushRolesResponse;
-  if (!res.ok || !data.ok) {
-    return {
-      ...data,
-      ok: false,
-    };
-  }
-  return data;
-}
-
-/**
- * Discordの最新ロール情報をDBへ再取得（リフレッシュ）する
- */
-export async function refreshRolesFromDiscord(): Promise<RefreshRolesResponse> {
-  const res = await fetch("/api/roles/refresh", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-  const data = (await res.json()) as RefreshRolesResponse;
   if (!res.ok || !data.ok) {
     return {
       ...data,

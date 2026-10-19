@@ -30,7 +30,6 @@ from app.db.schema import (
 from app.db.manifest_repository import (
 	fetch_manifest,
 	patch_manifest_db,
-	replace_roles_from_discord,
 	save_manifest,
 	update_role_id,
 )
@@ -39,7 +38,6 @@ from app.db.manifest_repository import (
 from app.db.guild_repository import (
 	add_user_to_role,
 	batch_update_user_roles,
-	clear_all_role_assignments,
 	fetch_guild_members,
 	fetch_role_assignments,
 	fetch_role_assignments_for_user,
@@ -101,7 +99,6 @@ __all__ = [
 	"init_db",
 	"fetch_manifest",
 	"save_manifest",
-	"replace_roles_from_discord",
 	"update_role_id",
 	"patch_manifest_db",
 	"save_guild_members",
@@ -109,7 +106,6 @@ __all__ = [
 	"add_user_to_role",
 	"batch_update_user_roles",
 	"remove_user_from_role",
-	"clear_all_role_assignments",
 	"fetch_guild_members",
 	"fetch_role_assignments",
 	"fetch_role_assignments_for_user",
