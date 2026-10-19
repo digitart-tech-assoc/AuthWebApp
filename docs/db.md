@@ -269,7 +269,8 @@ CREATE TABLE pre_member_removal_log (
 ## 4. 運用・セキュリティルール
 
 1. **個人情報（PII）の保護**:
-   - `student_profiles`（氏名、電話番号、学生番号）や `join_requests`（メールアドレス）は機密情報（PII）です。ログ出力やエラーレスポンスに生値を含めないこと。
+   - `student_profiles`（氏名、電話番号、学生番号、メールアドレス）、`join_requests`（氏名、メールアドレス）、`guild_members`（ユーザー名、表示名）、`member_survey_responses`（学生番号）などは個人情報（PII）です。ログ出力やエラーレスポンスに生値を含めないこと。
+   - `discord_id` は個人情報として扱いません。個人情報の範囲とログ・エラーの出力規約の詳細は [logging-and-errors.md](./logging-and-errors.md) を参照してください。
 2. **権限判定の原則**:
    - アプリケーション側の権限判定は `v_users_with_app_role` ビューを参照して行います（テーブル直接操作による不整合を防ぐため）。
 3. **ロール優先度（Position）**:

@@ -37,7 +37,7 @@
 
 ### Never
 - `.env` や `authwebapp-secret.yaml` の読み取り、および API キー・トークン・パスワードなどのハードコード。
-- メンバーの個人情報（Discord ID 等）をログ・テストデータ・コミットに含めること。
+- メンバーの個人情報（氏名・メールアドレス・学生番号・Discord のユーザー名等）をログ・エラー・テストデータ・コミットに含めること。個人情報の範囲とログ・エラーの出力規約は [`docs/logging-and-errors.md`](docs/logging-and-errors.md) に従う（Discord ID は個人情報として扱わない）。
 - 作業ブランチ以外（特に `main`）への直接 push / merge、`force push`、`--no-verify` による hook 回避。
 - テストを通すためだけの、テストの削除・スキップ・弱体化。
 - デバッグ用の仮コードやログのコミット。

@@ -17,6 +17,7 @@ AI コーディングエージェントおよび開発者は、タスクの対�
 | **CSS 移行計画** | [frontend/css-migration-plan.md](./frontend/css-migration-plan.md) | CSS Modules からの移行手順・置換対応表・PRチェックリスト |
 | **Backend 基盤** | [backend.md](./backend.md) | FastAPI アーキテクチャ・動的RBAC・主要責務・環境変数 |
 | **Discord Bot** | [discord-bot.md](./discord-bot.md) | discord.py ロール差分同期ロジック・内部API・環境変数 |
+| **ログ・エラー出力規約** | [logging-and-errors.md](./logging-and-errors.md) | 個人情報の範囲・ログ／エラーレスポンス／画面表示に出してよい情報 |
 | **運用マニュアル** | [manuals/](./manuals/) | 管理者・一般ユーザー・入会希望者向け操作手順 |
 
 ---
