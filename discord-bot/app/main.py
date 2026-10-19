@@ -69,7 +69,8 @@ async def on_member_join(member: discord.Member) -> None:
 		
 		# Assign the role to the new member
 		await member.add_roles(role)
-		logger.info(f"Assigned pre-member role to {member} ({member.id})")
+		# ユーザー名（str(member)）は個人情報のため出さず、Discord ID のみを出す（docs/logging-and-errors.md）
+		logger.info(f"Assigned pre-member role to {member.id}")
 		
 		# Register in pre_member_list via backend API
 		await _register_pre_member(member.id)
