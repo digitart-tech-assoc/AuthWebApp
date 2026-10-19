@@ -97,45 +97,6 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 		conn.commit()
 
 
-def replace_roles_from_discord(roles: list[dict[str, Any]]) -> int:
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			existing_ids = tuple(role["role_id"] for role in roles)
-			if existing_ids:
-				cur.execute("DELETE FROM role_manifests WHERE role_id NOT IN %s", (existing_ids,))
-			else:
-				cur.execute("DELETE FROM role_manifests")
-
-			for role in roles:
-				cur.execute(
-					"""
-					INSERT INTO role_manifests
-					(role_id, name, color, hoist, mentionable, permissions, position, is_our_bot)
-					VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-					ON CONFLICT (role_id) DO UPDATE SET
-						name = EXCLUDED.name,
-						color = EXCLUDED.color,
-						hoist = EXCLUDED.hoist,
-						mentionable = EXCLUDED.mentionable,
-						permissions = EXCLUDED.permissions,
-						position = EXCLUDED.position,
-						is_our_bot = EXCLUDED.is_our_bot
-					""",
-					(
-						role["role_id"],
-						role["name"],
-						role["color"],
-						role["hoist"],
-						role["mentionable"],
-						role["permissions"],
-						role["position"],
-						role.get("is_our_bot", False),
-					),
-				)
-		conn.commit()
-	return len(roles)
-
-
 def update_role_id(old_id: str, new_id: str) -> None:
 	"""PushでDiscord側に作成されたロールの、DB上の仮IDを正規のDiscord IDに更新する。"""
 	with _connect() as conn:

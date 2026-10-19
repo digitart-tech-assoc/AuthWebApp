@@ -117,14 +117,6 @@ def batch_update_user_roles(user_id: str, roles_to_add: list[str], roles_to_remo
 		)
 
 
-def clear_all_role_assignments() -> None:
-	"""role_member_assignments テーブルの全行を削除する（Discordから完全再取得する際に使用）。"""
-	with _connect() as conn:
-		with conn.cursor() as cur:
-			cur.execute("DELETE FROM role_member_assignments")
-		conn.commit()
-
-
 def fetch_guild_members() -> list[dict[str, Any]]:
 	"""保存済みのギルドメンバー一覧を取得。"""
 	with _connect() as conn:

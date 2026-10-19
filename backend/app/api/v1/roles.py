@@ -24,15 +24,12 @@ from app.core.config import (
 )
 from app.db.repository import (
 	batch_update_user_roles,
-	clear_all_role_assignments,
 	fetch_guild_members,
 	fetch_manifest,
 	fetch_role_assignments,
 	fetch_role_assignments_for_user,
 	get_member_lists,
-	replace_roles_from_discord,
 	save_guild_members,
-	save_role_assignments,
 	sync_member_lists,
 	update_role_id,
 )
@@ -92,61 +89,6 @@ async def _notify_bot_to_reconcile() -> bool:
 	except Exception as e:
 		logger.warning("Failed to trigger bot reconcile: %s", e)
 		return False
-
-
-@router.post("/refresh")
-async def refresh_roles_from_discord(_principal: dict = Depends(require_member)) -> dict:
-	token = _get_token()
-	if not token:
-		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
-
-	try:
-		logger.debug("Starting Discord roles refresh...")
-		roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
-		logger.debug("Fetched %d roles from Discord", len(roles))
-	except Exception as exc:
-		error_detail = str(exc)
-		logger.exception("Discord roles fetch failed: %s", error_detail)
-		raise HTTPException(status_code=502, detail=f"Discord API error: {error_detail}") from exc
-
-	try:
-		count = await asyncio.to_thread(replace_roles_from_discord, roles)
-		logger.debug("Replaced %d roles in database", count)
-	except Exception as exc:
-		error_detail = str(exc)
-		logger.exception("Database replace_roles failed: %s", error_detail)
-		raise HTTPException(status_code=502, detail=f"Database error: {error_detail}") from exc
-
-	# Also fetch all guild members and their role assignments
-	members = []
-	try:
-		members = await fetch_all_guild_members(DISCORD_GUILD_ID, token)
-		logger.debug("Fetched %d guild members", len(members))
-		await asyncio.to_thread(save_guild_members, [
-			{"user_id": m["user_id"], "username": m["username"],
-			 "display_name": m["display_name"], "avatar": m["avatar"]}
-			for m in members
-		])
-		logger.debug("Saved %d guild members to database", len(members))
-		# Build role_id -> [user_id] mapping from member data
-		assignments: dict[str, list[str]] = {}
-		for m in members:
-			for role_id in m.get("role_ids", []):
-				assignments.setdefault(role_id, []).append(m["user_id"])
-		logger.debug("Found %d roles with assignments, total members: %d", len(assignments), sum(len(u) for u in assignments.values()))
-		# First clear ALL existing assignments so that roles with 0 members don't linger
-		logger.debug("Clearing all existing role assignments...")
-		await asyncio.to_thread(clear_all_role_assignments)
-		logger.debug("Saving new role assignments...")
-		await asyncio.to_thread(save_role_assignments, assignments)
-		logger.debug("Role assignments saved successfully")
-	except Exception as exc:
-		error_detail = str(exc)
-		logger.exception("Failed to fetch or map guild members: %s", error_detail)
-		# Don't fail the entire request if member sync fails
-		logger.warning("Continuing without member sync")
-
-	return {"ok": True, "guild_id": DISCORD_GUILD_ID, "roles": count, "members": len(members)}
 
 
 async def _sync_role_definitions(
