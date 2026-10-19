@@ -44,6 +44,10 @@
   * `email` と `confirm_email` が一致しない（`"Emails do not match"`）。
   * `form_type == "prospective-student"` で `metadata.year` が整数でない、または存在しない（`"metadata.year is required for prospective-student"`）。
 * `403 Forbidden`: `form_type == "prospective-student"` で受付期間外の場合。
+* `409 Conflict`: 同じメールアドレスで処理中・完了済みの申請がある場合（`"Email already registered"`）。
+* `500 Internal Server Error`: OTP メールの送信に失敗した場合（`"Failed to send OTP email"`）、またはその他の処理に失敗した場合（`"Internal server error"`）。
+
+エラーレスポンスの `detail` には固定文言のみを返し、例外メッセージやメール送信 API の応答本文は含めません（詳細は Backend のログに出します。[logging-and-errors.md](../../logging-and-errors.md)）。
 
 ---
 
@@ -70,9 +74,9 @@
 ```
 
 ### エラーレスポンス
-* `400 Bad Request`: 次のいずれかの場合。`detail` に理由が入る。
-  * コードが誤っている（`"Invalid OTP code"`）。試行回数（`attempt_count`）を 1 増やす。
-  * コードの有効期限（15分）が切れている（`"OTP has expired"`）。
-  * 未検証の OTP が存在しない（`"No active OTP found"`）。
+* `400 Bad Request`: 次のいずれかの場合。`detail` は `"Invalid or expired OTP code"`。
+  * コードが誤っている。試行回数（`attempt_count`）を 1 増やす。
+  * コードの有効期限（15分）が切れている。
+  * 未検証の OTP が存在しない。
 * `409 Conflict`: 同じ OTP の検証が同時に行われており、行ロック（`SELECT ... FOR UPDATE`）の待ち時間が上限（`OTP_LOCK_TIMEOUT_MS` = 3 秒）を超えた場合。試行回数は消費しない。`detail` は `"同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。"`。
 * `429 Too Many Requests`: 試行回数上限（`attempt_count >= 5`）に達している場合（`"Maximum OTP attempts exceeded"`）。5 回目の誤入力の時点でコードは失効する。

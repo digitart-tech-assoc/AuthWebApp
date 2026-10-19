@@ -81,8 +81,7 @@
 ### エラーレスポンス (400 Bad Request)
 次のいずれかの場合。`detail` に理由が入ります。
 * コードが誤っている（`"Incorrect OTP code."`）。試行回数（`attempt_count`）を 1 増やす。
-* コードの有効期限（10分）が切れている（`"OTP has expired. Please request a new one."`）。
-* OTP が存在しない（`"No OTP found. Please request a new one."`）。
+* コードの有効期限（10分）が切れている、または OTP が存在しない（`"OTP not found or expired. Please request a new one."`）。
 
 ### エラーレスポンス (401 Unauthorized)
 Discord アカウントが連携されていない場合（`"Discord account not linked"`）。

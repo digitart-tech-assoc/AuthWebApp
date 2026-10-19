@@ -45,12 +45,12 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
 | `assigned_removes` | メンバーから解除したロールの延べ数 |
 | `skipped_members` | ギルド外のため割り当て反映をスキップしたユーザー数。割り当てはDBに保持し、削除しない |
 | `bot_reconciled` | Discord Bot への reconcile の依頼が成功したか |
-| `errors` | 失敗した操作の内容（文字列の配列） |
+| `errors` | 失敗した操作の内容（文字列の配列）。対象の ID・件数・HTTP ステータス（ステータスがない場合は例外の型名）のみを含み、例外メッセージや Discord の応答本文は含めない（詳細は Backend のログに出す） |
 
 ### エラーレスポンス
 * 一部の操作（ロールの作成・更新・削除・並び替え、メンバーへの割り当て）が失敗しても、処理は続けて HTTP 200 を返します。この場合 `ok` は `false` になり、`errors` に失敗内容が入ります。
 * `500 Internal Server Error`: `DISCORD_TOKEN` が設定されていない場合。
-* `502 Bad Gateway`: 処理の開始時に Discord からロール一覧を取得できなかった場合（`"Discord fetch failed: ..."`）。この場合、Discord には何も反映しません。
+* `502 Bad Gateway`: 処理の開始時に Discord からロール一覧を取得できなかった場合（`"Failed to fetch roles from Discord"`）。この場合、Discord には何も反映しません。
 
 ### Discord への反映方式
 * **メンバーのロール割り当て**: DB の割り当てと Discord 上の現在のロールの差分をメンバーごとにまとめて反映します。
@@ -62,6 +62,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
   * 対象メンバーがサーバーにいない（404）場合はスキップし、`errors` には含めません。
   * Discordから取得したギルドメンバーに含まれない割り当てはDiscord APIへ送信せず、`skipped_members` に人数を返します。DBの割り当ては自動削除しません。
   * 権限不足（403）の場合は、そのメンバーの差分がすべて反映されないため `errors` に記録します（Discord ID は含めません）。
+  * その他の失敗は、そのメンバーの Discord ID・差分の件数・HTTP ステータス（ステータスがない場合は例外の型名）を `errors` に記録し、次のメンバーへ進みます（例: `"Failed to update roles for 123456789012345678 (+1/-0): DiscordAPIError HTTP 500"`）。
 * **レート制限（429）**: Discord から `429 Too Many Requests` を受けた場合は、レスポンスの `retry_after`（なければ `Retry-After` ヘッダー）の秒数だけ待って再試行します。再試行は最大 3 回、1 回の待ち時間は最大 10 秒です（`backend/app/core/config.py` の `DISCORD_RATE_LIMIT_MAX_RETRIES` / `DISCORD_RATE_LIMIT_MAX_WAIT`）。上限を超えた場合は失敗として `errors` に記録します。
   * メンバーのロール割り当ての反映中に上限を超えた場合は、続けて送っても 429 を重ねるだけで、Discord の無効リクエスト数の上限（超えると IP 単位で一時的に遮断される）に近づくため、残りのメンバーへの反映を打ち切ります。`errors` には反映できなかった残りの人数を記録します（Discord ID は含めません）。時間をおいて push をやり直してください。
   * 429 を受ける前でも、応答の `X-RateLimit-Remaining` が 0 であれば `X-RateLimit-Reset-After` の秒数（最大 10 秒）だけ待ってから次のリクエストを送ります。
