@@ -52,7 +52,7 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
     }
 
     if (data.department.trim().length === 0) {
-      newErrors.department = "学部学科を選択してください";
+      newErrors.department = "学部学科を選択または入力してください";
     }
 
     if (!data.phone.match(/^\d{10,11}$/)) {
@@ -65,7 +65,11 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const normalizedFormData = { ...formData, phone: normalizePhoneNumber(formData.phone) };
+    const normalizedFormData = {
+      ...formData,
+      department: formData.department.trim(),
+      phone: normalizePhoneNumber(formData.phone),
+    };
     setFormData(normalizedFormData);
     if (!validate(normalizedFormData)) return;
     try {
