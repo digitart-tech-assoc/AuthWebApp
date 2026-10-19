@@ -65,6 +65,8 @@ def run_diffs():
 		deleted_role_ids=None,
 		roles_side_effect=None,
 		created_real_ids=None,
+		bot_member_role_ids: tuple[str, ...] | None = ("role-bot",),
+		latest_roles: list[dict] | None = None,
 	):
 		latest = {m["user_id"]: m for m in current_members}
 		latest.update(latest_members or {})
@@ -83,7 +85,12 @@ def run_diffs():
 			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, return_value=current_members), \
 			patch.object(
 				roles_api, "fetch_guild_roles", new_callable=AsyncMock,
-				return_value=LATEST_ROLES, side_effect=roles_side_effect,
+				return_value=LATEST_ROLES if latest_roles is None else latest_roles,
+				side_effect=roles_side_effect,
+			), \
+			patch.object(
+				roles_api, "fetch_bot_guild_member", new_callable=AsyncMock,
+				return_value={"role_ids": bot_member_role_ids} if bot_member_role_ids is not None else None,
 			), \
 			patch.object(
 				roles_api, "fetch_guild_member", new_callable=AsyncMock, side_effect=fetch_side_effect or _fetch_member,
@@ -250,6 +257,42 @@ class TestApplyRoleAssignmentDiffs:
 		assert _single_calls(run.add) == [("user-1", "role-a")]
 		run.set.assert_not_awaited()
 		assert run.result == (1, 0, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_uses_highest_role_assigned_to_bot_not_its_integration_role(self, run_diffs):
+		roles = [
+			{"role_id": "role-a", "position": 8, "managed": False},
+			{"role_id": "role-bot", "position": 5, "managed": True, "is_our_bot": True},
+			{"role_id": "role-admin", "position": 10, "managed": False},
+		]
+		desired = {"role-a": ["user-1"]}
+		members = [_member("user-1", [])]
+
+		run = await run_diffs(
+			desired,
+			members,
+			latest_roles=roles,
+			bot_member_role_ids=("role-bot", "role-admin"),
+		)
+
+		assert _single_calls(run.add) == [("user-1", "role-a")]
+		assert run.result == (1, 0, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_missing_bot_role_baseline_denies_all_assignment_changes(self, run_diffs):
+		desired = {"role-a": ["user-1"]}
+		members = [_member("user-1", [])]
+
+		run = await run_diffs(desired, members, bot_member_role_ids=None)
+
+		run.add.assert_not_awaited()
+		run.set.assert_not_awaited()
+		assert run.result == (
+			0,
+			0,
+			0,
+			["Skipped role assignments because the bot's highest role could not be determined"],
+		)
 
 	@pytest.mark.asyncio
 	async def test_users_not_in_guild_are_skipped(self, run_diffs):

@@ -24,6 +24,7 @@ DISCORD_ROLES = [
 	{"role_id": "role-x", "position": 1, "managed": False},
 	{"role_id": "role-bot", "position": 10, "managed": True, "is_our_bot": True},
 ]
+BOT_MEMBER = {"role_ids": ["role-bot"]}
 
 
 def _response(json_data) -> MagicMock:
@@ -48,16 +49,24 @@ class TestBotUserIdCache:
 			requested_urls.append(url)
 			if url.endswith("/users/@me"):
 				return _response({"id": "bot-id"})
-			return _response([{"id": "role-bot", "name": "Bot", "position": 10, "managed": True, "tags": {"bot_id": "bot-id"}}])
+			if url.endswith("/guilds/guild-123/roles"):
+				return _response([{"id": "role-bot", "name": "Bot", "position": 10, "managed": True, "tags": {"bot_id": "bot-id"}}])
+			return _response({
+				"user": {"id": "bot-id", "username": "bot"},
+				"roles": ["role-bot"],
+			})
 
 		with patch("httpx.AsyncClient.get", new=fake_get):
 			first = await discord_client.fetch_guild_roles("guild-123", "bot-token")
 			second = await discord_client.fetch_guild_roles("guild-123", "bot-token")
+			member = await discord_client.fetch_bot_guild_member("guild-123", "bot-token")
 
 		assert first[0]["is_our_bot"] is True
 		assert second[0]["is_our_bot"] is True
+		assert member["role_ids"] == ["role-bot"]
 		assert sum(url.endswith("/users/@me") for url in requested_urls) == 1
 		assert sum(url.endswith("/guilds/guild-123/roles") for url in requested_urls) == 2
+		assert sum("/guilds/guild-123/members/" in url for url in requested_urls) == 1
 
 
 class TestSelfBatchDiscordFetch:
@@ -65,27 +74,38 @@ class TestSelfBatchDiscordFetch:
 	def common_patches(self):
 		with patch.object(roles_api, "_get_token", return_value="token"), \
 			patch.object(roles_api, "fetch_manifest", return_value=MANIFEST), \
-			patch.object(roles_api, "batch_update_user_roles"):
+			patch.object(roles_api, "batch_update_user_roles"), \
+			patch.object(roles_api, "fetch_bot_guild_member", new_callable=AsyncMock, return_value=BOT_MEMBER):
 			yield
 
 	@pytest.mark.asyncio
 	async def test_fetches_roles_and_member_concurrently(self):
 		roles_started = asyncio.Event()
 		member_started = asyncio.Event()
+		bot_member_started = asyncio.Event()
 
 		# 互いの開始を待つ。直列に呼ぶと先に呼んだ側が待ち続けてタイムアウトする
 		async def fake_fetch_roles(*args):
 			roles_started.set()
 			await asyncio.wait_for(member_started.wait(), timeout=1)
+			await asyncio.wait_for(bot_member_started.wait(), timeout=1)
 			return DISCORD_ROLES
 
 		async def fake_fetch_member(*args):
 			member_started.set()
 			await asyncio.wait_for(roles_started.wait(), timeout=1)
+			await asyncio.wait_for(bot_member_started.wait(), timeout=1)
 			return {"role_ids": []}
+
+		async def fake_fetch_bot_member(*args):
+			bot_member_started.set()
+			await asyncio.wait_for(roles_started.wait(), timeout=1)
+			await asyncio.wait_for(member_started.wait(), timeout=1)
+			return BOT_MEMBER
 
 		with patch.object(roles_api, "fetch_guild_roles", new=fake_fetch_roles), \
 			patch.object(roles_api, "fetch_guild_member", new=fake_fetch_member), \
+			patch.object(roles_api, "fetch_bot_guild_member", new=fake_fetch_bot_member), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			result = await roles_api.self_batch_roles(
 				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
@@ -131,6 +151,41 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			with pytest.raises(HTTPException) as error:
 				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL)
+
+		assert error.value.status_code == 403
+		mock_set.assert_not_awaited()
+
+	@pytest.mark.asyncio
+	async def test_uses_highest_role_assigned_to_bot_not_its_integration_role(self):
+		discord_roles = [
+			{"role_id": "role-x", "position": 15, "managed": False},
+			{"role_id": "role-bot", "position": 10, "managed": True, "is_our_bot": True},
+			{"role_id": "role-admin", "position": 20, "managed": False},
+		]
+		with patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=discord_roles), \
+			patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": []}), \
+			patch.object(
+				roles_api, "fetch_bot_guild_member", new_callable=AsyncMock,
+				return_value={"role_ids": ["role-bot", "role-admin"]},
+			), \
+			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
+			result = await roles_api.self_batch_roles(
+				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
+			)
+
+		assert result["ok"] is True
+		mock_set.assert_awaited_once()
+
+	@pytest.mark.asyncio
+	async def test_rejects_role_when_bot_top_role_cannot_be_identified(self):
+		with patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=DISCORD_ROLES), \
+			patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": []}), \
+			patch.object(roles_api, "fetch_bot_guild_member", new_callable=AsyncMock, return_value=None), \
+			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
+			with pytest.raises(HTTPException) as error:
+				await roles_api.self_batch_roles(
+					roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
+				)
 
 		assert error.value.status_code == 403
 		mock_set.assert_not_awaited()
