@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import { fetchMyRoleAssignments, selfBatchRoles } from "@/lib/api/roles";
+import { type StatusMessages, messageForStatus } from "@/lib/errorMessages";
 import { statusBanner, unsavedBar, unsavedBarBtn } from "./roleStyles";
 
 type Category = {
@@ -42,6 +43,13 @@ type Props = {
   avatarUrl: string | null;
 };
 
+
+const SELF_BATCH_ERROR_MESSAGES: StatusMessages = {
+  401: "ログインの有効期限が切れました。再度ログインしてください。",
+  403: "変更できないロールが含まれています。ページを再読み込みしてから、もう一度お試しください。",
+  404: "ロールまたはメンバー情報が見つかりません。ページを再読み込みしてから、もう一度お試しください。",
+  default: "ロール変更に失敗しました。時間をおいて再度お試しください。",
+};
 
 const catGroupClass = "mb-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm";
 const catHeaderClass = "flex min-h-10 cursor-pointer select-none items-center gap-2 px-4 py-3 transition-colors hover:bg-slate-50";
@@ -166,7 +174,8 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
       if (!result.ok) {
         setSaveState("error");
-        showStatus({ kind: "error", msg: `ロール変更に失敗しました: ${result.detail || "エラーが発生しました"}` });
+        // Backend のエラー文言は表示せず、HTTP ステータスに応じた固定文言を使う
+        showStatus({ kind: "error", msg: messageForStatus(result.status ?? 0, SELF_BATCH_ERROR_MESSAGES) });
         await fetchMembers();
         return;
       }

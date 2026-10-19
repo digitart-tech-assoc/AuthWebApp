@@ -148,11 +148,11 @@ export default function DevRoleSwitcher() {
 					window.location.reload();
 				}, 800);
 			} else {
-				const err = await res.json().catch(() => ({ detail: "不明なエラー" }));
-				setMessage(`エラー: ${err.detail}`);
+				// Backend のエラー文言は表示せず、HTTP ステータスだけを示す
+				setMessage(`ロールの切り替えに失敗しました（HTTP ${res.status}）`);
 			}
-		} catch (err) {
-			setMessage(`通信エラー: ${err instanceof Error ? err.message : String(err)}`);
+		} catch {
+			setMessage("通信エラーが発生しました");
 		} finally {
 			setSwitching(null);
 		}

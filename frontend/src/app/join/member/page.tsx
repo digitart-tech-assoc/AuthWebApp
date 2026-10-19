@@ -7,6 +7,7 @@ import {
   checkEligibility,
   getStudentProfile,
 } from "@/actions/studentRegistration";
+import { DisplayableError, displayMessage, messageForStatus } from "@/lib/errorMessages";
 import type {
   EligibilityCheckResult,
   StudentProfile,
@@ -20,6 +21,8 @@ import FormStep4OTP from "../_components/FormStep4OTP";
 import FormStep5Complete from "../_components/FormStep5Complete";
 
 type FormStep = 1 | 2 | 3 | 4 | 5;
+
+const SURVEY_SAVE_ERROR_MESSAGE = "アンケートの保存に失敗しました。時間をおいて再度お試しください。";
 
 export default function JoinMemberPage() {
   const router = useRouter();
@@ -79,7 +82,7 @@ export default function JoinMemberPage() {
           router.push("/login?callbackUrl=%2Fjoin%2Fmember");
           return;
         }
-        setError(err instanceof Error ? err.message : "予期しないエラーが発生しました");
+        setError("予期しないエラーが発生しました。時間をおいて再度お試しください。");
         setLoading(false);
       }
     }
@@ -111,8 +114,11 @@ export default function JoinMemberPage() {
         body: JSON.stringify(answers || {}),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || res.statusText || 'Failed to save survey');
+        // Backend のエラー文言は表示せず、固定文言を使う
+        throw new DisplayableError(messageForStatus(res.status, {
+          401: "ログインの有効期限が切れました。再度ログインしてください。",
+          default: SURVEY_SAVE_ERROR_MESSAGE,
+        }));
       }
       return await res.json();
     } catch (err) {
@@ -126,7 +132,7 @@ export default function JoinMemberPage() {
       await persistSurvey(answers);
       setCurrentStep(4);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save survey');
+      setError(displayMessage(err, SURVEY_SAVE_ERROR_MESSAGE));
     }
   };
   const handleStep4Back = () => setCurrentStep(3);

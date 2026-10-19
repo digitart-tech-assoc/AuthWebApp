@@ -8,6 +8,7 @@ import FuriganaInput from "@/components/forms/FuriganaInput";
 import DepartmentSelect from "@/components/forms/DepartmentSelect";
 import GenderSelect from "@/components/forms/GenderSelect";
 import PhoneInput, { normalizePhoneNumber } from "@/components/forms/PhoneInput";
+import { displayMessage } from "@/lib/errorMessages";
 import { validateFullName, getDepartmentsFromStudentId, validateFurigana } from "@/lib/validation";
 import type { StudentProfile } from "@/types/join";
 
@@ -74,7 +75,7 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
       await onSubmit(normalizedFormData);
       setMessage("保存しました");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
+      setMessage(displayMessage(err, "保存に失敗しました。時間をおいて再度お試しください。"));
     } finally {
       setLoading(false);
     }

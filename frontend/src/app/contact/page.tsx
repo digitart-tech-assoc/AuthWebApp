@@ -88,13 +88,17 @@ export default function ContactPage() {
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      await submitContact({
+      const result = await submitContact({
         email,
         name: name.trim(),
         subject: subject.trim() || null,
         affiliation: affiliation.trim() || null,
         message: message.trim() || null,
       });
+      if (!result.ok) {
+        setFormError(result.error);
+        return;
+      }
 
       // フォームをリセット
       setEmail("");
@@ -106,10 +110,8 @@ export default function ContactPage() {
       setEmailExists(null);
       
       setFormSuccess("お問い合わせを送信しました。返信までしばらくお待ちください。");
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "送信に失敗しました";
-      console.error("Failed to submit contact:", error);
-      setFormError(errorMessage);
+    } catch {
+      setFormError("お問い合わせの送信に失敗しました。時間をおいて再度お試しください。");
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
