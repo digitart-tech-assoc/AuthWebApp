@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin, require_member
+from app.core.errors import describe_exception
 from app.core.config import (
 	ADMIN_ROLE_NAMES,
 	DISCORD_API_TIMEOUT,
@@ -124,7 +125,7 @@ async def _sync_role_definitions(
 					actual_by_id[real_id] = new_role_discord
 					created_real_ids.add(real_id)
 			except Exception as exc:
-				msg = f"Failed to create role locally {role_id}: {exc}"
+				msg = f"Failed to create role {role_id} ({describe_exception(exc)})"
 				_log_push_error("create role", exc, target_id=role_id)
 				errors.append(msg)
 			continue
@@ -138,7 +139,7 @@ async def _sync_role_definitions(
 			await edit_guild_role(DISCORD_GUILD_ID, role_id, token, payload)
 			updated += 1
 		except Exception as exc:
-			msg = f"Failed to update role in discord {role_id}: {exc}"
+			msg = f"Failed to update role {role_id} ({describe_exception(exc)})"
 			_log_push_error("update role", exc, target_id=role_id)
 			errors.append(msg)
 
@@ -153,7 +154,7 @@ async def _sync_role_definitions(
 			deleted += 1
 			deleted_role_ids.add(role_id)
 		except Exception as exc:
-			msg = f"Failed to delete role {role_id}: {exc}"
+			msg = f"Failed to delete role {role_id} ({describe_exception(exc)})"
 			_log_push_error("delete role", exc, target_id=role_id)
 			errors.append(msg)
 
@@ -188,7 +189,7 @@ async def _reorder_roles(
 			await reorder_guild_roles(DISCORD_GUILD_ID, token, position_payload)
 			reordered = len(position_payload)
 		except Exception as exc:
-			msg = f"Failed to reorder roles: {exc}"
+			msg = f"Failed to reorder roles ({describe_exception(exc)})"
 			_log_push_error("reorder roles", exc)
 			errors.append(msg)
 			reordered = 0
@@ -317,14 +318,20 @@ async def _apply_role_assignment_diffs(
 						logger.warning("%s", msg)
 						errors.append(msg)
 						continue
+					# errors はレスポンスに含まれるため、例外メッセージ（Discord の応答本文・送信内容）は入れない。
+					# 詳細は _log_push_error でログに出す
 					_log_push_error("update member roles", e)
-					errors.append(f"Failed to update roles for {user_id}: {e}")
+					errors.append(
+						f"Failed to update roles for {user_id} (+{len(adds)}/-{len(removes)}): {describe_exception(e)}"
+					)
 				except Exception as exc:
 					_log_push_error("update member roles", exc)
-					errors.append(f"Failed to update roles for {user_id}: {exc}")
+					errors.append(
+						f"Failed to update roles for {user_id} (+{len(adds)}/-{len(removes)}): {describe_exception(exc)}"
+					)
 	except Exception as exc:
 		_log_push_error("apply role assignment diffs", exc)
-		errors.append(f"Failed to apply assignment diffs: {exc}")
+		errors.append(f"Failed to apply assignment diffs ({describe_exception(exc)})")
 
 	return assigned_adds, assigned_removes, skipped_members, errors
 
@@ -443,7 +450,8 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 	try:
 		actual_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token)
 	except Exception as exc:  # noqa: BLE001
-		raise HTTPException(status_code=502, detail=f"Discord fetch failed: {exc}") from exc
+		logger.exception("Discord role push: fetch guild roles failed")
+		raise HTTPException(status_code=502, detail="Failed to fetch roles from Discord") from exc
 
 	(
 		updated, created, deleted, skipped_managed,
@@ -524,7 +532,8 @@ async def update_role_permissions(
 			{"permissions": str(int(payload.permissions))},
 		)
 	except Exception as exc:  # noqa: BLE001
-		raise HTTPException(status_code=502, detail=f"Discord update failed: {exc}") from exc
+		logger.exception("Discord role permissions update failed")
+		raise HTTPException(status_code=502, detail="Failed to update role permissions on Discord") from exc
 
 	return {"ok": True, "role_id": role_id, "permissions": payload.permissions}
 
@@ -639,9 +648,11 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			"pre_member_list": result["pre_member_list"],
 			"obog_list": result["obog_list"],
 		}
+	except HTTPException:
+		raise
 	except Exception as exc:  # noqa: BLE001
 		logger.exception("Discord sync failed: %s", exc)
-		raise HTTPException(status_code=502, detail=f"Discord sync failed: {exc}") from exc
+		raise HTTPException(status_code=502, detail="Discord sync failed") from exc
 
 
 class SelfBatchPayload(BaseModel):
@@ -652,7 +663,8 @@ class SelfBatchPayload(BaseModel):
 def _unwrap_discord_fetch(result: object, label: str):
 	"""asyncio.gather(return_exceptions=True) の結果を取り出す。Discord API の失敗は 502 に変換する。"""
 	if isinstance(result, Exception):
-		raise HTTPException(status_code=502, detail=f"Discord API error ({label}): {result}") from result
+		logger.warning("Discord API call failed (%s)", label, exc_info=result)
+		raise HTTPException(status_code=502, detail=f"Discord API error ({label})") from result
 	if isinstance(result, BaseException):
 		# キャンセル等は握りつぶさずそのまま送出する
 		raise result
@@ -768,7 +780,8 @@ async def self_batch_roles(
 	try:
 		await set_member_roles(DISCORD_GUILD_ID, discord_id, list(new_role_ids), token)
 	except Exception as exc:
-		raise HTTPException(status_code=502, detail=f"Discord API error: {exc}") from exc
+		logger.warning("Discord API call failed (update member roles)", exc_info=True)
+		raise HTTPException(status_code=502, detail="Discord API error (update member roles)") from exc
 
 	# --- 5. DB 一括更新 ---
 	try:
@@ -840,6 +853,5 @@ async def debug_bot_guilds(_principal: dict = Depends(require_admin)) -> dict:
 			"note": "current_guild が null の場合、DISCORD_GUILD_ID 環境変数が正しくないか bot がギルドに参加していません",
 		}
 	except Exception as exc:
-		error_detail = str(exc)
-		logger.error("Debug guilds fetch failed: %s", error_detail)
-		raise HTTPException(status_code=502, detail=f"Failed to fetch guilds: {error_detail}") from exc
+		logger.error("Debug guilds fetch failed: %s", exc)
+		raise HTTPException(status_code=502, detail="Failed to fetch guilds") from exc

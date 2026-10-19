@@ -339,7 +339,7 @@ class TestApplyRoleAssignmentDiffs:
 	async def test_other_failures_are_recorded_and_next_member_is_processed(self, run_diffs):
 		desired = {"role-a": ["user-1", "user-2"], "role-b": ["user-1", "user-2"]}
 		members = [_member("user-1", []), _member("user-2", [])]
-		side_effect = [DiscordAPIError("server error", 500), None]
+		side_effect = [DiscordAPIError("server error with response body", 500), None]
 
 		run = await run_diffs(desired, members, set_side_effect=side_effect)
 
@@ -347,7 +347,19 @@ class TestApplyRoleAssignmentDiffs:
 		adds, _removes, _skipped_members, errors = run.result
 		assert adds == 2
 		assert len(errors) == 1
-		assert "user-1" in errors[0]
+		# Discord ID・差分の件数・HTTP ステータスは含めてよい。例外メッセージ（応答本文）はレスポンスに含めない
+		assert errors[0] == "Failed to update roles for user-1 (+2/-0): DiscordAPIError HTTP 500"
+		assert "response body" not in errors[0]
+
+	@pytest.mark.asyncio
+	async def test_unexpected_failure_is_recorded_with_exception_type_only(self, run_diffs):
+		desired = {"role-a": ["user-1"], "role-b": ["user-1"]}
+		members = [_member("user-1", [])]
+
+		run = await run_diffs(desired, members, set_side_effect=RuntimeError("internal details"))
+
+		_adds, _removes, _skipped_members, errors = run.result
+		assert errors == ["Failed to update roles for user-1 (+2/-0): RuntimeError"]
 
 	@pytest.mark.asyncio
 	@pytest.mark.parametrize("path", ["single_add", "single_remove", "refetch", "patch"])
@@ -425,7 +437,8 @@ class TestApplyRoleAssignmentDiffs:
 
 		mock_set.assert_not_awaited()
 		assert (adds, removes, skipped_members) == (0, 0, 0)
-		assert errors == ["Failed to apply assignment diffs: boom"]
+		# 例外メッセージはレスポンスに含めず、例外の型名だけを示す
+		assert errors == ["Failed to apply assignment diffs (Exception)"]
 
 
 class TestPushErrorLogging:

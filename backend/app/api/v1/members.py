@@ -60,8 +60,9 @@ async def register_pre_member_endpoint(
 	try:
 		result = await asyncio.to_thread(register_pre_member, payload.discord_id, payload.source)
 		return {"ok": True, "discord_id": payload.discord_id, "result": result}
-	except Exception as e:
-		raise HTTPException(status_code=400, detail=str(e))
+	except Exception:
+		logger.exception("register_pre_member failed")
+		raise HTTPException(status_code=400, detail="Failed to register pre-member")
 
 
 @router.get("/internal/lists")
@@ -77,8 +78,9 @@ async def internal_get_lists(authorization: str | None = Header(default=None)) -
 	try:
 		result = await asyncio.to_thread(get_member_lists)
 		return {"ok": True, "data": result}
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+	except Exception:
+		logger.exception("internal_get_lists failed")
+		raise HTTPException(status_code=500, detail="Failed to fetch member lists")
 
 
 @router.post("/pre_member/cleanup")
@@ -96,8 +98,9 @@ async def cleanup_pre_members_endpoint(
 	try:
 		result = await asyncio.to_thread(cleanup_expired_prospective_members)
 		return {"ok": True, "data": result}
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+	except Exception:
+		logger.exception("cleanup_expired_prospective_members failed")
+		raise HTTPException(status_code=500, detail="Failed to clean up pre-members")
 
 
 @router.get("/pre_member/list")
@@ -162,8 +165,9 @@ async def get_pre_member_list(
 				member["discord_display_name"] = None
 		
 		return {"ok": True, "data": result}
-	except Exception as e:
-		raise HTTPException(status_code=400, detail=str(e))
+	except Exception:
+		logger.exception("get_pre_member_list failed")
+		raise HTTPException(status_code=400, detail="Failed to fetch pre-member list")
 
 
 @router.post("/member/add")
@@ -184,10 +188,12 @@ async def add_member(
 			payload.note,
 		)
 		return {"ok": True, "data": result}
-	except ValueError as e:
-		raise HTTPException(status_code=400, detail=str(e))
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+	except ValueError:
+		logger.warning("add_to_member_list rejected the request", exc_info=True)
+		raise HTTPException(status_code=400, detail="Failed to add member")
+	except Exception:
+		logger.exception("add_to_member_list failed")
+		raise HTTPException(status_code=500, detail="Failed to add member")
 
 
 @router.post("/paid_invitation/register")
@@ -215,6 +221,6 @@ async def register_paid_invitation_endpoint(
 			assigned_by,
 		)
 		return {"ok": True, "data": result}
-	except Exception as e:
-		logger.error(f"Error in register_paid_invitation: {e}")
-		raise HTTPException(status_code=400, detail=str(e))
+	except Exception:
+		logger.exception("register_paid_invitation failed")
+		raise HTTPException(status_code=400, detail="Failed to register paid invitation")

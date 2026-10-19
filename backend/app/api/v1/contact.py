@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
+from app.core.errors import log_exception_without_message
 from app.services.discord_client import send_message_to_channel
 
 logger = logging.getLogger(__name__)
@@ -86,5 +87,6 @@ async def submit_contact(request: ContactRequest) -> dict:
 			"message_id": result.get("id"),
 		}
 	except Exception as e:
-		logger.error("Failed to send contact message to Discord: %s", e, exc_info=True)
-		raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+		# 例外メッセージには Discord の応答本文（問い合わせ内容を含みうる）が入るため出さない
+		log_exception_without_message(logger, "send contact message to Discord", e)
+		raise HTTPException(status_code=500, detail="Failed to send message")

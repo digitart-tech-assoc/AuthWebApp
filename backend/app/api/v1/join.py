@@ -10,6 +10,7 @@ import traceback
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
+from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError
 from app.db import repository
 from app.services.brevo_client import BrevoClient
@@ -95,8 +96,9 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 			form_type=req.form_type,
 			metadata=req.metadata,
 		)
-	except ValueError as e:
-		raise HTTPException(status_code=409, detail=str(e))
+	except ValueError:
+		# 例外メッセージには申請者のメールアドレスが含まれるため、レスポンスには固定文言だけを返す
+		raise HTTPException(status_code=409, detail="Email already registered")
 
 	try:
 		# OTP コード生成＆ハッシュ化
@@ -121,10 +123,8 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 		)
 
 		if result.get("status") != "success":
-			raise HTTPException(
-				status_code=500,
-				detail=f"Failed to send OTP email: {result.get('error', 'Unknown error')}"
-			)
+			# 失敗の内容は BrevoClient がログに出している（応答本文には宛先のメールアドレスが含まれうる）
+			raise HTTPException(status_code=500, detail="Failed to send OTP email")
 
 		return JoinRequestResponse(
 			id=join_request["id"],
@@ -135,9 +135,11 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 			message=f"OTP code sent to {req.email}. Please check your email.",
 		)
 
+	except HTTPException:
+		raise
 	except Exception as e:
-		# Clean up: mark join_request as failed
-		raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+		log_exception_without_message(logger, "join request", e)
+		raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/verify", response_model=JoinVerifyResponse)
@@ -155,12 +157,14 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 			join_request_id=req.join_request_id,
 			code_plain=req.otp_code,
 		)
-	except OTPTooManyAttemptsError as e:
-		raise HTTPException(status_code=429, detail=str(e))
+	except OTPTooManyAttemptsError:
+		raise HTTPException(status_code=429, detail="Maximum OTP attempts exceeded")
 	except OTPVerificationBusyError as e:
+		# 自前の例外で、文言は固定（OTPVerificationBusyError の既定メッセージ）
 		raise HTTPException(status_code=409, detail=str(e))
-	except ValueError as e:
-		raise HTTPException(status_code=400, detail=str(e))
+	except ValueError:
+		# 該当なし・期限切れ・不一致のいずれか
+		raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
 
 	# Discord 招待 URL 生成（現在はスタブ）
 	# Attempt to create a single-use invite that expires in 1 week.
