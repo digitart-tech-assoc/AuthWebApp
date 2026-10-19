@@ -22,7 +22,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
   "updated": 2,
   "created": 1,
   "deleted": 0,
-  "reordered": 15,
+  "reordered": 1,
   "skipped_managed": 1,
   "assigned_adds": 3,
   "assigned_removes": 1,
@@ -39,7 +39,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
 | `updated` | 定義を更新したロールの数（変更がないロールは数えない） |
 | `created` | Discord に新しく作成したロールの数 |
 | `deleted` | マニフェストにないため Discord から削除したロールの数（managed ロールと `@everyone` は削除しない） |
-| `reordered` | 並び順を送ったロールの数（並び替えに失敗した場合は `0`） |
+| `reordered` | 並び順が変わったロールの数。push 前の Discord の並び順と比べ、ほかのロールとの相対的な順序が変わったロールを数える（1 件を別の位置へ移動した場合は、ほかのロールの `position` の値が変わっても `1`）。今回作成したロールは `created` で数えるため含めない。並び替えのリクエストは変更の有無にかかわらず毎回送る。並び替えに失敗した場合は `0` |
 | `skipped_managed` | managed ロールまたは `@everyone` のため更新しなかったロールの数 |
 | `assigned_adds` | メンバーに付与したロールの延べ数 |
 | `assigned_removes` | メンバーから解除したロールの延べ数 |

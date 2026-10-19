@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import bisect
 import logging
 import os
 from typing import Any
@@ -164,13 +165,42 @@ async def _sync_role_definitions(
 	)
 
 
+def _count_moved_roles(position_payload: list[dict], actual_by_id: dict, created_real_ids: set[str]) -> int:
+	"""並び替えで、ほかのロールとの相対的な順序が変わるロールの数を返す。
+
+	Discord の position の値そのものは比べない。ロールを作成すると既存ロールの position が一律にずれるため、
+	値で比べると並び順を変えていないロールまで数えてしまう。
+	push 前の並び順と送信する並び順を比べ、順序を保ったまま残せる最大のロール数（最長増加部分列）を
+	全体から引いた数を「並び替えたロールの数」とする。今回作成したロールは created で数えるため含めない。
+	"""
+	existing_ids = [p["id"] for p in position_payload if p["id"] not in created_real_ids]
+
+	def _current_order_key(role_id: str) -> tuple[int, int]:
+		# position が同じロールは ID 順に並ぶ（推定）
+		return (int(actual_by_id[role_id].get("position", 0)), int(role_id) if role_id.isdigit() else 0)
+
+	current_rank = {rid: rank for rank, rid in enumerate(sorted(existing_ids, key=_current_order_key))}
+	# 最長増加部分列の長さ（各長さの部分列の末尾の最小値を保持する）
+	tails: list[int] = []
+	for rank in (current_rank[rid] for rid in existing_ids):
+		index = bisect.bisect_left(tails, rank)
+		if index == len(tails):
+			tails.append(rank)
+		else:
+			tails[index] = rank
+	return len(existing_ids) - len(tails)
+
+
 async def _reorder_roles(
 	desired_roles: list[dict],
 	actual_by_id: dict,
 	created_real_ids: set[str],
 	token: str,
 ) -> tuple[int, list[str]]:
-	"""ロール順序の再編成（contiguous 1..N positions）"""
+	"""ロール順序の再編成（contiguous 1..N positions）
+
+	返す件数は、並び順が変わったロールの数（_count_moved_roles を参照）。送信したロールの数ではない。
+	"""
 	errors: list[str] = []
 	desired_roles_sorted = sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
 	position_payload = []
@@ -186,7 +216,7 @@ async def _reorder_roles(
 	if position_payload:
 		try:
 			await reorder_guild_roles(DISCORD_GUILD_ID, token, position_payload)
-			reordered = len(position_payload)
+			reordered = _count_moved_roles(position_payload, actual_by_id, created_real_ids)
 		except Exception as exc:
 			msg = f"Failed to reorder roles: {exc}"
 			_log_push_error("reorder roles", exc)
