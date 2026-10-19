@@ -52,7 +52,7 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
     }
 
     if (data.department.trim().length === 0) {
-      newErrors.department = "学部学科を選択または入力してください";
+      newErrors.department = "学部学科を選択してください";
     }
 
     if (!data.phone.match(/^\d{10,11}$/)) {
