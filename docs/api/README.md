@@ -50,7 +50,6 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 | **在学生登録・学生認証** | `/api/v1/student` | 本入会適格性チェック、大学メール認証、学生プロフィール管理 | [v1/student.md](./v1/student.md) |
 | **入会アンケート** | `/api/v1/survey` | 本入会フォームで入力されたアンケート回答データの保存 | [v1/survey.md](./v1/survey.md) |
 | **お問い合わせ** | `/api/v1/contact` | 問い合わせ受付、Discord チャンネルへの通知 | [v1/contact.md](./v1/contact.md) |
-| **Bot同期トリガー** | `/api/v1/sync` | Discord Bot への即時同期命令の発行 | [v1/sync.md](./v1/sync.md) |
 | **開発用ツール** | `/api/v1/dev` | 開発環境での一時的ロール切替（本番環境では自動無効化） | [v1/dev.md](./v1/dev.md) |
 
 ---
@@ -66,7 +65,6 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 - `GET /api/v1/manifest` (Member): 宣言型ロールマニフェスト取得 → [詳細](./v1/manifest.md#get-apiv1manifest)
 - `PUT /api/v1/manifest` (Admin): マニフェスト一括更新 → [詳細](./v1/manifest.md#put-apiv1manifest)
 - `PATCH /api/v1/manifest` (Admin): マニフェスト差分更新 → [詳細](./v1/manifest.md#patch-apiv1manifest)
-- `POST /api/v1/roles/refresh` (Member): Discordから最新ロール/メンバーをDB同期 → [詳細](./v1/roles.md#post-apiv1rolesrefresh)
 - `POST /api/v1/roles/push` (Admin): DBのロール定義をDiscordへ反映 → [詳細](./v1/roles.md#post-apiv1rolespush)
 - `POST /api/v1/roles/self-batch` (Member): 自身のロール一括付与・解除（バッチ更新） → [詳細](./v1/roles.md#post-apiv1rolesself-batch)
 - `GET /api/v1/roles/me/assignments` (Member): 自身のロール割り当て取得 → [詳細](./v1/roles.md#get-apiv1rolesmeassignments)
@@ -101,14 +99,11 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 ### 3.7. お問い合わせ (`/api/v1/contact`)
 - `POST /api/v1/contact/submit` (Public): 問い合わせ受付・Discordチャンネル通知 → [詳細](./v1/contact.md#post-apiv1contactsubmit)
 
-### 3.8. Bot 同期トリガー (`/api/v1/sync`)
-- `POST /api/v1/sync` (Internal/Admin): Discord Bot 同期通知 → [詳細](./v1/sync.md#post-apiv1sync)
-
-### 3.9. 開発用ツール (`/api/v1/dev` ※開発環境限定)
+### 3.8. 開発用ツール (`/api/v1/dev` ※開発環境限定)
 - `GET /api/v1/dev/state` (Authenticated): 開発用ロール状態取得 → [詳細](./v1/dev.md#get-apiv1devstate)
 - `POST /api/v1/dev/switch-role` (Authenticated): 開発用ロール切替 → [詳細](./v1/dev.md#post-apiv1devswitch-role)
 
-### 3.10. システムヘルスチェック
+### 3.9. システムヘルスチェック
 - `GET /health` (Public): 稼働確認 (`{"status": "ok"}`)。DB には接続しない（Liveness 用）。
 - `GET /health/db` (Public): DB 疎通確認。プールから接続を借りて `SELECT 1` を実行する（Readiness 確認・死活監視用）。
   - 成功時: `200 OK` / `{"status": "ok", "database": "connected"}`

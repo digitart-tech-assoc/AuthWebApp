@@ -27,9 +27,8 @@
    - カテゴリ名の変更、一般メンバー編集禁止（`is_restricted`）の切替。
 6. **差分プレビューモーダル（`RoleDiffModal`）**:
    - ローカル変更とサーバー（Discord/DB）上の現在状態を比較し、作成・更新・削除・並び替えの差分を一覧表示。
-7. **同期・反映アクションバー（`PushButton`, `SyncButton`）**:
+7. **反映アクションバー（`PushButton`）**:
    - **DiscordへPush**: マニフェスト差分（`ManifestPatch`）をバックエンドへ保存し、Discord Bot を通じて Discord サーバーへ反映。
-   - **Discordから同期**: Discord 側の最新ロール状態をフェッチし、画面表示をリフレッシュ。
 
 ---
 
@@ -38,6 +37,6 @@
 - **マニフェスト差分保存**: `PATCH /api/manifest`
   - バックエンド `PATCH /api/v1/manifest` を呼び出し。
 - **Discord への差分 Push**: `POST /api/roles/push`
-  - バックエンド `POST /api/v1/roles/push` または `sync` を呼び出し。
+  - バックエンド `POST /api/v1/roles/push` を呼び出し。
 - **ロールメンバー一覧取得**: `GET /api/roles/members`
 - **ロール権限更新**: `POST /api/roles/[roleId]/permissions`
