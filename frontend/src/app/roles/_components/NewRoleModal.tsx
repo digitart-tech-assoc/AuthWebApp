@@ -34,7 +34,7 @@ type Props = {
   botPermissions: bigint;
   onSaved: (role: RoleData) => void;
   onClose: () => void;
-  isMember?: boolean;
+  /** カテゴリの選択肢から除くカテゴリ（管理者専用カテゴリ） */
   restrictedCategoryIds?: Set<string>;
   /** 編集モード: 既存ロールを渡すと編集UIになる */
   editingRole?: RoleData | null;
@@ -62,7 +62,7 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
 
 export default function NewRoleModal({
   categories, botPermissions, onSaved, onClose,
-  isMember = false, restrictedCategoryIds = new Set(),
+  restrictedCategoryIds = new Set(),
   editingRole = null,
 }: Props) {
   const isEditMode = !!editingRole;
@@ -83,21 +83,8 @@ export default function NewRoleModal({
   useEffect(() => {
     if (isEditMode) return; // 編集モードではカテゴリ変更で権限は上書きしない
     const cat = categories.find((c) => c.id === categoryId);
-    const canSetPermissions = !isMember || cat?.name === "会員情報";
-    if (canSetPermissions) {
-      setPerms(BigInt(cat?.permissions ?? 0));
-    } else {
-      setPerms(0n);
-    }
-  }, [categoryId, categories, isMember, isEditMode]);
-
-  // memberモード: 最初の利用可能なカテゴリを自動選択
-  useEffect(() => {
-    if (isMember && categoryId === null && !isEditMode) {
-      const first = categories.find((c) => !restrictedCategoryIds.has(c.id));
-      if (first) setCategoryId(first.id);
-    }
-  }, [isMember, categories, restrictedCategoryIds, categoryId, isEditMode]);
+    setPerms(BigInt(cat?.permissions ?? 0));
+  }, [categoryId, categories, isEditMode]);
 
   function handleColorPick(c: string) {
     setColor(c);
@@ -119,18 +106,9 @@ export default function NewRoleModal({
   const isAdminActive = hasBitExact(perms, 3n);
   const botHasAdmin = hasBitExact(botPermissions, 3n);
 
-  // member が権限を設定できるかどうか判定
-  const selectedCategory = categories.find((c) => c.id === categoryId);
-  // 会員情報カテゴリのみ権限設定可能（名前は引き継ぎハードコード）
-  const canSetPermissions = !isMember || selectedCategory?.name === "会員情報";
-
   function handleSave() {
     if (!name.trim()) {
       setError("ロール名を入力してください");
-      return;
-    }
-    if (isMember && !categoryId) {
-      setError("ロールを作成するカテゴリを選択してください");
       return;
     }
     setError(null);
@@ -172,15 +150,13 @@ export default function NewRoleModal({
         >
           基本設定
         </button>
-        {canSetPermissions && (
-          <button
-            type="button"
-            className={tabClass(step === "permissions")}
-            onClick={() => setStep("permissions")}
-          >
-            権限設定
-          </button>
-        )}
+        <button
+          type="button"
+          className={tabClass(step === "permissions")}
+          onClick={() => setStep("permissions")}
+        >
+          権限設定
+        </button>
       </div>
 
       {/* Body */}
@@ -208,18 +184,13 @@ export default function NewRoleModal({
             />
 
             {/* Category */}
-            <label className={fieldLabel}>カテゴリ{isMember && <span className={requiredMark}> *</span>}</label>
-            {isMember && (
-              <p className="m-0 text-xs text-slate-500">
-                禁止カテゴリ（会員情報・学部学科・学年）およびカテゴリに属さない状態での作成できません
-              </p>
-            )}
+            <label className={fieldLabel}>カテゴリ</label>
             <select
               className={selectInput}
               value={categoryId ?? ""}
               onChange={(e) => setCategoryId(e.target.value || null)}
             >
-              {!isMember && <option value="">カテゴリなし</option>}
+              <option value="">カテゴリなし</option>
               {categories
                 .filter((c) => !restrictedCategoryIds.has(c.id))
                 .map((c) => (

@@ -21,12 +21,11 @@ type Category = {
 
 type Props = {
   category: Category;
-  isAdmin: boolean;
   onSaved: (categoryId: string, name: string, is_restricted: boolean) => void;
   onClose: () => void;
 };
 
-export default function EditCategoryModal({ category, isAdmin, onSaved, onClose }: Props) {
+export default function EditCategoryModal({ category, onSaved, onClose }: Props) {
   const [name, setName] = useState(category.name);
   const [isRestricted, setIsRestricted] = useState(category.is_restricted);
 
@@ -61,21 +60,19 @@ export default function EditCategoryModal({ category, isAdmin, onSaved, onClose 
             }}
           />
 
-          {isAdmin && (
-            <div className={toggleRow}>
-              <div>
-                <div className={toggleLabel}>管理者専用カテゴリ</div>
-                <div className={toggleDesc}>
-                  オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
-                </div>
+          <div className={toggleRow}>
+            <div>
+              <div className={toggleLabel}>管理者専用カテゴリ</div>
+              <div className={toggleDesc}>
+                オンにすると、メンバーは自分がこのカテゴリ内のロールを付与・解除できなくなります。
               </div>
-              <ToggleSwitch
-                checked={isRestricted}
-                onChange={setIsRestricted}
-                ariaLabel="管理者専用カテゴリ"
-              />
             </div>
-          )}
+            <ToggleSwitch
+              checked={isRestricted}
+              onChange={setIsRestricted}
+              ariaLabel="管理者専用カテゴリ"
+            />
+          </div>
         </div>
       </div>
 
