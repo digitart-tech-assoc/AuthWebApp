@@ -114,11 +114,11 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
           <div />
           <div style={{ display: "flex", gap: 12 }}>
             {onBack && (
-              <button type="button" onClick={onBack} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-all enabled:hover:-translate-y-px enabled:hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>
+              <button type="button" onClick={onBack} className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-300 bg-white text-slate-700 enabled:hover:bg-slate-50" disabled={loading}>
                 ← 戻る
               </button>
             )}
-            <button type="submit" className="inline-flex h-11 items-center justify-center rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-5 text-sm font-bold text-white shadow-md transition-all enabled:hover:-translate-y-0.5 enabled:hover:shadow-lg enabled:hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60" disabled={loading}>
+            <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-blue-600 text-white enabled:hover:bg-blue-700" disabled={loading}>
               {loading ? "保存中..." : submitLabel}
             </button>
           </div>
