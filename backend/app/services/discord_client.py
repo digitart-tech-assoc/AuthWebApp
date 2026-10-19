@@ -505,6 +505,18 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: ht
 		raise
 
 
+async def fetch_bot_guild_member(
+	guild_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+) -> dict | None:
+	"""Bot 自身のギルドメンバー情報を取得する。"""
+	headers = {"Authorization": f"Bot {token}"}
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		bot_id = await _get_bot_user_id(client, token, headers)
+		return await fetch_guild_member(guild_id, bot_id, token, client=client)
+
+
 async def create_channel_invite(
 	channel_id: str,
 	token: str,

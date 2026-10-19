@@ -46,6 +46,7 @@ from app.services.discord_client import (
 	edit_guild_role,
 	fetch_all_guild_members,
 	fetch_bot_guilds,
+	fetch_bot_guild_member,
 	fetch_guild_member,
 	fetch_guild_roles,
 	redact_snowflakes,
@@ -273,15 +274,27 @@ async def _apply_role_assignment_diffs(
 		async with httpx.AsyncClient(timeout=DISCORD_API_TIMEOUT) as client:
 			desired_assignments = await asyncio.to_thread(fetch_role_assignments)
 			current_members = await fetch_all_guild_members(DISCORD_GUILD_ID, token, client=client)
+			try:
+				bot_member = await fetch_bot_guild_member(DISCORD_GUILD_ID, token, client=client)
+			except Exception as exc:
+				_log_push_error("fetch bot member; skipping role assignments", exc, level=logging.WARNING)
+				bot_member = None
 			# 並び替え後のロール階層で Bot が操作できるかを判定するため、ロール一覧を取得し直す
 			try:
 				latest_roles = await fetch_guild_roles(DISCORD_GUILD_ID, token, client=client)
-				manageable_role_ids = _manageable_role_ids(latest_roles)
+				roles_refetched = True
 			except Exception as exc:
-				# 取り直しに失敗しても割り当ての反映は止めず、push 開始時のロール一覧で判定する。
-				# 新規作成したロールは開始時の一覧に無いが、最下位に作られ Bot より下にあるため操作できるものとして扱う
+				# ロール一覧の再取得に失敗した場合は push 開始時のロール一覧を使う。
 				_log_push_error("refetch guild roles; using roles fetched before sync", exc, level=logging.WARNING)
-				manageable_role_ids = _manageable_role_ids(list(actual_by_id.values())) | created_real_ids
+				latest_roles = list(actual_by_id.values())
+				roles_refetched = False
+			manageable_role_ids = _manageable_role_ids(latest_roles, bot_member)
+			if _bot_top_role_position(latest_roles, bot_member) is None:
+				logger.warning("Skipped role assignments because the bot's highest role could not be determined")
+				errors.append("Skipped role assignments because the bot's highest role could not be determined")
+			elif not roles_refetched:
+				# 再取得に失敗した場合、新規ロールは push 開始時の一覧に含まれない。
+				manageable_role_ids |= created_real_ids
 
 			current_by_role: dict[str, set[str]] = {}
 			for m in current_members:
@@ -449,16 +462,30 @@ def _log_push_error(
 		)
 
 
-def _manageable_role_ids(roles: list[dict]) -> set[str]:
-	"""Bot が付与・解除できるロール ID を返す（managed / @everyone / Bot ロール以上の位置のロールを除く）。"""
-	bot_role = next((role for role in roles if role.get("is_our_bot")), None)
-	bot_position = bot_role.get("position", 0) if bot_role else None
+def _bot_top_role_position(roles: list[dict], bot_member: dict | None) -> int | None:
+	"""Bot メンバーが持つロールのうち最上位の position を返す。"""
+	if bot_member is None:
+		return None
+	bot_role_ids = set(bot_member.get("role_ids", []))
+	positions = [
+		role.get("position", 0)
+		for role in roles
+		if role.get("role_id") in bot_role_ids
+	]
+	return max(positions) if positions else None
+
+
+def _manageable_role_ids(roles: list[dict], bot_member: dict | None) -> set[str]:
+	"""Bot が付与・解除できるロール ID を返す。基準ロールを特定できない場合は全て拒否する。"""
+	bot_position = _bot_top_role_position(roles, bot_member)
+	if bot_position is None:
+		return set()
 	return {
 		role["role_id"]
 		for role in roles
 		if not role.get("managed")
 		and role["role_id"] != DISCORD_GUILD_ID
-		and (bot_position is None or role.get("position", 0) < bot_position)
+		and role.get("position", 0) < bot_position
 	}
 
 
@@ -757,15 +784,17 @@ async def self_batch_roles(
 
 	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
 	# ロール一覧と対象メンバーの現在のロールは互いに依存しないため、並列に取得して待ち時間を減らす。
-	roles_result, member_result = await asyncio.gather(
+	roles_result, member_result, bot_member_result = await asyncio.gather(
 		fetch_guild_roles(DISCORD_GUILD_ID, token),
 		fetch_guild_member(DISCORD_GUILD_ID, discord_id, token),
+		fetch_bot_guild_member(DISCORD_GUILD_ID, token),
 		return_exceptions=True,
 	)
 	discord_roles = _unwrap_discord_fetch(roles_result, "fetch roles")
 
 	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
-	bot_role = next((role for role in discord_roles if role.get("is_our_bot")), None)
+	bot_member = _unwrap_discord_fetch(bot_member_result, "fetch bot member")
+	manageable_role_ids = _manageable_role_ids(discord_roles, bot_member)
 	for role_id in all_role_ids:
 		role_info = roles_in_manifest[role_id]
 		discord_role = discord_roles_by_id.get(role_id)
@@ -773,7 +802,7 @@ async def self_batch_roles(
 			raise HTTPException(status_code=404, detail=f"Discord上にロール {role_id} が見つかりません")
 		if discord_role.get("managed") or role_id == DISCORD_GUILD_ID:
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' は変更できません")
-		if bot_role and discord_role.get("position", 0) >= bot_role.get("position", 0):
+		if role_id not in manageable_role_ids:
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
 
 	# --- 2. 現在のメンバーロール取得（上で並列に取得済み。取得に失敗していても、検証で拒否した場合はそちらのエラーを優先する） ---
