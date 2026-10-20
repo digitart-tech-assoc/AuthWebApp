@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import join as join_api
+from app.api.v1 import members as members_api
 from app.core import auth
 from app.core.errors import describe_exception, log_exception_without_message
 from app.services.discord_client import DiscordAPIError
@@ -143,6 +144,55 @@ async def test_join_request_send_failure_does_not_return_brevo_body(monkeypatch)
 	# 送信失敗の 500 が、汎用の except で包み直されずにそのまま返ること
 	assert error.value.status_code == 500
 	assert error.value.detail == "Failed to send OTP email"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+	("error", "status_code", "level"),
+	[(ValueError, 400, logging.WARNING), (RuntimeError, 500, logging.ERROR)],
+)
+async def test_add_member_failure_does_not_log_exception_message(monkeypatch, caplog, error, status_code, level):
+	note = "applicant" + "@example.com"
+
+	def _raise(discord_id, assigned_by, note_value):
+		raise error(f"Key (note)=({note_value}) violates constraint")
+
+	monkeypatch.setattr(members_api, "add_to_member_list", _raise)
+
+	with caplog.at_level(logging.DEBUG, logger=members_api.logger.name):
+		with pytest.raises(HTTPException) as exc_info:
+			await members_api.add_member(
+				members_api.AddMemberRequest(discord_id="123", note=note),
+				_principal={"sub": "user_1"},
+			)
+
+	assert exc_info.value.status_code == status_code
+	assert f"add_to_member_list failed ({error.__name__})" in caplog.text
+	assert caplog.records[-1].levelno == level
+	assert note not in caplog.text
+	assert caplog.records[-1].exc_info is None
+
+
+@pytest.mark.asyncio
+async def test_register_paid_invitation_failure_does_not_log_exception_message(monkeypatch, caplog):
+	note = "applicant" + "@example.com"
+
+	def _raise(discord_id, note_value, assigned_by):
+		raise RuntimeError(f"Key (note)=({note_value}) violates constraint")
+
+	monkeypatch.setattr(members_api, "register_paid_invitation", _raise)
+
+	with caplog.at_level(logging.DEBUG, logger=members_api.logger.name):
+		with pytest.raises(HTTPException) as exc_info:
+			await members_api.register_paid_invitation_endpoint(
+				members_api.PaidInvitationRequest(discord_id="123", note=note),
+				_principal={"sub": "user_1"},
+			)
+
+	assert exc_info.value.status_code == 400
+	assert "register_paid_invitation failed (RuntimeError)" in caplog.text
+	assert note not in caplog.text
+	assert caplog.records[-1].exc_info is None
 
 
 def test_invalid_issuer_does_not_log_token(monkeypatch, caplog):
