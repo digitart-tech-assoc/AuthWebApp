@@ -41,10 +41,11 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 | エンドポイント | キー | 上限 |
 | :--- | :--- | :--- |
 | `POST /api/v1/student/otp/send` | `discord_id` | 3 回 / 10 分 |
-| `POST /api/v1/join/request` | クライアント IP | 3 回 / 10 分 |
+| `POST /api/v1/join/request` | クライアント IP | 5 回 / 10 分（大学のネットワーク `133.2.0.0/16` からは 50 回 / 10 分） |
 | `POST /api/v1/contact/submit` | クライアント IP | 5 回 / 時間 |
 
 - クライアント IP は `X-Forwarded-For` の最右端（ingress が付けた値）を使い、ない場合は接続元のアドレスを使います。Frontend の Server Action から呼ぶ場合は、Frontend が受け取った `X-Forwarded-For` を転送します。
+- 大学のネットワークは、学内 Wi-Fi で多くの利用者が同じグローバル IP を共有するため、上限を大幅に緩めています。対象のネットワークは `backend/app/core/config.py` の `RATE_LIMIT_RELAXED_NETWORKS` で定めます。
 - 入力チェックで弾かれたリクエストは数えません。送信に失敗したリクエストは数えます。
 - カウントは Backend のプロセスのメモリに持つため、再起動でリセットされ、複数プロセス・複数レプリカの間では共有されません（Backend は 1 プロセスで動かす前提です。レプリカを増やす場合は共有ストアへの移行が必要です）。
 - 上限超過のログにはエンドポイント名だけを出し、IP アドレスは出しません。

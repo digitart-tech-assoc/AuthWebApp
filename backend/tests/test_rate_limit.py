@@ -5,6 +5,7 @@
 - クライアント IP は X-Forwarded-For の最右端（ingress が付けた値）、なければ接続元を使う
 """
 
+import ipaddress
 import logging
 
 import pytest
@@ -13,12 +14,18 @@ from fastapi import HTTPException
 from app.api.v1 import contact as contact_api
 from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
-from app.core.config import CONTACT_RATE_LIMIT, OTP_SEND_RATE_LIMIT
+from app.core.config import (
+	CONTACT_RATE_LIMIT,
+	JOIN_REQUEST_RATE_LIMIT,
+	JOIN_REQUEST_RELAXED_RATE_LIMIT,
+	OTP_SEND_RATE_LIMIT,
+)
 from app.core.rate_limit import (
 	RateLimitExceededError,
 	SlidingWindowRateLimiter,
 	enforce_rate_limit,
 	get_client_ip,
+	is_in_networks,
 )
 from tests.request_factory import make_request
 
@@ -101,6 +108,18 @@ class TestGetClientIp:
 		assert get_client_ip(make_request(client_host="192.0.2.1", headers={"X-Forwarded-For": " , "})) == "192.0.2.1"
 
 
+class TestIsInNetworks:
+	NETWORKS = [ipaddress.ip_network("133.2.0.0/16")]
+
+	@pytest.mark.parametrize("ip", ["133.2.0.1", "133.2.255.254"])
+	def test_inside(self, ip):
+		assert is_in_networks(ip, self.NETWORKS)
+
+	@pytest.mark.parametrize("ip", ["133.3.0.1", "203.0.113.9", "2001:db8::1", "unknown", ""])
+	def test_outside_or_invalid(self, ip):
+		assert not is_in_networks(ip, self.NETWORKS)
+
+
 @pytest.mark.asyncio
 async def test_enforce_returns_429_without_logging_key(caplog):
 	limiter = SlidingWindowRateLimiter(1, 600, clock=FakeClock())
@@ -177,8 +196,8 @@ def _join_request(index: int) -> join_api.JoinRequestCreate:
 	return join_api.JoinRequestCreate(email=email, confirm_email=email, name="テスト 太郎", form_type="other")
 
 
-@pytest.mark.asyncio
-async def test_join_request_is_limited_per_ip(monkeypatch, brevo):
+@pytest.fixture
+def join_ready(monkeypatch):
 	created = []
 	monkeypatch.setattr(
 		join_api.repository,
@@ -187,20 +206,51 @@ async def test_join_request_is_limited_per_ip(monkeypatch, brevo):
 	)
 	monkeypatch.setattr(join_api.repository, "create_otp_code", lambda **kwargs: None)
 	monkeypatch.setattr(join_api, "hash_otp_code", lambda code: "hashed")
+	return created
 
-	for i in range(OTP_SEND_RATE_LIMIT):
-		await join_api.request_otp(_join_request(i), make_request(headers={"X-Forwarded-For": CLIENT_IP}))
+
+async def _request_join(index: int, ip: str):
+	return await join_api.request_otp(_join_request(index), make_request(headers={"X-Forwarded-For": ip}))
+
+
+@pytest.mark.asyncio
+async def test_join_request_is_limited_per_ip(join_ready, brevo):
+	for i in range(JOIN_REQUEST_RATE_LIMIT):
+		await _request_join(i, CLIENT_IP)
 
 	with pytest.raises(HTTPException) as error:
-		await join_api.request_otp(_join_request(99), make_request(headers={"X-Forwarded-For": CLIENT_IP}))
+		await _request_join(99, CLIENT_IP)
 
 	assert error.value.status_code == 429
 	# 上限に達したら申請も作らず、メールも送らない
-	assert len(created) == OTP_SEND_RATE_LIMIT
-	assert brevo.count == OTP_SEND_RATE_LIMIT
+	assert len(join_ready) == JOIN_REQUEST_RATE_LIMIT
+	assert brevo.count == JOIN_REQUEST_RATE_LIMIT
 
 	# 別の IP からは受け付ける
-	await join_api.request_otp(_join_request(100), make_request(headers={"X-Forwarded-For": "198.51.100.7"}))
+	await _request_join(100, "198.51.100.7")
+
+
+@pytest.mark.asyncio
+async def test_join_request_from_university_network_uses_relaxed_limit(join_ready, brevo):
+	campus_ip = "133.2.10.20"
+	for i in range(JOIN_REQUEST_RELAXED_RATE_LIMIT):
+		await _request_join(i, campus_ip)
+
+	with pytest.raises(HTTPException) as error:
+		await _request_join(999, campus_ip)
+
+	assert error.value.status_code == 429
+	assert brevo.count == JOIN_REQUEST_RELAXED_RATE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_university_network_does_not_consume_normal_limit(join_ready, brevo):
+	"""大学のネットワークからの申請は、通常の上限とは別に数える"""
+	for i in range(JOIN_REQUEST_RATE_LIMIT + 1):
+		await _request_join(i, "133.2.10.20")
+
+	for i in range(JOIN_REQUEST_RATE_LIMIT):
+		await _request_join(100 + i, CLIENT_IP)
 
 
 @pytest.mark.asyncio
@@ -210,7 +260,7 @@ async def test_join_request_with_invalid_input_is_not_counted(monkeypatch):
 		email="a@example.com", confirm_email="b@example.com", name="テスト 太郎", form_type="other"
 	)
 
-	for _ in range(OTP_SEND_RATE_LIMIT + 1):
+	for _ in range(JOIN_REQUEST_RATE_LIMIT + 1):
 		with pytest.raises(HTTPException) as error:
 			await join_api.request_otp(mismatch, make_request())
 		assert error.value.status_code == 400

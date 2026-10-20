@@ -8,11 +8,12 @@ Brevo によるメール送信や Discord への投稿など、外部サービ�
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import math
 import time
 from collections import deque
-from typing import Callable
+from typing import Callable, Iterable
 
 from fastapi import HTTPException, Request
 
@@ -73,6 +74,15 @@ def get_client_ip(request: Request) -> str:
 	if addresses:
 		return addresses[-1]
 	return request.client.host if request.client else "unknown"
+
+
+def is_in_networks(ip: str, networks: Iterable[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
+	"""ip がいずれかのネットワークに含まれるか。IP アドレスとして解釈できない値は含まれないものとする"""
+	try:
+		address = ipaddress.ip_address(ip)
+	except ValueError:
+		return False
+	return any(address in network for network in networks)
 
 
 async def enforce_rate_limit(limiter: SlidingWindowRateLimiter, key: str, endpoint: str) -> None:
