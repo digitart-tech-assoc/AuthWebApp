@@ -1,7 +1,8 @@
 -- SQL View: v_users_with_app_role
 -- app_role を動的に計算するビュー（user_memberships から）
 
-CREATE OR REPLACE VIEW v_users_with_app_role AS
+CREATE OR REPLACE VIEW v_users_with_app_role
+WITH (security_invoker = on) AS
 SELECT 
     u.id,
     u.user_id,

@@ -88,9 +88,11 @@ CREATE INDEX idx_user_memberships_membership_type ON user_memberships (membershi
 
 ### `v_users_with_app_role`（VIEW）
 `users` と `user_memberships` を結合し、アプリケーション上で有効な `app_role` を動的に算出する PostgreSQL ビュー。
+ビューは既定では所有者の権限で動き元テーブルの RLS を素通りするため、`security_invoker = on` を必ず指定する。
 
 ```sql
-CREATE OR REPLACE VIEW v_users_with_app_role AS
+CREATE OR REPLACE VIEW v_users_with_app_role
+WITH (security_invoker = on) AS
 SELECT 
   u.id,
   u.user_id,
@@ -277,4 +279,8 @@ CREATE TABLE pre_member_removal_log (
    - `role_manifests.position` は Discord のロール階層順序と連動します。Bot による差分同期時に利用されます。
 4. **マイグレーション運用**:
    - スキーマ変更時は Alembic マイグレーションスクリプトを作成し、ローカル検証後に CI で整合性を確認してください。
+5. **Row Level Security（RLS）**:
+   - anon キーはブラウザに公開され PostgREST 経由で `public` スキーマにアクセスできるため、`public` の全テーブルで RLS を有効にします（`0006_enable_row_level_security` が `public` の全テーブルを対象に実行）。
+   - Backend は所有者ロールで接続するため RLS の影響を受けません（`FORCE ROW LEVEL SECURITY` は付けない）。
+   - テーブルを追加するときは、同じマイグレーション内で `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY` を実行してください。ビューを追加するときは `security_invoker = on` を指定してください。
 
