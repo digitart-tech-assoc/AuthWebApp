@@ -2,6 +2,7 @@
 
 import StudentProfileForm from "@/components/forms/StudentProfileForm";
 import { submitStudentProfile } from "@/actions/studentRegistration";
+import { DisplayableError } from "@/lib/errorMessages";
 import type { StudentProfile } from "@/types/join";
 
 interface Props {
@@ -10,7 +11,10 @@ interface Props {
 
 export default function ProfileForm({ initial }: Props) {
   const handleSubmit = async (data: StudentProfile) => {
-    await submitStudentProfile(data);
+    const result = await submitStudentProfile(data);
+    if (!result.ok) {
+      throw new DisplayableError(result.error);
+    }
   };
 
   return (

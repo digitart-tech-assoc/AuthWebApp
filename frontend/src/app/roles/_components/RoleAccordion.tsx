@@ -291,13 +291,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       const pushBody = await pushRolesToDiscord();
 
       if (!pushBody.ok) {
-        const pushErrors = pushBody.errors ?? [];
-        const errMsg = pushErrors[0] ?? "Discord への送信に失敗しました";
-        const additionalErrorCount = Math.max(0, pushErrors.length - 1);
-        const additionalErrors = additionalErrorCount > 0 ? `（他 ${additionalErrorCount} 件）` : "";
+        // Backend の errors の文言は表示せず、件数だけを示す（失敗の内容は Backend のログで確認する）
+        const failedCount = pushBody.errors?.length ?? 0;
+        const failedCountText = failedCount > 0 ? `（${failedCount} 件）` : "";
         showStatus({
           kind: "error",
-          msg: `DB保存は完了しましたが、Discordへの送信に失敗しました: ${errMsg}${additionalErrors}`,
+          msg: `DB保存は完了しましたが、Discordへの反映に失敗しました${failedCountText}。時間をおいて再度お試しください。`,
         });
         return;
       }

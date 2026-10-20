@@ -12,6 +12,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin
+from app.core.errors import log_exception_without_message
 from app.db.repository import (
 	register_pre_member,
 	get_pre_member_list_with_users,
@@ -61,7 +62,8 @@ async def register_pre_member_endpoint(
 		result = await asyncio.to_thread(register_pre_member, payload.discord_id, payload.source)
 		return {"ok": True, "discord_id": payload.discord_id, "result": result}
 	except Exception as e:
-		raise HTTPException(status_code=400, detail=str(e))
+		log_exception_without_message(logger, "register_pre_member", e)
+		raise HTTPException(status_code=400, detail="Failed to register pre-member")
 
 
 @router.get("/internal/lists")
@@ -78,7 +80,8 @@ async def internal_get_lists(authorization: str | None = Header(default=None)) -
 		result = await asyncio.to_thread(get_member_lists)
 		return {"ok": True, "data": result}
 	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+		log_exception_without_message(logger, "internal_get_lists", e)
+		raise HTTPException(status_code=500, detail="Failed to fetch member lists")
 
 
 @router.post("/pre_member/cleanup")
@@ -97,7 +100,8 @@ async def cleanup_pre_members_endpoint(
 		result = await asyncio.to_thread(cleanup_expired_prospective_members)
 		return {"ok": True, "data": result}
 	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+		log_exception_without_message(logger, "cleanup_expired_prospective_members", e)
+		raise HTTPException(status_code=500, detail="Failed to clean up pre-members")
 
 
 @router.get("/pre_member/list")
@@ -163,7 +167,8 @@ async def get_pre_member_list(
 		
 		return {"ok": True, "data": result}
 	except Exception as e:
-		raise HTTPException(status_code=400, detail=str(e))
+		log_exception_without_message(logger, "get_pre_member_list", e)
+		raise HTTPException(status_code=400, detail="Failed to fetch pre-member list")
 
 
 @router.post("/member/add")
@@ -185,9 +190,11 @@ async def add_member(
 		)
 		return {"ok": True, "data": result}
 	except ValueError as e:
-		raise HTTPException(status_code=400, detail=str(e))
+		log_exception_without_message(logger, "add_to_member_list", e, level=logging.WARNING)
+		raise HTTPException(status_code=400, detail="Failed to add member")
 	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
+		log_exception_without_message(logger, "add_to_member_list", e)
+		raise HTTPException(status_code=500, detail="Failed to add member")
 
 
 @router.post("/paid_invitation/register")
@@ -216,5 +223,5 @@ async def register_paid_invitation_endpoint(
 		)
 		return {"ok": True, "data": result}
 	except Exception as e:
-		logger.error(f"Error in register_paid_invitation: {e}")
-		raise HTTPException(status_code=400, detail=str(e))
+		log_exception_without_message(logger, "register_paid_invitation", e)
+		raise HTTPException(status_code=400, detail="Failed to register paid invitation")

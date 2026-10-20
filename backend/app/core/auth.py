@@ -115,17 +115,18 @@ def _decode_supabase_token(token: str) -> dict[str, Any]:
 		logger.warning("JWT Expired")
 		raise HTTPException(status_code=401, detail="Token has expired")
 	except jwt.InvalidAudienceError:
-		logger.error(f"JWT Invalid Audience | token: {token}")
+		# トークン自体は認証情報のためログに出さない
+		logger.error("JWT Invalid Audience")
 		raise HTTPException(status_code=401, detail="Invalid token: audience mismatch")
 	except jwt.InvalidIssuerError:
-		logger.error(f"JWT Invalid Issuer | token: {token}")
+		logger.error("JWT Invalid Issuer")
 		raise HTTPException(status_code=401, detail="Invalid token: issuer mismatch")
 	except jwt.InvalidAlgorithmError:
-		logger.error(f"JWT Invalid Algorithm | token: {token}")
+		logger.error("JWT Invalid Algorithm")
 		raise HTTPException(status_code=401, detail="Invalid token: algorithm not allowed")
 	except jwt.PyJWTError as exc:
 		logger.error(f"JWT Decode Failed: {exc}")
-		raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
+		raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
 def _extract_verified_discord_id(claims: dict[str, Any]) -> str | None:
@@ -192,7 +193,7 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 		raise e
 	except Exception as e:
 		logger.error(f"Decode Token Unknown Error: {e}")
-		raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+		raise HTTPException(status_code=401, detail="Invalid token")
 
 	sub = claims.get("sub", "")
 	if not sub:

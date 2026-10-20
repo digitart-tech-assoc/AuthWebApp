@@ -87,8 +87,8 @@ export async function syncMembers(): Promise<MemberListResponse> {
 	}
 
 	if (!res.ok) {
-		const error = await res.text();
-		throw new Error(`sync failed: ${res.status} - ${error}`);
+		// 応答本文（Backend のエラー詳細）は含めない
+		throw new Error(`sync failed: ${res.status}`);
 	}
 
 	return (await res.json()) as MemberListResponse;
@@ -113,8 +113,8 @@ export async function getMembers(): Promise<MemberListsData> {
 	}
 
 	if (!res.ok) {
-		const error = await res.text();
-		throw new Error(`fetch failed: ${res.status} - ${error}`);
+		// 応答本文（Backend のエラー詳細）は含めない
+		throw new Error(`fetch failed: ${res.status}`);
 	}
 
 	return (await res.json()) as MemberListsData;
@@ -145,8 +145,8 @@ export async function getPreMemberList(search?: string): Promise<PreMember[]> {
 	}
 
 	if (!res.ok) {
-		const error = await res.text();
-		throw new Error(`fetch failed: ${res.status} - ${error}`);
+		// 応答本文（Backend のエラー詳細）は含めない
+		throw new Error(`fetch failed: ${res.status}`);
 	}
 
 	const data = await res.json();
@@ -183,8 +183,8 @@ export async function addMember(
 	}
 
 	if (!res.ok) {
-		const error = await res.text();
-		throw new Error(`add failed: ${res.status} - ${error}`);
+		// 応答本文（Backend のエラー詳細）は含めない
+		throw new Error(`add failed: ${res.status}`);
 	}
 
 	return (await res.json()) as AddMemberResponse;
@@ -223,8 +223,8 @@ export async function registerPaidInvitation(
 	}
 
 	if (!res.ok) {
-		const error = await res.text();
-		throw new Error(`registration failed: ${res.status} - ${error}`);
+		// 応答本文（Backend のエラー詳細）は含めない
+		throw new Error(`registration failed: ${res.status}`);
 	}
 
 	return (await res.json()) as PaidInvitationResponse;

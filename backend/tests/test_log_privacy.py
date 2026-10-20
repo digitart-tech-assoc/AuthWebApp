@@ -22,6 +22,8 @@ APP_DIR = Path(__file__).resolve().parents[1] / "app"
 FORBIDDEN_NAMES = {
 	"discord_id", "user_id", "uid", "student_number", "email", "email_aoyama",
 	"code", "code_plain", "otp_code", "principal", "_principal",
+	# 認証情報（docs/logging-and-errors.md §1.2）
+	"token", "authorization", "SHARED_SECRET", "shared_secret", "SUPABASE_JWT_SECRET",
 }
 # ログ出力に渡してはいけない属性名（req.student_number など）
 FORBIDDEN_ATTRS = {"discord_id", "student_number", "email", "email_aoyama"}

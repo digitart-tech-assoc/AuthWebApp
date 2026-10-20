@@ -42,12 +42,16 @@ export default function FormStep4OTP({
       setLoading(true);
       setError(null);
       const result = await sendOTP(studentNumber, name);
-      setEmailAoyama(result.email_aoyama);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setEmailAoyama(result.data.email_aoyama);
       setOtpSent(true);
       setResendCountdown(60);
-      setExpiresIn(result.expires_in_seconds);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "OTP 送信に失敗しました");
+      setExpiresIn(result.data.expires_in_seconds);
+    } catch {
+      setError("認証コードの送信に失敗しました。時間をおいて再度お試しください。");
     } finally {
       setLoading(false);
     }
@@ -59,15 +63,23 @@ export default function FormStep4OTP({
       setError(null);
 
       // OTP verification
-      await verifyOTP(otpCode);
+      const verified = await verifyOTP(otpCode);
+      if (!verified.ok) {
+        setError(verified.error);
+        return;
+      }
 
       // Submit profile (include email_aoyama for type completeness)
-      await submitStudentProfile({ ...formData, email_aoyama: emailAoyama ?? "" });
+      const saved = await submitStudentProfile({ ...formData, email_aoyama: emailAoyama ?? "" });
+      if (!saved.ok) {
+        setError(saved.error);
+        return;
+      }
 
       // Complete
       onComplete();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "認証に失敗しました");
+    } catch {
+      setError("認証に失敗しました。時間をおいて再度お試しください。");
     } finally {
       setSubmitting(false);
     }

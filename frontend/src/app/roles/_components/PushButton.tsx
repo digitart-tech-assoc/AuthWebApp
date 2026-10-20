@@ -8,7 +8,7 @@ import { btnPrimary } from "./roleStyles";
 
 type Props = {
   onSuccess?: (result: PushRolesResponse) => void;
-  onError?: (errors?: string[]) => void;
+  onError?: () => void;
 };
 
 export default function PushButton({ onSuccess, onError }: Props) {
@@ -19,7 +19,8 @@ export default function PushButton({ onSuccess, onError }: Props) {
     try {
       const body = await pushRolesToDiscord();
       if (!body.ok) {
-        onError?.(body.errors);
+        // Backend の errors の文言は呼び出し元に渡さない
+        onError?.();
         return;
       }
       onSuccess?.({

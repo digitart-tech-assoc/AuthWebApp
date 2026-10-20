@@ -2,6 +2,7 @@
 
 import { backendFetch } from "@/lib/backendFetch";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
+import { type ActionResult, type StatusMessages, messageForStatus } from "@/lib/errorMessages";
 
 import type { EligibilityCheckResult, StudentProfile } from "@/types/join";
 
@@ -61,88 +62,92 @@ export async function getStudentProfile(): Promise<StudentProfile | null> {
   }
 }
 
+// Backend のエラー文言は返さず、HTTP ステータスに応じた固定文言を返す（詳細は Backend のログで確認する）
+const NOT_AUTHENTICATED_MESSAGE = "ログインの有効期限が切れました。再度ログインしてください。";
+const NOT_ELIGIBLE_MESSAGE = "入会資格を確認できませんでした。仮入会の登録と入会費の支払いが完了しているか確認してください。";
+
+const SEND_OTP_ERROR_MESSAGES: StatusMessages = {
+  401: NOT_AUTHENTICATED_MESSAGE,
+  403: NOT_ELIGIBLE_MESSAGE,
+  422: "入力内容を確認してください。",
+  default: "認証コードの送信に失敗しました。時間をおいて再度お試しください。",
+};
+
+const VERIFY_OTP_ERROR_MESSAGES: StatusMessages = {
+  400: "認証コードが正しくないか、有効期限が切れています。",
+  401: NOT_AUTHENTICATED_MESSAGE,
+  403: NOT_ELIGIBLE_MESSAGE,
+  409: "認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。",
+  429: "入力回数の上限に達しました。認証コードを再送信してください。",
+  default: "認証に失敗しました。時間をおいて再度お試しください。",
+};
+
+const SUBMIT_PROFILE_ERROR_MESSAGES: StatusMessages = {
+  400: "メール認証が完了していません。認証コードを入力してください。",
+  401: NOT_AUTHENTICATED_MESSAGE,
+  403: NOT_ELIGIBLE_MESSAGE,
+  422: "入力内容を確認してください。",
+  default: "プロフィールの保存に失敗しました。時間をおいて再度お試しください。",
+};
+
+async function postToBackend<T>(
+  path: string,
+  body: unknown,
+  messages: StatusMessages,
+): Promise<ActionResult<T>> {
+  const headerResult = await getBackendAuthorizationHeader();
+  if (!headerResult) {
+    return { ok: false, error: NOT_AUTHENTICATED_MESSAGE };
+  }
+
+  try {
+    const response = await backendFetch(path, {
+      method: "POST",
+      headers: {
+        "Authorization": headerResult,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      return { ok: false, error: messageForStatus(response.status, messages) };
+    }
+
+    return { ok: true, data: (await response.json()) as T };
+  } catch {
+    return { ok: false, error: messages.default };
+  }
+}
+
 export async function sendOTP(
   studentNumber: string,
   name: string
-): Promise<{ email_aoyama: string; expires_in_seconds: number }> {
-  const headerResult = await getBackendAuthorizationHeader();
-  if (!headerResult) {
-    throw new Error("Not authenticated");
-  }
-
-  const response = await backendFetch("/api/v1/student/otp/send", {
-    method: "POST",
-    headers: {
-      "Authorization": headerResult,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      student_number: studentNumber,
-      name: name,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to send OTP: ${response.statusText}`);
-  }
-
-  return response.json();
+): Promise<ActionResult<{ email_aoyama: string; expires_in_seconds: number }>> {
+  return postToBackend(
+    "/api/v1/student/otp/send",
+    { student_number: studentNumber, name },
+    SEND_OTP_ERROR_MESSAGES,
+  );
 }
 
-export async function verifyOTP(code: string): Promise<{ verified: boolean }> {
-  const headerResult = await getBackendAuthorizationHeader();
-  if (!headerResult) {
-    throw new Error("Not authenticated");
-  }
-
-  const response = await backendFetch("/api/v1/student/otp/verify", {
-    method: "POST",
-    headers: {
-      "Authorization": headerResult,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      code: code,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to verify OTP: ${response.statusText}`);
-  }
-
-  return response.json();
+export async function verifyOTP(code: string): Promise<ActionResult<{ verified: boolean }>> {
+  return postToBackend("/api/v1/student/otp/verify", { code }, VERIFY_OTP_ERROR_MESSAGES);
 }
 
 export async function submitStudentProfile(
   data: StudentProfile
-): Promise<{ profile_id: string; message: string }> {
-  const headerResult = await getBackendAuthorizationHeader();
-  if (!headerResult) {
-    throw new Error("Not authenticated");
-  }
-
-  const response = await backendFetch("/api/v1/student/profile", {
-    method: "POST",
-    headers: {
-      "Authorization": headerResult,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+): Promise<ActionResult<{ profile_id: string; message: string }>> {
+  return postToBackend(
+    "/api/v1/student/profile",
+    {
       student_number: data.student_number,
       name: data.name,
       furigana: data.furigana,
       department: data.department,
       gender: data.gender || null,
       phone: data.phone,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Failed to submit profile: ${response.statusText}`);
-  }
-
-  return response.json();
+    },
+    SUBMIT_PROFILE_ERROR_MESSAGES,
+  );
 }

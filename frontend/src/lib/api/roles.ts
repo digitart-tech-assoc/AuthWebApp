@@ -22,6 +22,8 @@ export interface SelfBatchPayload {
 
 export interface SelfBatchResponse {
   ok?: boolean;
+  /** 失敗時の HTTP ステータス。画面の文言はこの値から Frontend で決める（Backend の detail は使わない） */
+  status?: number;
   detail?: string;
   added?: string[];
   removed?: string[];
@@ -90,7 +92,7 @@ export async function selfBatchRoles(payload: SelfBatchPayload): Promise<SelfBat
   if (!res.ok) {
     return {
       ok: false,
-      detail: data.detail || res.statusText,
+      status: res.status,
     };
   }
   return {

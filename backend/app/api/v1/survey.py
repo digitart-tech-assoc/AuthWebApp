@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
 
 from app.core.auth import get_current_principal
+from app.core.errors import log_exception_without_message
 from app.db import repository
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/survey", tags=["survey"])
 
@@ -59,6 +63,8 @@ async def submit_survey(req: SurveyRequest, principal: dict = Depends(get_curren
             repository.save_member_survey_response, profile_id, student_number or "", req.join_request_id, payload
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save survey response: {e}")
+        # 回答と学生番号を保存する処理のため、例外メッセージ（個人情報を含みうる）は出さない
+        log_exception_without_message(logger, "save survey response", e)
+        raise HTTPException(status_code=500, detail="Failed to save survey response")
 
     return SurveyResponse(id=result.get("id"), created_at=result.get("created_at"))

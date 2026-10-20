@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import OTPInput from "@/components/OTPInput";
+import { displayMessage } from "@/lib/errorMessages";
 import { requestOtp, verifyOtp } from "@/lib/join";
 import { LoaderCircle } from "lucide-react";
 import { btnPrimary, btnSecondary } from "./joinStyles";
@@ -39,7 +40,7 @@ export default function OTPModal({ email, name, formType, metadata, onClose, aut
       // start resend cooldown
       setResendSeconds(30);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(displayMessage(e, "認証コードの送信に失敗しました。時間をおいて再度お試しください。"));
       setStatus(null);
     }
   }
@@ -61,7 +62,7 @@ export default function OTPModal({ email, name, formType, metadata, onClose, aut
       setInviteUrl(res.discord_invite_url ?? null);
       setStatus("verified");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(displayMessage(e, "認証に失敗しました。時間をおいて再度お試しください。"));
       setStatus("sent");
     }
   }

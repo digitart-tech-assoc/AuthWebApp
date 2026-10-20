@@ -7,6 +7,8 @@ import {
   PreMember,
 } from "@/actions/members"
 
+const REGISTER_PAID_ERROR_MESSAGE = "入会費清算の登録に失敗しました。時間をおいて再度お試しください。"
+
 export default function MembersPage() {
   const [members, setMembers] = useState<PreMember[]>([])
   const [loading, setLoading] = useState(false)
@@ -24,8 +26,9 @@ export default function MembersPage() {
     try {
       const result = await getPreMemberList(query || undefined)
       setMembers(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load members")
+    } catch {
+      // Backend のエラー文言は表示せず、固定文言を使う
+      setError("仮入会者一覧の取得に失敗しました。時間をおいて再度お試しください。")
     } finally {
       setLoading(false)
     }
@@ -56,12 +59,10 @@ export default function MembersPage() {
           setSuccessMessage(null)
         }, 1000)
       } else {
-        setError("Failed to register paid invitation")
+        setError(REGISTER_PAID_ERROR_MESSAGE)
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to register paid invitation"
-      )
+    } catch {
+      setError(REGISTER_PAID_ERROR_MESSAGE)
     } finally {
       setActionLoading(false)
     }

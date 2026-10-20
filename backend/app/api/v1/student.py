@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal, has_member_privilege
 from app.core.config import OTP_EXPIRY_MINUTES, OTP_EXPIRY_SECONDS
+from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
@@ -296,9 +297,11 @@ async def send_otp(
 			expires_in_minutes=OTP_EXPIRY_MINUTES,
 		)
 		if result.get("status") != "success":
-			raise RuntimeError(result.get("error", "Unknown Brevo error"))
+			# 失敗の内容は BrevoClient がログに出している（応答本文には宛先のメールアドレスが含まれうる）
+			raise RuntimeError("Brevo returned a failure status")
 	except Exception as e:
-		raise HTTPException(status_code=500, detail=f"Failed to send OTP: {str(e)}")
+		log_exception_without_message(logger, "send student OTP", e)
+		raise HTTPException(status_code=500, detail="Failed to send OTP")
 
 	return SendOTPResponse(
 		email_aoyama=email_aoyama,
@@ -328,12 +331,14 @@ async def verify_otp(
 			discord_id,
 			req.code
 		)
-	except OTPTooManyAttemptsError as e:
-		raise HTTPException(status_code=429, detail=str(e))
+	except OTPTooManyAttemptsError:
+		raise HTTPException(status_code=429, detail="Too many attempts. Please request a new OTP.")
 	except OTPVerificationBusyError as e:
+		# 自前の例外で、文言は固定（OTPVerificationBusyError の既定メッセージ）
 		raise HTTPException(status_code=409, detail=str(e))
-	except ValueError as e:
-		raise HTTPException(status_code=400, detail=str(e))
+	except ValueError:
+		# 該当なし・期限切れのいずれか
+		raise HTTPException(status_code=400, detail="OTP not found or expired. Please request a new one.")
 
 	if is_valid is student_repository.OTPVerificationResult.ALREADY_VERIFIED:
 		return VerifyOTPResponse(verified=True, message="OTP already verified")
@@ -409,6 +414,7 @@ async def create_student_profile(
 			require_eligibility=not is_registered,
 		)
 	except RegistrationNotEligibleError as e:
+		# 自前の例外で、文言は固定（student_repository で定めた入会資格の不足理由）
 		raise HTTPException(status_code=403, detail=str(e))
 
 	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与

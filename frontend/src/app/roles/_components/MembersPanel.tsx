@@ -28,9 +28,9 @@ export default function MembersPanel() {
 				setLoading(true);
 				const data = await getMembers();
 				setMembers(data);
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				setError(msg);
+			} catch {
+				// Backend のエラー文言は表示せず、固定文言を使う
+				setError("メンバーリストの取得に失敗しました。時間をおいて再度お試しください。");
 			} finally {
 				setLoading(false);
 			}
@@ -50,9 +50,8 @@ export default function MembersPanel() {
 				const updated = await getMembers();
 				setMembers(updated);
 			}
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			setError(msg);
+		} catch {
+			setError("Discord からの同期に失敗しました。時間をおいて再度お試しください。");
 		} finally {
 			setSyncing(false);
 		}
