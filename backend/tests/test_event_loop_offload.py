@@ -148,7 +148,6 @@ async def test_student_send_otp_offloads_otp_record_creation(monkeypatch, record
 
 	response = await student_api.send_otp(
 		student_api.SendOTPRequest(student_number="1A234567", name="テスト 太郎"),
-		request=make_request(),
 		principal=PRINCIPAL,
 	)
 

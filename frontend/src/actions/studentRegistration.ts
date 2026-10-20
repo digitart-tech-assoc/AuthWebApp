@@ -3,7 +3,6 @@
 import { backendFetch } from "@/lib/backendFetch";
 import { getBackendAuthorizationHeader } from "@/lib/backendAuth";
 import { type ActionResult, type StatusMessages, messageForStatus } from "@/lib/errorMessages";
-import { getForwardedForHeader } from "@/lib/forwardedHeaders";
 
 import type { EligibilityCheckResult, StudentProfile } from "@/types/join";
 
@@ -106,7 +105,6 @@ async function postToBackend<T>(
     const response = await backendFetch(path, {
       method: "POST",
       headers: {
-        ...(await getForwardedForHeader()),
         "Authorization": headerResult,
         "Content-Type": "application/json",
       },

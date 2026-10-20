@@ -40,7 +40,7 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 
 | エンドポイント | キー | 上限 |
 | :--- | :--- | :--- |
-| `POST /api/v1/student/otp/send` | `discord_id` と クライアント IP（それぞれ） | 3 回 / 10 分 |
+| `POST /api/v1/student/otp/send` | `discord_id` | 3 回 / 10 分 |
 | `POST /api/v1/join/request` | クライアント IP | 3 回 / 10 分 |
 | `POST /api/v1/contact/submit` | クライアント IP | 5 回 / 時間 |
 

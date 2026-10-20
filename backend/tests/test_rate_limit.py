@@ -147,39 +147,29 @@ def student_ready(monkeypatch):
 	monkeypatch.setattr(student_api.student_repository, "create_otp_record", lambda *args: None)
 
 
-async def _send_student_otp(request, discord_id: str = "discord-1"):
+async def _send_student_otp(discord_id: str = "discord-1"):
 	return await student_api.send_otp(
 		student_api.SendOTPRequest(student_number="1A234567", name="テスト 太郎"),
-		request=request,
 		principal={"discord_id": discord_id, "sub": f"user-{discord_id}"},
 	)
 
 
 @pytest.mark.asyncio
 async def test_student_otp_send_is_limited_per_discord_id(student_ready, brevo, caplog):
-	for i in range(OTP_SEND_RATE_LIMIT):
-		# IP を変えても discord_id 単位で数える
-		await _send_student_otp(make_request(client_host=f"192.0.2.{i}"))
+	for _ in range(OTP_SEND_RATE_LIMIT):
+		await _send_student_otp()
 
 	with caplog.at_level(logging.WARNING), pytest.raises(HTTPException) as error:
-		await _send_student_otp(make_request(client_host="192.0.2.100"))
+		await _send_student_otp()
 
 	assert error.value.status_code == 429
 	assert "Retry-After" in error.value.headers
 	assert brevo.count == OTP_SEND_RATE_LIMIT
 	assert "aa234567@aoyama.ac.jp" not in caplog.text
 
-
-@pytest.mark.asyncio
-async def test_student_otp_send_is_limited_per_forwarded_ip(student_ready, brevo):
-	for i in range(OTP_SEND_RATE_LIMIT):
-		await _send_student_otp(_forwarded_request(), discord_id=f"discord-{i}")
-
-	with pytest.raises(HTTPException) as error:
-		await _send_student_otp(_forwarded_request(), discord_id="discord-other")
-
-	assert error.value.status_code == 429
-	assert brevo.count == OTP_SEND_RATE_LIMIT
+	# 同じネットワーク（IP）からでも、別の discord_id なら受け付ける
+	await _send_student_otp(discord_id="discord-other")
+	assert brevo.count == OTP_SEND_RATE_LIMIT + 1
 
 
 def _join_request(index: int) -> join_api.JoinRequestCreate:

@@ -15,7 +15,6 @@ from app.api.v1 import student as student_api
 from app.db import connection
 from app.db import otp_repository
 from app.services.discord_client import redact_snowflakes
-from tests.request_factory import make_request
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 
@@ -121,7 +120,6 @@ async def test_send_otp_logs_internal_id_instead_of_personal_information(monkeyp
 	with caplog.at_level(logging.DEBUG):
 		await student_api.send_otp(
 			student_api.SendOTPRequest(student_number=FAKE_STUDENT_NUMBER, name="テスト 太郎"),
-			request=make_request(),
 			principal={"discord_id": FAKE_DISCORD_ID, "sub": "internal-user-id"},
 		)
 

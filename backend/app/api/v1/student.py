@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal, has_member_privilege
@@ -24,7 +24,7 @@ from app.core.config import (
 )
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
-from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit, get_client_ip
+from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
@@ -38,7 +38,8 @@ router = APIRouter(prefix="/api/v1/student", tags=["student"])
 
 logger = logging.getLogger(__name__)
 
-# OTP メール送信の連打による Brevo クレジットの枯渇・メール爆撃を防ぐ（#82）。キーは discord_id と IP の両方
+# OTP メール送信の連打による Brevo クレジットの枯渇・メール爆撃を防ぐ（#82）。
+# キーは discord_id だけにする（同じネットワークの利用者どうしが上限を共有しないよう、IP は使わない）
 _otp_send_limiter = SlidingWindowRateLimiter(OTP_SEND_RATE_LIMIT, OTP_SEND_RATE_WINDOW_SECONDS)
 
 
@@ -273,7 +274,6 @@ async def validate_eligibility(
 @router.post("/otp/send", response_model=SendOTPResponse)
 async def send_otp(
 	req: SendOTPRequest,
-	request: Request,
 	principal: dict = Depends(get_current_principal),
 ) -> SendOTPResponse:
 	"""大学メールに OTP を送信する"""
@@ -284,7 +284,6 @@ async def send_otp(
 	await _ensure_registration_eligible(discord_id)
 
 	await enforce_rate_limit(_otp_send_limiter, f"discord_id:{discord_id}", "student otp send")
-	await enforce_rate_limit(_otp_send_limiter, f"ip:{get_client_ip(request)}", "student otp send")
 
 	logger.info("send_otp called: user=%s", principal.get("sub"))
 
