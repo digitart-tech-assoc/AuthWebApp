@@ -105,4 +105,4 @@ PR 作成時およびレビュー時は以下を確認してください。
 | 7 | —（削除） | `join.module.css` |
 
 - 複数コンポーネントで共有するクラスは `join/_components/joinStyles.ts` に className 文字列の定数として定義する。
-- `StudentProfileForm`（`components/forms/`）の `StudentProfileForm.module.css` は対象外（Issue #98 で対応する）。
+- `StudentProfileForm`（`components/forms/`）の `StudentProfileForm.module.css` は、Issue #98 で Tailwind CSS に移行し削除した。

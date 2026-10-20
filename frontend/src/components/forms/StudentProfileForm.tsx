@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import styles from "./StudentProfileForm.module.css";
 import StudentNumberInput from "@/components/forms/StudentNumberInput";
 import NameInput from "@/components/forms/NameInput";
 import FuriganaInput from "@/components/forms/FuriganaInput";
@@ -119,11 +118,11 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
           <div />
           <div style={{ display: "flex", gap: 12 }}>
             {onBack && (
-              <button type="button" onClick={onBack} className={styles.secondary} disabled={loading}>
+              <button type="button" onClick={onBack} className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-300 bg-white text-slate-700 enabled:hover:bg-slate-50" disabled={loading}>
                 ← 戻る
               </button>
             )}
-            <button type="submit" className={styles.primary} disabled={loading}>
+            <button type="submit" className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-blue-600 text-white enabled:hover:bg-blue-700" disabled={loading}>
               {loading ? "保存中..." : submitLabel}
             </button>
           </div>
