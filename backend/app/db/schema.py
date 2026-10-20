@@ -177,9 +177,11 @@ def init_db() -> None:
                 )
 
                 # ビュー: ユーザーの app_role を user_memberships から動的に計算
+                # CREATE OR REPLACE はオプションを上書きするため、security_invoker を毎回指定して RLS を素通りさせない
                 cur.execute(
 					"""
-					CREATE OR REPLACE VIEW v_users_with_app_role AS
+					CREATE OR REPLACE VIEW v_users_with_app_role
+					WITH (security_invoker = on) AS
 					SELECT 
 						u.id,
 						u.user_id,

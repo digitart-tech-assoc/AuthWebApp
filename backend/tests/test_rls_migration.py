@@ -55,6 +55,7 @@ def test_view_definitions_use_security_invoker():
 	view_definitions = [
 		BACKEND_DIR / "alembic" / "migration_view_users_with_app_role.sql",
 		REPO_ROOT / "setup_migration.py",
+		BACKEND_DIR / "app" / "db" / "schema.py",
 	]
 	for path in view_definitions:
 		text = path.read_text()
