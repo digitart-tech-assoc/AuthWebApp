@@ -10,6 +10,7 @@
 
 * **認可レベル**: `Public`（未認証でアクセス可能）
 * **制限事項**: `form_type == "prospective-student"` の場合、受付期間（毎年2月1日～4月5日）外は `403 Forbidden` を返します。
+* **レート制限**: クライアント IP ごとに 3 回 / 10 分（[README](../README.md#レート制限)）。
 * **リクエストボディ**:
 ```json
 {
@@ -45,6 +46,7 @@
   * `form_type == "prospective-student"` で `metadata.year` が整数でない、または存在しない（`"metadata.year is required for prospective-student"`）。
 * `403 Forbidden`: `form_type == "prospective-student"` で受付期間外の場合。
 * `409 Conflict`: 同じメールアドレスで処理中・完了済みの申請がある場合（`"Email already registered"`）。
+* `429 Too Many Requests`: レート制限の上限に達した場合（`"Too many requests. Please try again later."`）。申請の作成・メール送信は行わない。`Retry-After` ヘッダーに待ち秒数が入る。
 * `500 Internal Server Error`: OTP メールの送信に失敗した場合（`"Failed to send OTP email"`）、またはその他の処理に失敗した場合（`"Internal server error"`）。
 
 エラーレスポンスの `detail` には固定文言のみを返し、例外メッセージやメール送信 API の応答本文は含めません（詳細は Backend のログに出します。[logging-and-errors.md](../../logging-and-errors.md)）。
