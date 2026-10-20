@@ -6,10 +6,12 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
+from app.core.config import CONTACT_RATE_LIMIT, CONTACT_RATE_WINDOW_SECONDS
 from app.core.errors import log_exception_without_message
+from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit, get_client_ip
 from app.services.discord_client import send_message_to_channel
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/contact", tags=["contact"])
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN", "")
 CONTACT_CHANNEL_ID = os.getenv("CONTACT_CHANNEL_ID", "1333116246006431816")
+# 公開エンドポイントからの Discord チャンネルへのスパム投稿を防ぐ（#82）。IP 単位
+_contact_limiter = SlidingWindowRateLimiter(CONTACT_RATE_LIMIT, CONTACT_RATE_WINDOW_SECONDS)
 
 
 class ContactRequest(BaseModel):
@@ -28,11 +32,12 @@ class ContactRequest(BaseModel):
 
 
 @router.post("/submit")
-async def submit_contact(request: ContactRequest) -> dict:
+async def submit_contact(request: ContactRequest, http_request: Request) -> dict:
 	"""お問い合わせフォーム送信
 	
 	Args:
 		request: お問い合わせ内容
+		http_request: クライアント IP の取得に使う
 	
 	Returns:
 		送信結果
@@ -42,6 +47,8 @@ async def submit_contact(request: ContactRequest) -> dict:
 	
 	if not CONTACT_CHANNEL_ID:
 		raise HTTPException(status_code=500, detail="Contact channel ID is not configured")
+
+	await enforce_rate_limit(_contact_limiter, f"ip:{get_client_ip(http_request)}", "contact submit")
 	
 	# Discord embed を作成
 	embed = {

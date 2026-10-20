@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.api.v1 import student as student_api
 from app.core.exceptions import RegistrationNotEligibleError
+from tests.request_factory import make_request
 
 INELIGIBLE_CASES = [
 	pytest.param(False, True, id="not-pre-member"),
@@ -47,6 +48,7 @@ async def test_send_otp_rejects_ineligible_user(monkeypatch, is_pre_member, is_p
 	with pytest.raises(HTTPException) as error:
 		await student_api.send_otp(
 			student_api.SendOTPRequest(student_number="1A234567", name="テスト 太郎"),
+			request=make_request(),
 			principal=PRINCIPAL,
 		)
 

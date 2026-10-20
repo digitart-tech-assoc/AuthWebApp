@@ -19,6 +19,7 @@ from app.api.v1 import members as members_api
 from app.core import auth
 from app.core.errors import describe_exception, log_exception_without_message
 from app.services.discord_client import DiscordAPIError
+from tests.request_factory import make_request
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 # レスポンスを組み立てる API 層
@@ -117,7 +118,8 @@ async def test_join_request_conflict_does_not_return_email(monkeypatch):
 
 	with pytest.raises(HTTPException) as error:
 		await join_api.request_otp(
-			join_api.JoinRequestCreate(email=email, confirm_email=email, name="テスト 太郎", form_type="other")
+			join_api.JoinRequestCreate(email=email, confirm_email=email, name="テスト 太郎", form_type="other"),
+			make_request(),
 		)
 
 	assert error.value.status_code == 409
@@ -138,7 +140,8 @@ async def test_join_request_send_failure_does_not_return_brevo_body(monkeypatch)
 
 	with pytest.raises(HTTPException) as error:
 		await join_api.request_otp(
-			join_api.JoinRequestCreate(email=email, confirm_email=email, name="テスト 太郎", form_type="other")
+			join_api.JoinRequestCreate(email=email, confirm_email=email, name="テスト 太郎", form_type="other"),
+			make_request(),
 		)
 
 	# 送信失敗の 500 が、汎用の except で包み直されずにそのまま返ること

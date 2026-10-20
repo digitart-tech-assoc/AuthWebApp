@@ -7,11 +7,13 @@ import logging
 import os
 import traceback
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
+from app.core.config import OTP_SEND_RATE_LIMIT, OTP_SEND_RATE_WINDOW_SECONDS
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError
+from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit, get_client_ip
 from app.db import repository
 from app.services.brevo_client import BrevoClient
 from app.services.discord_client import create_channel_invite
@@ -20,6 +22,9 @@ from app.utils.otp import generate_otp_code, hash_otp_code
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/join", tags=["join"])
+
+# OTP メール送信の連打による Brevo クレジットの枯渇を防ぐ（#82）。公開エンドポイントのため IP 単位
+_request_limiter = SlidingWindowRateLimiter(OTP_SEND_RATE_LIMIT, OTP_SEND_RATE_WINDOW_SECONDS)
 
 
 # ==================== Request Models ====================
@@ -61,7 +66,7 @@ class JoinVerifyResponse(BaseModel):
 # ==================== Endpoints ====================
 
 @router.post("/request", response_model=JoinRequestResponse)
-async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
+async def request_otp(req: JoinRequestCreate, request: Request) -> JoinRequestResponse:
 	"""OTP送信エンドポイント
 	
 	1. 入学見込みフォームの受け付け期間チェック（form_type=prospective-studentの場合）
@@ -86,6 +91,8 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 			raise HTTPException(status_code=400, detail="metadata.year is required for prospective-student")
 
 	# メールアドレス形式チェック（Pydantic EmailStr で既に検証）
+
+	await enforce_rate_limit(_request_limiter, f"ip:{get_client_ip(request)}", "join request")
 
 	try:
 		# Join request 作成

@@ -7,6 +7,7 @@ from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.core.exceptions import OTPTooManyAttemptsError
 from app.db.student_repository import OTPVerificationResult
+from tests.request_factory import make_request
 
 
 @pytest.fixture
@@ -123,7 +124,8 @@ async def test_join_request_passes_form_metadata_to_repository(monkeypatch, form
 			name="テスト 太郎",
 			form_type=form_type,
 			metadata=metadata,
-		)
+		),
+		make_request(),
 	)
 
 	assert saved["form_type"] == form_type
@@ -152,7 +154,8 @@ async def test_prospective_join_request_requires_integer_year(monkeypatch, metad
 				name="テスト 太郎",
 				form_type="prospective-student",
 				metadata=metadata,
-			)
+			),
+			make_request(),
 		)
 
 	assert error.value.status_code == 400
