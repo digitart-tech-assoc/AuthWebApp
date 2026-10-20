@@ -65,7 +65,11 @@ export default function StudentProfileForm({ initialData, onSubmit, onBack, subm
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const normalizedFormData = { ...formData, phone: normalizePhoneNumber(formData.phone) };
+    const normalizedFormData = {
+      ...formData,
+      department: formData.department.trim(),
+      phone: normalizePhoneNumber(formData.phone),
+    };
     setFormData(normalizedFormData);
     if (!validate(normalizedFormData)) return;
     try {
