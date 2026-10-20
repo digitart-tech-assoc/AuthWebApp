@@ -21,8 +21,6 @@ type Props = {
   readOnly?: boolean;
   onCommit: (add: string[], remove: string[]) => void;
   onClose: () => void;
-  /** 設定時: このユーザーのみ操作可（memberモード用） */
-  selfDiscordId?: string | null;
 };
 
 type Screen = "list" | "grant" | "revoke";
@@ -37,7 +35,6 @@ const memberRowDisabledClass = `${memberRowBaseClass} cursor-default opacity-50`
 const checkboxClass = "size-4 shrink-0 cursor-pointer accent-blue-600 disabled:cursor-default";
 const memberNameClass = "min-w-0 flex-1 truncate text-sm font-medium text-slate-700";
 const badgeClass = "shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500";
-const lockedBadgeClass = "shrink-0 rounded-md bg-slate-500 px-1.5 py-0.5 text-xs text-white";
 // 一覧領域の中央に表示する（モーダルの高さは固定のため、0 件でも領域は縮まない）
 const emptyClass = "flex h-full items-center justify-center py-6 text-center text-sm text-slate-500";
 const footerClass =
@@ -78,7 +75,6 @@ export default function RoleMemberModal({
   readOnly = false,
   onCommit,
   onClose,
-  selfDiscordId = null,
 }: Props) {
   const [screen, setScreen] = useState<Screen>("list");
   // ローカルの付与済みセット（コミットするまで反映しない）
@@ -159,19 +155,18 @@ export default function RoleMemberModal({
           {filteredAll.map((m) => {
             const alreadyHas = localMemberIds.has(m.user_id);
             const checked = selectedForGrant.has(m.user_id);
-            const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
             return (
               <label
                 key={m.user_id}
-                className={alreadyHas || isSelfOnly ? memberRowDisabledClass : memberRowClass}
+                className={alreadyHas ? memberRowDisabledClass : memberRowClass}
               >
                 <input
                   type="checkbox"
                   className={checkboxClass}
-                  disabled={alreadyHas || isSelfOnly}
+                  disabled={alreadyHas}
                   checked={checked}
                   onChange={() => {
-                    if (alreadyHas || isSelfOnly) return;
+                    if (alreadyHas) return;
                     setSelectedForGrant((prev) => {
                       const next = new Set(prev);
                       if (next.has(m.user_id)) next.delete(m.user_id);
@@ -183,7 +178,6 @@ export default function RoleMemberModal({
                 <MemberAvatar member={m} />
                 <span className={memberNameClass}>{m.display_name || m.username}</span>
                 {alreadyHas && <span className={badgeClass}>付与済</span>}
-                {!alreadyHas && isSelfOnly && <span className={lockedBadgeClass}>操作不可</span>}
               </label>
             );
           })}
@@ -236,16 +230,13 @@ export default function RoleMemberModal({
           )}
           {filteredCurrent.map((m) => {
             const checked = selectedForRevoke.has(m.user_id);
-            const isSelfOnly = selfDiscordId !== null && m.user_id !== selfDiscordId;
             return (
-              <label key={m.user_id} className={isSelfOnly ? memberRowDisabledClass : memberRowClass}>
+              <label key={m.user_id} className={memberRowClass}>
                 <input
                   type="checkbox"
                   className={checkboxClass}
                   checked={checked}
-                  disabled={isSelfOnly}
                   onChange={() => {
-                    if (isSelfOnly) return;
                     setSelectedForRevoke((prev) => {
                       const next = new Set(prev);
                       if (next.has(m.user_id)) next.delete(m.user_id);
@@ -257,7 +248,6 @@ export default function RoleMemberModal({
                 <MemberAvatar member={m} />
                 <span className={memberNameClass}>{m.display_name || m.username}</span>
                 {!m.username && <span className="shrink-0 text-xs text-slate-500">{m.user_id}</span>}
-                {isSelfOnly && <span className={lockedBadgeClass}>操作不可</span>}
               </label>
             );
           })}

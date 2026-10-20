@@ -124,7 +124,6 @@ export default async function RolesPage({ searchParams }: RolesPageProps) {
 					categories={manifest.categories}
 					roles={manifest.roles}
 					accessRole={role}
-					myDiscordId={myDiscordId}
 					pushResult={pushResult}
 				/>
 			) : hasMemberPrivilege(role) ? (

@@ -28,6 +28,7 @@ import {
   btnCreate, btnDanger, btnPrimary, btnSecondary, chevron, groupCard, groupCount, groupHeader, groupName,
   statusBanner, unsavedBar, unsavedBarBtn,
 } from "./roleStyles";
+import { isAdmin } from "@/lib/permissions";
 import type { Category, Role, Member } from "@/types/roles";
 
 /** Discord 送信（push）の結果件数。送信後のリロードでクエリパラメータから復元する */
@@ -42,10 +43,12 @@ export type PushResult = {
 type Props = {
   categories: Category[];
   roles: Role[];
+  /** 閲覧者のアプリロール。admin 以外では何も表示しない */
   accessRole: string;
-  myDiscordId?: string | null;
   pushResult?: PushResult | null;
 };
+
+type AdminRoleAccordionProps = Omit<Props, "accessRole">;
 
 type Status = {
   kind: "success" | "error" | "info";
@@ -72,7 +75,17 @@ function formatPushResultMessage({ updated, created, deleted, reordered, skipped
 
 // ===== Component =====
 
-export default function RoleAccordion({ categories: initCategories, roles: initRoles, accessRole, myDiscordId = null, pushResult = null }: Props) {
+/**
+ * admin 向けのロール管理画面。
+ * /roles では admin のみ RoleAccordion を表示し、member / sub_user / obog は MemberSelfView を表示する（roles/page.tsx）。
+ * 呼び出し側の振り分けに頼らず、admin 以外には何も表示しない。
+ */
+export default function RoleAccordion({ accessRole, ...props }: Props) {
+  if (!isAdmin(accessRole)) return null;
+  return <AdminRoleAccordion {...props} />;
+}
+
+function AdminRoleAccordion({ categories: initCategories, roles: initRoles, pushResult = null }: AdminRoleAccordionProps) {
   const [query, setQuery] = useState("");
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
@@ -128,16 +141,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   const [baseRoles, setBaseRoles] = useState<Role[]>(initRoles);
   const [baseCategories, setBaseCategories] = useState<Category[]>(initCategories);
 
-  // NOTE: /roles では admin のみ RoleAccordion を表示し、member / sub_user / obog は MemberSelfView を表示する（roles/page.tsx）。
-  // そのため accessRole は常に "admin" で、以下の member / obog モード向けの分岐（isMember や「obogモード」の表示）は現在使われていない。
-  const isAdmin = accessRole === "admin";
-  const isMember = accessRole === "member";
-  const canCreateRole = ["admin", "member", "obog"].includes(accessRole);
-  const canCreateCategory = isAdmin || isMember;
-  const canManageMembers = isAdmin;
-  const canEditManifest = isAdmin || isMember;
-
-  // memberモードでロール付与を禁止するカテゴリ（is_restrictedフラグで判定）
+  // 管理者専用カテゴリ（is_restricted）。ロール作成時のカテゴリの選択肢から除く
   const restrictedCategoryIds = useMemo(
     () => new Set(localCategories.filter((c) => c.is_restricted).map((c) => c.id)),
     [localCategories]
@@ -178,7 +182,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
   }, [initRoles, initCategories, setPermTarget]);
 
   const fetchMembers = useCallback(async () => {
-    if (!isAdmin) return;
     try {
       const data = await fetchRoleMembers();
       if (data.members) setAllMembers(data.members);
@@ -190,7 +193,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     } catch (e) {
       console.error("Failed to fetch members", e);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     fetchMembers();
@@ -238,11 +241,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     if (!pendingRoles || !pendingCats) return;
     
     setShowDiffModal(false);
-    if (!canEditManifest) {
-      showStatus({ kind: "error", msg: "アクセス権限がありません。" });
-      return;
-    }
-
     setSaveState("saving");
     try {
       // 1. Calculate Diff & Build Payload
@@ -418,16 +416,7 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
     if (!confirm(`ロール「${role?.name}」を削除してもよろしいですか？`)) {
       return;
     }
-    
-    // member がロール削除する場合、割り当てられたメンバーがいないか確認
-    if (isMember) {
-      const assignedMembers = membersByRole[roleId] || [];
-      if (assignedMembers.length > 0) {
-        showStatus({ kind: "error", msg: `ロール削除失敗: このロールに${assignedMembers.length}人のメンバーが割り当てられています。先にメンバーを解除してください。` });
-        return;
-      }
-    }
-    
+
     setAllRoles((prev) => prev.filter((r) => r.role_id !== roleId));
     setHasUnsaved(true);
     setSaveState("idle");
@@ -544,28 +533,21 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           />
         </div>
         {/* PushButton は executeSave() 内で自動呼出しされるため非表示 */}
-        {canCreateRole ? (
-          <button type="button" className={btnCreate} onClick={() => setShowNewRole(true)}>
-            + ロール作成
-          </button>
-        ) : null}
+        <button type="button" className={btnCreate} onClick={() => setShowNewRole(true)}>
+          + ロール作成
+        </button>
         <button
           type="button"
           className={isSelectMode ? btnDanger : btnSecondary}
           onClick={toggleSelectMode}
-          disabled={!canCreateCategory}
-          title={canCreateCategory ? "カテゴリ作成" : "カテゴリ作成は admin/member のみ可能"}
+          title="カテゴリ作成"
         >
           {isSelectMode ? "戻る" : "⊙ カテゴリ作成"}
         </button>
       </div>
 
       <div className={statusBanner("info")}>
-        {isAdmin
-          ? "adminモード: すべての管理操作が有効です。"
-          : isMember
-          ? "memberモード: ロール・カテゴリの作成および自分へのロール付与ができます。会員全体のロール管理は無効です。"
-          : "obogモード: ロール作成のみ可能です。"}
+        adminモード: すべての管理操作が有効です。
       </div>
 
       {/* Category creation selection bar */}
@@ -582,17 +564,15 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             onChange={(e) => setNewCategoryName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") createCategory(); }}
           />
-          {isAdmin && (
-            <label className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap text-sm">
-              <input
-                type="checkbox"
-                className="size-4 cursor-pointer accent-blue-600"
-                checked={newCategoryRestricted}
-                onChange={(e) => setNewCategoryRestricted(e.target.checked)}
-              />
-              管理者専用
-            </label>
-          )}
+          <label className="flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap text-sm">
+            <input
+              type="checkbox"
+              className="size-4 cursor-pointer accent-blue-600"
+              checked={newCategoryRestricted}
+              onChange={(e) => setNewCategoryRestricted(e.target.checked)}
+            />
+            管理者専用
+          </label>
           <button type="button" className={btnPrimary} onClick={createCategory}
             disabled={!newCategoryName.trim()}>
             作成
@@ -613,17 +593,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
             {localCategories.map((cat) => {
               const catRoles = filteredRoles.filter((r) => r.category_id === cat.id);
               const isOpen = !collapsedIds.has(cat.id);
-              const isRestrictedCat = cat.is_restricted;
-              const memberCanManageCat = isMember && !isRestrictedCat;
               return (
                 <SortableCategoryItem
                   key={cat.id}
                   cat={cat}
                   catRoles={catRoles}
                   isOpen={isOpen}
-                  memberCanManageCat={memberCanManageCat}
-                  isAdmin={isAdmin}
-                  isMember={isMember}
                   isSelectMode={isSelectMode}
                   selectedRoleIds={selectedRoleIds}
                   botPosition={botPosition}
@@ -631,20 +606,12 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
                   onOpenCategoryPermissions={openCategoryPermissions}
                   onDeleteCategory={deleteCategory}
                   onToggleSelect={toggleSelectRole}
-                  onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
-                  onOpenRolePermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
-                  onDeleteRole={!isSelectMode && (isAdmin || memberCanManageCat) ? deleteRole : undefined}
-                  onOpenMemberModal={
-                    !isSelectMode
-                      ? isAdmin || memberCanManageCat
-                        ? openMemberModal
-                        : isMember
-                        ? openMemberModalReadOnly
-                        : undefined
-                      : undefined
-                  }
-                  onEditRole={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
-                  onEditCategory={!isSelectMode && isAdmin ? setEditingCategory : undefined}
+                  onReorder={!isSelectMode ? reorderGroup : undefined}
+                  onOpenRolePermissions={!isSelectMode ? openRolePermissions : undefined}
+                  onDeleteRole={!isSelectMode ? deleteRole : undefined}
+                  onOpenMemberModal={!isSelectMode ? openMemberModal : undefined}
+                  onEditRole={!isSelectMode ? openEditRoleModal : undefined}
+                  onEditCategory={!isSelectMode ? setEditingCategory : undefined}
                 />
               );
             })}
@@ -673,15 +640,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
               showHeader={false}
               selectedIds={isSelectMode ? selectedRoleIds : undefined}
               onToggleSelect={isSelectMode ? toggleSelectRole : undefined}
-              onReorder={!isSelectMode && isAdmin ? reorderGroup : undefined}
-              onPermissions={!isSelectMode && isAdmin ? openRolePermissions : undefined}
-              onDelete={!isSelectMode && isAdmin ? deleteRole : undefined}
-              onMembers={
-                !isSelectMode && (isAdmin || isMember)
-                  ? openMemberModalReadOnly
-                  : undefined
-              }
-              onEdit={!isSelectMode && isAdmin ? openEditRoleModal : undefined}
+              onReorder={!isSelectMode ? reorderGroup : undefined}
+              onPermissions={!isSelectMode ? openRolePermissions : undefined}
+              onDelete={!isSelectMode ? deleteRole : undefined}
+              onMembers={!isSelectMode ? openMemberModalReadOnly : undefined}
+              onEdit={!isSelectMode ? openEditRoleModal : undefined}
               botPosition={botPosition}
             />
           )}
@@ -695,10 +658,10 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           <button
             type="button"
             className={unsavedBarBtn}
-            disabled={saveState === "saving" || !canEditManifest}
+            disabled={saveState === "saving"}
             onClick={() => persistRoles(allRoles, localCategories)}
           >
-            {saveState === "saving" ? "処理中..." : canEditManifest ? "変更を確定" : "操作不可"}
+            {saveState === "saving" ? "処理中..." : "変更を確定"}
           </button>
         </div>
       )}
@@ -720,7 +683,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           botPermissions={botPermissions}
           onSaved={handleRoleSaved}
           onClose={() => { setShowNewRole(false); setEditingRole(null); }}
-          isMember={isMember}
           restrictedCategoryIds={restrictedCategoryIds}
           editingRole={editingRole}
         />
@@ -730,7 +692,6 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
       {editingCategory && (
         <EditCategoryModal
           category={editingCategory}
-          isAdmin={isAdmin}
           onSaved={handleEditCategorySaved}
           onClose={() => setEditingCategory(null)}
         />
@@ -747,18 +708,11 @@ export default function RoleAccordion({ categories: initCategories, roles: initR
           onClose={() => setMemberModalRole(null)}
           isLocked={botPosition !== undefined && memberModalRole.position >= botPosition}
           readOnly={memberModalReadOnly}
-          selfDiscordId={(!memberModalReadOnly && isMember) ? myDiscordId : null}
         />
       )}
 
       {/* Members management panel */}
-      {canManageMembers ? (
-        <MembersPanel />
-      ) : (
-        <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3.5 text-sm text-slate-500">
-          会員情報カテゴリの操作・会員管理は admin のみ利用できます。
-        </div>
-      )}
+      <MembersPanel />
 
       {/* Diff confirmation modal */}
       {showDiffModal && diffData && (
