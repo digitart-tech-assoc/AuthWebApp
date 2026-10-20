@@ -280,7 +280,7 @@ CREATE TABLE pre_member_removal_log (
 4. **マイグレーション運用**:
    - スキーマ変更時は Alembic マイグレーションスクリプトを作成し、ローカル検証後に CI で整合性を確認してください。
 5. **Row Level Security（RLS）**:
-   - anon キーはブラウザに公開され PostgREST 経由で `public` スキーマにアクセスできるため、`public` の全テーブルで RLS を有効にします（`0006_enable_row_level_security`）。
+   - anon キーはブラウザに公開され PostgREST 経由で `public` スキーマにアクセスできるため、`public` の全テーブルで RLS を有効にします（`0006_enable_row_level_security` が `public` の全テーブルを対象に実行）。
    - Backend は所有者ロールで接続するため RLS の影響を受けません（`FORCE ROW LEVEL SECURITY` は付けない）。
    - テーブルを追加するときは、同じマイグレーション内で `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY` を実行してください。ビューを追加するときは `security_invoker = on` を指定してください。
 

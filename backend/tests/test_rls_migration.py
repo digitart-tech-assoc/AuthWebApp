@@ -29,14 +29,16 @@ class _RecordingOp:
 		self.statements.append(sql)
 
 
-def test_upgrade_enables_rls_on_all_tables_and_view(monkeypatch):
+def test_upgrade_enables_rls_on_all_public_tables_and_view(monkeypatch):
 	recorder = _RecordingOp()
 	migration = _load_rls_migration(monkeypatch, recorder)
 
 	migration.upgrade()
 
-	for table in migration.RLS_TABLES:
-		assert f"ALTER TABLE IF EXISTS {table} ENABLE ROW LEVEL SECURITY" in recorder.statements
+	assert migration.ENABLE_RLS_ON_PUBLIC_TABLES in recorder.statements
+	assert "FROM pg_tables WHERE schemaname = 'public'" in migration.ENABLE_RLS_ON_PUBLIC_TABLES
+	assert "ENABLE ROW LEVEL SECURITY" in migration.ENABLE_RLS_ON_PUBLIC_TABLES
+	assert "FORCE" not in migration.ENABLE_RLS_ON_PUBLIC_TABLES
 	assert "ALTER VIEW IF EXISTS v_users_with_app_role SET (security_invoker = on)" in recorder.statements
 
 
@@ -47,16 +49,6 @@ def test_downgrade_does_not_disable_rls(monkeypatch):
 	migration.downgrade()
 
 	assert not any("DISABLE ROW LEVEL SECURITY" in sql for sql in recorder.statements)
-
-
-def test_tables_created_by_migrations_are_covered_by_rls(monkeypatch):
-	migration = _load_rls_migration(monkeypatch, _RecordingOp())
-	created_tables = set()
-	for path in VERSIONS_DIR.glob("*.py"):
-		created_tables.update(re.findall(r"op\.create_table\(\s*[\"']([a-z_]+)[\"']", path.read_text()))
-
-	assert created_tables
-	assert created_tables <= set(migration.RLS_TABLES)
 
 
 def test_view_definitions_use_security_invoker():
