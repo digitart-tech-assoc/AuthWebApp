@@ -47,6 +47,7 @@ const REQUEST_OTP_ERROR_MESSAGES: StatusMessages = {
   403: PROSPECTIVE_FORM_CLOSED_MESSAGE,
   409: "このメールアドレスはすでに申請されています。",
   422: "入力内容を確認してください。",
+  429: "送信回数の上限に達しました。しばらく時間をおいてから再度お試しください。",
   default: "認証コードの送信に失敗しました。時間をおいて再度お試しください。",
 };
 
