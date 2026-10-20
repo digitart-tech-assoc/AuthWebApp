@@ -42,7 +42,8 @@ try:
         if not view_exists:
             print("SQL VIEW v_users_with_app_role を作成中...")
             cur.execute("""
-            CREATE OR REPLACE VIEW v_users_with_app_role AS
+            CREATE OR REPLACE VIEW v_users_with_app_role
+            WITH (security_invoker = on) AS
             SELECT 
                 u.id,
                 u.user_id,
