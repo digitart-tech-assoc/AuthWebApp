@@ -32,6 +32,23 @@ OTP_LOCK_TIMEOUT_MS: int = 3000
 
 
 # ============================================================================
+# 外部サービスへの送信を起こすエンドポイントのレート制限（#82）
+# ============================================================================
+# 学生 OTP 送信: discord_id ごとに窓の秒数あたり最大回数
+OTP_SEND_RATE_LIMIT: int = 3
+OTP_SEND_RATE_WINDOW_SECONDS: int = 600
+# 入会申請（OTP メール送信）: IP ごとに窓の秒数あたり最大回数
+JOIN_REQUEST_RATE_LIMIT: int = 5
+JOIN_REQUEST_RATE_WINDOW_SECONDS: int = 600
+# 大学のネットワークからの入会申請の上限。学内 Wi-Fi は多くの利用者が同じグローバル IP を共有するため大幅に緩める
+JOIN_REQUEST_RELAXED_RATE_LIMIT: int = 50
+RATE_LIMIT_RELAXED_NETWORKS: tuple[str, ...] = ("133.2.0.0/16",)
+# お問い合わせ送信（Discord チャンネルへの投稿）: IP ごとに窓の秒数あたり最大回数
+CONTACT_RATE_LIMIT: int = 5
+CONTACT_RATE_WINDOW_SECONDS: int = 3600
+
+
+# ============================================================================
 # HTTP クライアントタイムアウト (秒)
 # ============================================================================
 DISCORD_API_TIMEOUT: float = 10.0

@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import traceback
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
+from app.core.config import (
+	JOIN_REQUEST_RATE_LIMIT,
+	JOIN_REQUEST_RATE_WINDOW_SECONDS,
+	JOIN_REQUEST_RELAXED_RATE_LIMIT,
+	RATE_LIMIT_RELAXED_NETWORKS,
+)
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError
+from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit, get_client_ip, is_in_networks
 from app.db import repository
 from app.services.brevo_client import BrevoClient
 from app.services.discord_client import create_channel_invite
@@ -20,6 +28,12 @@ from app.utils.otp import generate_otp_code, hash_otp_code
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/join", tags=["join"])
+
+# OTP メール送信の連打による Brevo クレジットの枯渇を防ぐ（#82）。公開エンドポイントのため IP 単位。
+# 大学のネットワークからは、同じ IP を多くの利用者が共有するため緩めた上限で別に数える
+_request_limiter = SlidingWindowRateLimiter(JOIN_REQUEST_RATE_LIMIT, JOIN_REQUEST_RATE_WINDOW_SECONDS)
+_relaxed_request_limiter = SlidingWindowRateLimiter(JOIN_REQUEST_RELAXED_RATE_LIMIT, JOIN_REQUEST_RATE_WINDOW_SECONDS)
+_relaxed_networks = [ipaddress.ip_network(network) for network in RATE_LIMIT_RELAXED_NETWORKS]
 
 
 # ==================== Request Models ====================
@@ -61,7 +75,7 @@ class JoinVerifyResponse(BaseModel):
 # ==================== Endpoints ====================
 
 @router.post("/request", response_model=JoinRequestResponse)
-async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
+async def request_otp(req: JoinRequestCreate, request: Request) -> JoinRequestResponse:
 	"""OTP送信エンドポイント
 	
 	1. 入学見込みフォームの受け付け期間チェック（form_type=prospective-studentの場合）
@@ -86,6 +100,10 @@ async def request_otp(req: JoinRequestCreate) -> JoinRequestResponse:
 			raise HTTPException(status_code=400, detail="metadata.year is required for prospective-student")
 
 	# メールアドレス形式チェック（Pydantic EmailStr で既に検証）
+
+	client_ip = get_client_ip(request)
+	limiter = _relaxed_request_limiter if is_in_networks(client_ip, _relaxed_networks) else _request_limiter
+	await enforce_rate_limit(limiter, f"ip:{client_ip}", "join request")
 
 	try:
 		# Join request 作成

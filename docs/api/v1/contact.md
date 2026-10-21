@@ -9,6 +9,7 @@
 問い合わせフォームの内容を受け付け、運営の Discord サーバー（環境変数 `CONTACT_CHANNEL_ID`）に Embed メッセージとして即時通知します。
 
 * **認可レベル**: `Public`（未認証でアクセス可能）
+* **レート制限**: クライアント IP ごとに 5 回 / 時間（[README](../README.md#レート制限)）。
 * **リクエストボディ**:
 ```json
 {
@@ -30,4 +31,5 @@
 ```
 
 ### エラーレスポンス
+* `429 Too Many Requests`: レート制限の上限に達した場合（`"Too many requests. Please try again later."`）。Discord への送信は行わない。`Retry-After` ヘッダーに待ち秒数が入る。
 * `500 Internal Server Error`: Discord Bot のトークン未設定、またはチャンネル送信失敗時。

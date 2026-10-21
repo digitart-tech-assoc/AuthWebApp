@@ -70,6 +70,7 @@ const SEND_OTP_ERROR_MESSAGES: StatusMessages = {
   401: NOT_AUTHENTICATED_MESSAGE,
   403: NOT_ELIGIBLE_MESSAGE,
   422: "入力内容を確認してください。",
+  429: "送信回数の上限に達しました。しばらく時間をおいてから再度お試しください。",
   default: "認証コードの送信に失敗しました。時間をおいて再度お試しください。",
 };
 

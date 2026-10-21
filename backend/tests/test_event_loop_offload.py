@@ -9,6 +9,7 @@ from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.api.v1 import survey as survey_api
 from app.db.student_repository import OTPVerificationResult
+from tests.request_factory import make_request
 
 PRINCIPAL = {"discord_id": "test-discord-id"}
 
@@ -89,7 +90,7 @@ async def test_join_request_offloads_db_and_hash(monkeypatch, recorder):
 	monkeypatch.setattr(join_api.repository, "create_otp_code", recorder.fake("create_otp_code"))
 	monkeypatch.setattr(join_api, "BrevoClient", FakeBrevoClient)
 
-	response = await join_api.request_otp(_join_request())
+	response = await join_api.request_otp(_join_request(), make_request())
 
 	assert response.id == "request-id"
 	recorder.assert_offloaded(
@@ -107,7 +108,7 @@ async def test_join_request_returns_409_when_duplicated(monkeypatch, recorder):
 	)
 
 	with pytest.raises(HTTPException) as error:
-		await join_api.request_otp(_join_request())
+		await join_api.request_otp(_join_request(), make_request())
 
 	assert error.value.status_code == 409
 	recorder.assert_offloaded(threading.get_ident(), ["create_join_request"])
