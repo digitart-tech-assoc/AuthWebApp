@@ -275,6 +275,35 @@ def init_db() -> None:
                     CREATE INDEX IF NOT EXISTS idx_otp_codes_expires_at ON otp_codes (expires_at);
                     """
                 )
+                # ロール定義・割り当ての変更履歴（Alembic 0007 と同じ定義）
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS role_audit_logs (
+                        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+                        occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        request_id TEXT NOT NULL,
+                        operation TEXT NOT NULL,
+                        system TEXT NOT NULL CHECK (system IN ('db', 'discord')),
+                        target_type TEXT NOT NULL,
+                        target_id TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        before JSONB,
+                        after JSONB,
+                        actor_sub TEXT,
+                        actor_discord_id TEXT
+                    );
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_role_audit_logs_target ON role_audit_logs (target_type, target_id, occurred_at DESC);
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DESC);
+                    """
+                )
                 conn.commit()
     except Exception as e:
         print(f"WARNING: init_db failed: {e}", file=sys.stderr)
