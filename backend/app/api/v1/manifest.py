@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_admin, require_member
+from app.db.audit_repository import OP_MANIFEST_PATCH, OP_MANIFEST_PUT, AuditContext, get_audit_context
 from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest
 
 
@@ -56,19 +57,28 @@ async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
 
 
 @router.put("/manifest", response_model=Manifest)
-async def put_manifest(payload: Manifest, _principal: dict = Depends(require_admin)) -> Manifest:
+async def put_manifest(
+	payload: Manifest,
+	_principal: dict = Depends(require_admin),
+	audit: AuditContext = Depends(get_audit_context),
+) -> Manifest:
 	"""マニフェスト保存。admin のみ許可。"""
 	await asyncio.to_thread(
 		replace_manifest,
 		[c.model_dump() for c in payload.categories],
 		[r.model_dump() for r in payload.roles],
 		payload.role_assignments,
+		audit.with_operation(OP_MANIFEST_PUT),
 	)
 	return payload
 
 
 @router.patch("/manifest")
-async def patch_manifest(payload: ManifestPatch, _principal: dict = Depends(require_admin)) -> dict:
+async def patch_manifest(
+	payload: ManifestPatch,
+	_principal: dict = Depends(require_admin),
+	audit: AuditContext = Depends(get_audit_context),
+) -> dict:
 	"""マニフェスト差分保存。admin のみ許可。"""
 	await asyncio.to_thread(
 		patch_manifest_db,
@@ -77,5 +87,6 @@ async def patch_manifest(payload: ManifestPatch, _principal: dict = Depends(requ
 		[r.model_dump() for r in payload.upsert_roles],
 		payload.delete_role_ids,
 		payload.upsert_role_assignments,
+		audit.with_operation(OP_MANIFEST_PATCH),
 	)
 	return {"ok": True}
