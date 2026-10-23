@@ -9,7 +9,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.core.config import MEMBERSHIP_PRIORITY_SQL, MembershipType
+from app.db.audit_repository import AuditContext, insert_audit_logs
 from app.db.connection import _connect, _log_db_access
+from app.db.guild_repository import member_roles_audit_logs
 
 logger = logging.getLogger(__name__)
 
@@ -333,12 +335,13 @@ def get_pre_member_user_count() -> int:
 	return get_membership_count(MembershipType.PRE_MEMBER)
 
 
-def register_pre_member(discord_id: str, source: str | None = None) -> dict[str, Any]:
+def register_pre_member(discord_id: str, source: str | None = None, audit: AuditContext | None = None) -> dict[str, Any]:
 	"""新しい参加者を user_memberships (pre_member) に登録.
 	
 	Args:
 		discord_id: Discord user ID
 		source: 登録ソース (デフォルト: None)
+		audit: 渡すと、ロール割り当てを実際に追加したときに同じトランザクションで監査ログに記録する
 		
 	Returns:
 		{"discord_id": "...", "created": True/False}
@@ -393,6 +396,8 @@ def register_pre_member(discord_id: str, source: str | None = None) -> dict[str,
 					(pre_member_role_id, discord_id),
 				)
 				role_assignment_created = cur.rowcount > 0
+				if role_assignment_created:
+					insert_audit_logs(cur, audit, member_roles_audit_logs(discord_id, [pre_member_role_id], []))
 			else:
 				# Keep the registration itself working, but make the missing configuration visible in logs.
 				logger.warning("PRE_MEMBER_ROLE_ID is not configured; skipping role_member_assignments insert")

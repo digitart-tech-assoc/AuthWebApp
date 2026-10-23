@@ -5,9 +5,26 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.db.audit_repository import (
+	ACTION_UPDATE,
+	SYSTEM_DB,
+	TARGET_MEMBER_ROLES,
+	AuditContext,
+	AuditLog,
+	assignment_diff,
+	insert_audit_logs,
+)
 from app.db.connection import _connect
 
 logger = logging.getLogger(__name__)
+
+
+def member_roles_audit_logs(user_id: str, added: list[str], removed: list[str]) -> list[AuditLog]:
+	"""メンバー単位のロール割り当ての変更（実際に追加・削除したもの）を監査ログにする。変更がなければ空。"""
+	after = assignment_diff(added, removed)
+	if after is None:
+		return []
+	return [AuditLog(SYSTEM_DB, TARGET_MEMBER_ROLES, user_id, ACTION_UPDATE, None, after)]
 
 
 def save_guild_members(members: list[dict[str, Any]]) -> None:
@@ -81,50 +98,67 @@ def save_role_assignments(assignments: dict[str, list[str]]) -> None:
 	)
 
 
-def add_user_to_role(user_id: str, role_id: str) -> None:
-	"""特定ユーザーをロールに追加する（重複チェック付き）。"""
+def add_user_to_role(user_id: str, role_id: str, audit: AuditContext | None = None) -> None:
+	"""特定ユーザーをロールに追加する（重複チェック付き）。実際に追加したときだけ監査ログに記録する。"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
 				"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 				(role_id, user_id),
 			)
+			if cur.rowcount > 0:
+				insert_audit_logs(cur, audit, member_roles_audit_logs(user_id, [role_id], []))
 			conn.commit()
 
 
-def remove_user_from_role(user_id: str, role_id: str) -> None:
-	"""特定ユーザーをロールから削除する。"""
+def remove_user_from_role(user_id: str, role_id: str, audit: AuditContext | None = None) -> None:
+	"""特定ユーザーをロールから削除する。実際に削除したときだけ監査ログに記録する。"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			cur.execute(
 				"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
 				(role_id, user_id),
 			)
+			if cur.rowcount > 0:
+				insert_audit_logs(cur, audit, member_roles_audit_logs(user_id, [], [role_id]))
 			conn.commit()
 
 
-def batch_update_user_roles(user_id: str, roles_to_add: list[str], roles_to_remove: list[str]) -> None:
+def batch_update_user_roles(
+	user_id: str,
+	roles_to_add: list[str],
+	roles_to_remove: list[str],
+	audit: AuditContext | None = None,
+) -> None:
 	"""1ユーザーのロール割り当てを一括で追加/削除する（1トランザクション）。
 
 	Args:
 		user_id:        対象ユーザーの Discord ID
 		roles_to_add:   追加するロール ID リスト
 		roles_to_remove: 削除するロール ID リスト
+		audit:          渡すと、実際に追加・削除したロールを同じトランザクションで監査ログに記録する
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			# 同一ユーザーのDB更新を同時に行う処理間で直列化する。
 			cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"self-role:{user_id}",))
+			added: list[str] = []
+			removed: list[str] = []
 			for role_id in roles_to_remove:
 				cur.execute(
 					"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
 					(role_id, user_id),
 				)
+				if cur.rowcount > 0:
+					removed.append(role_id)
 			for role_id in roles_to_add:
 				cur.execute(
 					"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 					(role_id, user_id),
 				)
+				if cur.rowcount > 0:
+					added.append(role_id)
+			insert_audit_logs(cur, audit, member_roles_audit_logs(user_id, added, removed))
 		conn.commit()
 		logger.info(
 			"batch_update_user_roles: added=%s removed=%s",

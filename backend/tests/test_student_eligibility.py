@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.api.v1 import student as student_api
 from app.core.exceptions import RegistrationNotEligibleError
+from tests.request_factory import TEST_AUDIT
 
 INELIGIBLE_CASES = [
 	pytest.param(False, True, id="not-pre-member"),
@@ -68,6 +69,7 @@ async def test_verify_otp_rejects_ineligible_user(monkeypatch, is_pre_member, is
 		await student_api.verify_otp(
 			student_api.VerifyOTPRequest(code="000000"),
 			principal=PRINCIPAL,
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 403
@@ -93,6 +95,7 @@ async def test_create_profile_rejects_ineligible_user(monkeypatch, is_pre_member
 		await student_api.create_student_profile(
 			_profile_request(),
 			principal={**PRINCIPAL, "app_role": "none"},
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 403
@@ -112,6 +115,7 @@ async def test_create_profile_requires_verified_otp_for_eligible_user(monkeypatc
 		await student_api.create_student_profile(
 			_profile_request(),
 			principal={**PRINCIPAL, "app_role": "pre_member"},
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 400
@@ -137,6 +141,7 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	response = await student_api.create_student_profile(
 		_profile_request(),
 		principal={**PRINCIPAL, "app_role": "pre_member"},
+		audit=TEST_AUDIT,
 	)
 
 	assert response.profile_id == "prof_test"
@@ -167,6 +172,7 @@ async def test_create_profile_allows_registered_user_update(monkeypatch, app_rol
 	response = await student_api.create_student_profile(
 		_profile_request(),
 		principal={**PRINCIPAL, "app_role": app_role},
+		audit=TEST_AUDIT,
 	)
 
 	assert response.profile_id == "prof_test"
@@ -200,6 +206,7 @@ async def test_create_profile_returns_403_when_eligibility_lost_before_promotion
 		await student_api.create_student_profile(
 			_profile_request(),
 			principal={**PRINCIPAL, "app_role": "pre_member"},
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 403

@@ -9,7 +9,9 @@ from typing import Any
 
 from app.core.config import OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
+from app.db.audit_repository import AuditContext, insert_audit_logs
 from app.db.connection import _connect, _log_db_access, limit_lock_wait
+from app.db.guild_repository import member_roles_audit_logs
 from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
@@ -120,6 +122,7 @@ def upsert_student_profile_and_promote(
 	email_aoyama: str,
 	member_role_ids: list[str],
 	require_eligibility: bool = True,
+	audit: AuditContext | None = None,
 ) -> str:
 	"""学生プロフィールを保存し、pre_memberからmemberへ昇格、ロール割り当てを追加する。
 
@@ -200,6 +203,7 @@ def upsert_student_profile_and_promote(
 				(discord_id,),
 			)
 
+			added_role_ids: list[str] = []
 			for role_id in member_role_ids:
 				cur.execute(
 					"""
@@ -209,6 +213,9 @@ def upsert_student_profile_and_promote(
 					""",
 					(role_id, discord_id),
 				)
+				if cur.rowcount > 0:
+					added_role_ids.append(role_id)
+			insert_audit_logs(cur, audit, member_roles_audit_logs(discord_id, added_role_ids, []))
 
 			conn.commit()
 			return final_profile_id

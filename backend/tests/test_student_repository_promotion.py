@@ -4,12 +4,15 @@ import pytest
 
 from app.core.exceptions import RegistrationNotEligibleError
 from app.db import student_repository
+from app.db.audit_repository import AuditContext
 
 
 class _FakeCursor:
 	def __init__(self, conn):
 		self._conn = conn
 		self._result = None
+		# psycopg2 のカーソルと同じく、直前の文で変わった行数を持つ（INSERT は常に1行追加したとみなす）
+		self.rowcount = 0
 
 	def __enter__(self):
 		return self
@@ -20,6 +23,7 @@ class _FakeCursor:
 	def execute(self, sql, params=None):
 		normalized = " ".join(sql.split())
 		self._conn.executed.append(normalized)
+		self.rowcount = 1 if normalized.startswith("INSERT") else 0
 		if "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
 			self._result = (1,) if self._conn.is_pre_member else None
 		elif "FROM paid_invitations" in normalized:
@@ -55,7 +59,7 @@ class _FakeConnection:
 		self.committed = True
 
 
-def _promote(require_eligibility: bool = True) -> str:
+def _promote(require_eligibility: bool = True, audit: AuditContext | None = None) -> str:
 	return student_repository.upsert_student_profile_and_promote(
 		profile_id="prof_test",
 		discord_id="test-discord-id",
@@ -68,6 +72,7 @@ def _promote(require_eligibility: bool = True) -> str:
 		email_aoyama="aa234567@aoyama.ac.jp",
 		member_role_ids=["member-role"],
 		require_eligibility=require_eligibility,
+		audit=audit,
 	)
 
 
@@ -115,3 +120,24 @@ def test_promotion_skips_eligibility_check_for_registered_user(monkeypatch):
 
 	assert not any("FROM paid_invitations" in sql for sql in conn.executed)
 	assert conn.committed
+
+
+def test_promotion_records_role_assignment_in_same_transaction(monkeypatch):
+	conn = _FakeConnection(is_pre_member=False, is_paid=False)
+	monkeypatch.setattr(student_repository, "_connect", lambda: conn)
+
+	_promote(require_eligibility=False, audit=AuditContext("req-1", "sub-1", "test-discord-id", "student_profile"))
+
+	writes = _writes(conn)
+	assignment_index = next(i for i, sql in enumerate(writes) if sql.startswith("INSERT INTO role_member_assignments"))
+	assert writes[assignment_index + 1].startswith("INSERT INTO role_audit_logs")
+	assert conn.committed
+
+
+def test_promotion_without_audit_context_records_nothing(monkeypatch):
+	conn = _FakeConnection(is_pre_member=False, is_paid=False)
+	monkeypatch.setattr(student_repository, "_connect", lambda: conn)
+
+	_promote(require_eligibility=False)
+
+	assert not any("role_audit_logs" in sql for sql in conn.executed)

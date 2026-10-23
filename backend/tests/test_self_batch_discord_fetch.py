@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from app.api.v1 import roles as roles_api
 from app.services import discord_client
+from tests.request_factory import TEST_AUDIT
 
 PRINCIPAL = {"discord_id": "user-456", "app_role": "member"}
 MANIFEST = {
@@ -108,7 +109,7 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "fetch_bot_guild_member", new=fake_fetch_bot_member), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			result = await roles_api.self_batch_roles(
-				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
+				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT
 			)
 
 		assert result["ok"] is True
@@ -121,7 +122,7 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": []}), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			with pytest.raises(HTTPException) as error:
-				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL)
+				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT)
 
 		assert error.value.status_code == 502
 		assert "fetch roles" in error.value.detail
@@ -133,7 +134,7 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, side_effect=Exception("member down")), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			with pytest.raises(HTTPException) as error:
-				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL)
+				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT)
 
 		assert error.value.status_code == 502
 		assert "fetch member" in error.value.detail
@@ -150,7 +151,7 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, side_effect=Exception("member down")), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			with pytest.raises(HTTPException) as error:
-				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL)
+				await roles_api.self_batch_roles(roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT)
 
 		assert error.value.status_code == 403
 		mock_set.assert_not_awaited()
@@ -170,7 +171,7 @@ class TestSelfBatchDiscordFetch:
 			), \
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			result = await roles_api.self_batch_roles(
-				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
+				roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT
 			)
 
 		assert result["ok"] is True
@@ -184,7 +185,7 @@ class TestSelfBatchDiscordFetch:
 			patch.object(roles_api, "set_member_roles", new_callable=AsyncMock) as mock_set:
 			with pytest.raises(HTTPException) as error:
 				await roles_api.self_batch_roles(
-					roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL
+					roles_api.SelfBatchPayload(roles_to_add=["role-x"]), PRINCIPAL, audit=TEST_AUDIT
 				)
 
 		assert error.value.status_code == 403

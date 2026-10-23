@@ -18,8 +18,10 @@ from app.db.audit_repository import (
 	ACTION_CREATE,
 	ACTION_DELETE,
 	ACTION_REORDER,
+	ACTION_ROLLBACK,
 	ACTION_UPDATE,
 	OP_PUSH,
+	OP_SELF_BATCH,
 	SYSTEM_DISCORD,
 	TARGET_MEMBER_ROLES,
 	TARGET_ROLE,
@@ -785,6 +787,7 @@ def _unwrap_discord_fetch(result: object, label: str):
 async def self_batch_roles(
 	payload: SelfBatchPayload,
 	_principal: dict = Depends(require_member),
+	audit: AuditContext = Depends(get_audit_context),
 ) -> dict:
 	"""memberが自分自身のロールを一括で付与・解除する。
 
@@ -793,7 +796,9 @@ async def self_batch_roles(
 	3. Discord の PATCH /members/{user_id} で1回の API 呼び出しで一括更新
 	4. DB を一括更新
 	5. Discord 更新後に DB 更新が失敗した場合はロールバック
+	Discord・DB の変更と、Discord のロールバックを監査ログに記録する。
 	"""
+	audit = audit.with_operation(OP_SELF_BATCH)
 	roles_to_add = set(payload.roles_to_add)
 	roles_to_remove = set(payload.roles_to_remove)
 	conflicting_role_ids = roles_to_add & roles_to_remove
@@ -892,6 +897,7 @@ async def self_batch_roles(
 	except Exception as exc:
 		logger.warning("Discord API call failed (update member roles)", exc_info=True)
 		raise HTTPException(status_code=502, detail="Discord API error (update member roles)") from exc
+	await _record_member_roles(audit, discord_id, set(actually_added), set(actually_removed))
 
 	# --- 5. DB 一括更新 ---
 	try:
@@ -900,6 +906,7 @@ async def self_batch_roles(
 			discord_id,
 			list(roles_to_add),
 			list(roles_to_remove),
+			audit,
 		)
 	except Exception as exc:
 		logger.error(
@@ -911,6 +918,9 @@ async def self_batch_roles(
 		try:
 			await set_member_roles(DISCORD_GUILD_ID, discord_id, list(current_role_ids), token)
 			rollback_succeeded = True
+			await _record_member_roles(
+				audit, discord_id, set(actually_removed), set(actually_added), ACTION_ROLLBACK,
+			)
 			logger.info(
 				"Compensating rollback succeeded for user=%s", _principal.get("sub")
 			)

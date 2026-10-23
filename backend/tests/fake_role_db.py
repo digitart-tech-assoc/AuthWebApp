@@ -1,5 +1,5 @@
 """ロール関連テーブル（role_categories / role_manifests / role_member_assignments / role_audit_logs）の
-インメモリの代替。リポジトリ関数が発行する SQL だけを解釈する。
+インメモリの代替（user_memberships は register_pre_member が新規登録として進む分だけ）。リポジトリ関数が発行する SQL だけを解釈する。
 
 _connect() の代わりに使い、with を抜けるときに _PooledConnection と同じく、正常終了なら commit、例外なら rollback する。
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 CATEGORY_COLUMNS = ("id", "name", "display_order", "is_collapsed", "permissions", "is_restricted")
@@ -186,6 +187,13 @@ class FakeCursor:
 			self.rowcount = 1
 		elif q.startswith("SELECT pg_advisory_xact_lock"):
 			pass
+		elif q.startswith("SELECT assigned_at, created_at FROM user_memberships"):
+			# register_pre_member: 未登録のメンバーとして扱う
+			pass
+		elif q.startswith("INSERT INTO user_memberships"):
+			now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+			self._rows = [(now, now)]
+			self.rowcount = 1
 		else:
 			raise AssertionError(f"unexpected SQL: {q}")
 
