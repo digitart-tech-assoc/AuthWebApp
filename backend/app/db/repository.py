@@ -30,6 +30,7 @@ from app.db.schema import (
 from app.db.manifest_repository import (
 	fetch_manifest,
 	patch_manifest_db,
+	replace_manifest,
 	save_manifest,
 	update_role_id,
 )
@@ -101,6 +102,7 @@ __all__ = [
 	"save_manifest",
 	"update_role_id",
 	"patch_manifest_db",
+	"replace_manifest",
 	"save_guild_members",
 	"save_role_assignments",
 	"add_user_to_role",

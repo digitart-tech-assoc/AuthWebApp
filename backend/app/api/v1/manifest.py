@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_admin, require_member
-from app.db.repository import fetch_manifest, save_manifest, save_role_assignments, patch_manifest_db
+from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest
 
 
 router = APIRouter(prefix="/api/v1", tags=["manifest"])
@@ -59,12 +59,11 @@ async def get_manifest(_principal: dict = Depends(require_member)) -> Manifest:
 async def put_manifest(payload: Manifest, _principal: dict = Depends(require_admin)) -> Manifest:
 	"""マニフェスト保存。admin のみ許可。"""
 	await asyncio.to_thread(
-		save_manifest,
+		replace_manifest,
 		[c.model_dump() for c in payload.categories],
 		[r.model_dump() for r in payload.roles],
+		payload.role_assignments,
 	)
-	if payload.role_assignments:
-		await asyncio.to_thread(save_role_assignments, payload.role_assignments)
 	return payload
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.db.connection import _connect
+from app.db.guild_repository import replace_role_assignments
 
 
 def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
@@ -53,47 +54,85 @@ def fetch_manifest() -> dict[str, list[dict[str, Any]]]:
     return {"categories": categories, "roles": roles}
 
 
+def _upsert_categories(cur: Any, categories: list[dict[str, Any]]) -> None:
+	for c in categories:
+		cur.execute(
+			"""
+			INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
+			VALUES (%s, %s, %s, %s, %s, %s)
+			ON CONFLICT (id) DO UPDATE SET
+				name = EXCLUDED.name,
+				display_order = EXCLUDED.display_order,
+				is_collapsed = EXCLUDED.is_collapsed,
+				permissions = EXCLUDED.permissions,
+				is_restricted = EXCLUDED.is_restricted
+			""",
+			(
+				c["id"], c["name"], c.get("display_order", 0),
+				c.get("is_collapsed", False), int(c.get("permissions", 0)),
+				bool(c.get("is_restricted", False))
+			),
+		)
+
+
+def _upsert_roles(cur: Any, roles: list[dict[str, Any]]) -> None:
+	for r in roles:
+		cur.execute(
+			"""
+			INSERT INTO role_manifests
+			(role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot)
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+			ON CONFLICT (role_id) DO UPDATE SET
+				name = EXCLUDED.name,
+				color = EXCLUDED.color,
+				hoist = EXCLUDED.hoist,
+				mentionable = EXCLUDED.mentionable,
+				permissions = EXCLUDED.permissions,
+				position = EXCLUDED.position,
+				category_id = EXCLUDED.category_id,
+				is_our_bot = EXCLUDED.is_our_bot,
+				updated_at = now()
+			""",
+			(
+				r["role_id"], r["name"], r.get("color", "#000000"),
+				r.get("hoist", False), r.get("mentionable", False),
+				int(r.get("permissions", 0)), r["position"],
+				r.get("category_id"), r.get("is_our_bot", False)
+			),
+		)
+
+
+def _replace_manifest_rows(cur: Any, categories: list[dict[str, Any]], roles: list[dict[str, Any]]) -> None:
+	"""マニフェストを送られた内容に置き換える。送られなかった行は削除し、それ以外は UPSERT する。"""
+	cur.execute(
+		"DELETE FROM role_manifests WHERE role_id <> ALL(%s)",
+		([r["role_id"] for r in roles],),
+	)
+	cur.execute(
+		"DELETE FROM role_categories WHERE id <> ALL(%s)",
+		([c["id"] for c in categories],),
+	)
+	_upsert_categories(cur, categories)
+	_upsert_roles(cur, roles)
+
+
 def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]]) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			cur.execute("DELETE FROM role_manifests")
-			cur.execute("DELETE FROM role_categories")
+			_replace_manifest_rows(cur, categories, roles)
+		conn.commit()
 
-			for c in categories:
-				cur.execute(
-					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
-					VALUES (%s, %s, %s, %s, %s, %s)
-					""",
-					(
-						c["id"],
-						c["name"],
-						c.get("display_order", 0),
-						c.get("is_collapsed", False),
-						int(c.get("permissions", 0)),
-						bool(c.get("is_restricted", False)),
-					),
-				)
 
-			for r in roles:
-				cur.execute(
-					"""
-					INSERT INTO role_manifests
-					(role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot)
-					VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-					""",
-					(
-						r["role_id"],
-						r["name"],
-						r.get("color", "#000000"),
-						r.get("hoist", False),
-						r.get("mentionable", False),
-						int(r.get("permissions", 0)),
-						r["position"],
-						r.get("category_id"),
-						r.get("is_our_bot", False),
-					),
-				)
+def replace_manifest(
+	categories: list[dict[str, Any]],
+	roles: list[dict[str, Any]],
+	role_assignments: dict[str, list[str]],
+) -> None:
+	"""PUT /api/v1/manifest の保存。マニフェストと割り当てを1つのトランザクションで置き換える。"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			_replace_manifest_rows(cur, categories, roles)
+			replace_role_assignments(cur, role_assignments)
 		conn.commit()
 
 
@@ -123,57 +162,11 @@ def patch_manifest_db(
 				cur.execute("DELETE FROM role_categories WHERE id = ANY(%s)", (delete_category_ids,))
 
 			# 2. カテゴリのUPSERT
-			for c in upsert_categories:
-				cur.execute(
-					"""
-					INSERT INTO role_categories (id, name, display_order, is_collapsed, permissions, is_restricted)
-					VALUES (%s, %s, %s, %s, %s, %s)
-					ON CONFLICT (id) DO UPDATE SET
-						name = EXCLUDED.name,
-						display_order = EXCLUDED.display_order,
-						is_collapsed = EXCLUDED.is_collapsed,
-						permissions = EXCLUDED.permissions,
-						is_restricted = EXCLUDED.is_restricted
-					""",
-					(
-						c["id"], c["name"], c.get("display_order", 0), 
-						c.get("is_collapsed", False), int(c.get("permissions", 0)),
-						bool(c.get("is_restricted", False))
-					),
-				)
+			_upsert_categories(cur, upsert_categories)
 
 			# 3. ロールのUPSERT
-			for r in upsert_roles:
-				cur.execute(
-					"""
-					INSERT INTO role_manifests
-					(role_id, name, color, hoist, mentionable, permissions, position, category_id, is_our_bot)
-					VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-					ON CONFLICT (role_id) DO UPDATE SET
-						name = EXCLUDED.name,
-						color = EXCLUDED.color,
-						hoist = EXCLUDED.hoist,
-						mentionable = EXCLUDED.mentionable,
-						permissions = EXCLUDED.permissions,
-						position = EXCLUDED.position,
-						category_id = EXCLUDED.category_id,
-						is_our_bot = EXCLUDED.is_our_bot,
-						updated_at = now()
-					""",
-					(
-						r["role_id"], r["name"], r.get("color", "#000000"),
-						r.get("hoist", False), r.get("mentionable", False),
-						int(r.get("permissions", 0)), r["position"],
-						r.get("category_id"), r.get("is_our_bot", False)
-					),
-				)
+			_upsert_roles(cur, upsert_roles)
 
-			# 4. メンバー割り当ての適用（指定された role_id のみ）
-			for role_id, user_ids in upsert_role_assignments.items():
-				cur.execute("DELETE FROM role_member_assignments WHERE role_id = %s", (role_id,))
-				for user_id in user_ids:
-					cur.execute(
-						"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-						(role_id, user_id),
-					)
+			# 4. メンバー割り当ての適用（指定された role_id のみ。差分だけを更新する）
+			replace_role_assignments(cur, upsert_role_assignments)
 		conn.commit()
