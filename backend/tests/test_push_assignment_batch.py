@@ -18,9 +18,11 @@ import httpx
 import pytest
 
 from app.api.v1 import roles as roles_api
+from app.db.audit_repository import AuditContext
 from app.services.discord_client import DiscordAPIError
 
 GUILD_ID = "guild-1"
+PUSH_AUDIT = AuditContext(request_id="req-push", actor_sub="sub-1", actor_discord_id="111")
 
 # Discord 上のロール（並び替え後の最新状態）
 LATEST_ROLES = [
@@ -489,7 +491,7 @@ class TestPushRolesResponse:
 				return_value=(0, 0, 3, []),
 			), \
 			patch.object(roles_api, "_notify_bot_to_reconcile", new_callable=AsyncMock, return_value=True):
-			result = await roles_api.push_roles_to_discord({})
+			result = await roles_api.push_roles_to_discord({}, PUSH_AUDIT)
 
 		assert result["ok"] is True
 		assert result["skipped_members"] == 3
@@ -514,9 +516,9 @@ class TestPushRolesResponse:
 			), \
 			patch.object(roles_api, "_notify_bot_to_reconcile", new_callable=AsyncMock, return_value=True), \
 			caplog.at_level(logging.INFO, logger=roles_api.logger.name):
-			result = await roles_api.push_roles_to_discord({})
+			result = await roles_api.push_roles_to_discord({}, PUSH_AUDIT)
 
 		assert result["ok"] is False
 		assert [record.message for record in caplog.records if "push completed with" in record.message] == [
-			"Discord role push completed with 1 error(s)",
+			"Discord role push completed with 1 error(s): request_id=req-push",
 		]

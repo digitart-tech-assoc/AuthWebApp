@@ -251,6 +251,10 @@ async def create_guild_role(guild_id: str, token: str, payload: dict, client: ht
 	return {
 		"role_id": role["id"],
 		"name": role["name"],
+		"color": _int_color_to_hex(int(role.get("color", 0))),
+		"hoist": bool(role.get("hoist", False)),
+		"mentionable": bool(role.get("mentionable", False)),
+		"permissions": int(role.get("permissions", "0")),
 		"position": int(role.get("position", 0)),
 	}
 
