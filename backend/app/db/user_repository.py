@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from app.core.config import MEMBERSHIP_PRIORITY_SQL
-from app.db.repository import _connect
+from app.db.connection import _connect
 
 logger = logging.getLogger(__name__)
 
