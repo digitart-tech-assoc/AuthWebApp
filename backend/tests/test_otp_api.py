@@ -7,7 +7,7 @@ from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.core.exceptions import OTPTooManyAttemptsError
 from app.db.student_repository import OTPVerificationResult
-from tests.request_factory import make_request
+from tests.request_factory import TEST_AUDIT, make_request
 
 
 @pytest.fixture
@@ -40,6 +40,7 @@ async def test_verified_student_otp_does_not_repeat_role_updates(monkeypatch, el
 	response = await student_api.verify_otp(
 		student_api.VerifyOTPRequest(code="000000"),
 		principal={"discord_id": "test-discord-id"},
+		audit=TEST_AUDIT,
 	)
 
 	assert response.message == "OTP already verified"
@@ -60,6 +61,7 @@ async def test_student_otp_limit_uses_typed_exception_for_429(monkeypatch, eligi
 		await student_api.verify_otp(
 			student_api.VerifyOTPRequest(code="000000"),
 			principal={"discord_id": "test-discord-id"},
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 429

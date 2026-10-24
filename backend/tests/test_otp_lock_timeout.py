@@ -13,6 +13,7 @@ from app.api.v1 import student as student_api
 from app.core.config import OTP_LOCK_TIMEOUT_MS
 from app.core.exceptions import OTPVerificationBusyError
 from app.db import otp_repository, student_repository
+from tests.request_factory import TEST_AUDIT
 
 
 BUSY_MESSAGE = "同じ認証コードの確認が同時に行われています。しばらく待ってから再度お試しください。"
@@ -127,6 +128,7 @@ async def test_student_verify_returns_409_when_busy(monkeypatch):
 		await student_api.verify_otp(
 			student_api.VerifyOTPRequest(code="000000"),
 			principal={"discord_id": "test-discord-id"},
+			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 409

@@ -25,6 +25,17 @@ from app.core.config import (
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
+from app.db.audit_repository import (
+	ACTION_UPDATE,
+	OP_JOIN_OTP_VERIFY,
+	OP_STUDENT_PROFILE,
+	SYSTEM_DISCORD,
+	TARGET_MEMBER_ROLES,
+	AuditContext,
+	AuditLog,
+	get_audit_context,
+	record_discord_audit_safely,
+)
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
 from app.db.repository import add_user_to_role, remove_user_from_role
@@ -326,8 +337,10 @@ async def send_otp(
 async def verify_otp(
 	req: VerifyOTPRequest,
 	principal: dict = Depends(get_current_principal),
+	audit: AuditContext = Depends(get_audit_context),
 ) -> VerifyOTPResponse:
 	"""OTP コードを検証する"""
+	audit = audit.with_operation(OP_JOIN_OTP_VERIFY)
 	discord_id = principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
@@ -366,12 +379,12 @@ async def verify_otp(
 		if member_role_id:
 			# MEMBER_ROLE_IDS が複数存在する場合は最初の1つを使用
 			member_role_id = member_role_id.split(",")[0].strip()
-			await asyncio.to_thread(add_user_to_role, discord_id, member_role_id)
+			await asyncio.to_thread(add_user_to_role, discord_id, member_role_id, audit)
 			logger.info("Added user %s to member role %s", principal.get("sub"), member_role_id)
 
 		pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "")
 		if pre_member_role_id:
-			await asyncio.to_thread(remove_user_from_role, discord_id, pre_member_role_id)
+			await asyncio.to_thread(remove_user_from_role, discord_id, pre_member_role_id, audit)
 			logger.info("Removed user %s from pre-member role %s", principal.get("sub"), pre_member_role_id)
 	except Exception as e:
 		logger.error("Failed to update role_member_assignments for user %s: %s", principal.get("sub"), str(e))
@@ -387,8 +400,10 @@ async def verify_otp(
 async def create_student_profile(
 	req: StudentProfileRequest,
 	principal: dict = Depends(get_current_principal),
+	audit: AuditContext = Depends(get_audit_context),
 ) -> StudentProfileResponse:
 	"""学生プロフィールを保存する"""
+	audit = audit.with_operation(OP_STUDENT_PROFILE)
 	discord_id = principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
@@ -424,6 +439,7 @@ async def create_student_profile(
 			email_aoyama=email_aoyama,
 			member_role_ids=member_role_ids,
 			require_eligibility=not is_registered,
+			audit=audit,
 		)
 	except RegistrationNotEligibleError as e:
 		# 自前の例外で、文言は固定（student_repository で定めた入会資格の不足理由）
@@ -438,6 +454,9 @@ async def create_student_profile(
 			try:
 				await add_role_to_member(guild_id, discord_id, role_id, token)
 				logger.info("Successfully assigned role %s to student %s on Discord", role_id, principal.get("sub"))
+				await record_discord_audit_safely(audit, [AuditLog(
+					SYSTEM_DISCORD, TARGET_MEMBER_ROLES, discord_id, ACTION_UPDATE, None, {"added": [role_id], "removed": []},
+				)])
 			except Exception as e:
 				logger.warning("Failed to assign role %s to student %s on Discord: %s", role_id, principal.get("sub"), redact_snowflakes(e))
 

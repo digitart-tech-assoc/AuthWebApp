@@ -9,7 +9,7 @@ from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.api.v1 import survey as survey_api
 from app.db.student_repository import OTPVerificationResult
-from tests.request_factory import make_request
+from tests.request_factory import TEST_AUDIT, make_request
 
 PRINCIPAL = {"discord_id": "test-discord-id"}
 
@@ -170,6 +170,7 @@ async def test_student_verify_otp_offloads_role_updates(monkeypatch, recorder, e
 	response = await student_api.verify_otp(
 		student_api.VerifyOTPRequest(code="000000"),
 		principal=PRINCIPAL,
+		audit=TEST_AUDIT,
 	)
 
 	assert response.verified is True
@@ -194,6 +195,7 @@ async def test_student_create_profile_offloads_db_access(monkeypatch, recorder, 
 	response = await student_api.create_student_profile(
 		_profile_request(),
 		principal={**PRINCIPAL, "app_role": "pre_member"},
+		audit=TEST_AUDIT,
 	)
 
 	assert response.profile_id == "prof_test"

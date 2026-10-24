@@ -14,6 +14,23 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin, require_member
+from app.db.audit_repository import (
+	ACTION_CREATE,
+	ACTION_DELETE,
+	ACTION_REORDER,
+	ACTION_ROLLBACK,
+	ACTION_UPDATE,
+	OP_PUSH,
+	OP_SELF_BATCH,
+	SYSTEM_DISCORD,
+	TARGET_MEMBER_ROLES,
+	TARGET_ROLE,
+	AuditContext,
+	AuditLog,
+	assignment_diff,
+	get_audit_context,
+	record_discord_audit_safely,
+)
 from app.core.errors import describe_exception
 from app.core.config import (
 	ADMIN_ROLE_NAMES,
@@ -59,6 +76,8 @@ router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
 DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://discord-bot:8000")
+# 監査ログに記録する Discord のロール定義のフィールド（fetch_guild_roles の戻り値の形式）
+DISCORD_ROLE_AUDIT_FIELDS = ("name", "color", "hoist", "mentionable", "permissions", "position")
 SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 
@@ -98,8 +117,12 @@ async def _sync_role_definitions(
 	desired_roles: list[dict],
 	actual_roles: list[dict],
 	token: str,
+	audit: AuditContext | None = None,
 ) -> tuple[int, int, int, int, set[str], set[str], list[str], dict, dict]:
-	"""ロール定義の同期（Create / Update / Delete）"""
+	"""ロール定義の同期（Create / Update / Delete）
+
+	Discord のロールを変更するたびに、その場で監査ログに記録する（記録に失敗しても続行する）。
+	"""
 	actual_by_id = {role["role_id"]: role for role in actual_roles}
 	desired_by_id = {role["role_id"]: role for role in desired_roles}
 
@@ -119,8 +142,12 @@ async def _sync_role_definitions(
 				new_role_discord = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
 				created += 1
 				real_id = new_role_discord["role_id"]
+				await record_discord_audit_safely(audit, [AuditLog(
+					SYSTEM_DISCORD, TARGET_ROLE, real_id, ACTION_CREATE,
+					None, {f: new_role_discord.get(f) for f in DISCORD_ROLE_AUDIT_FIELDS},
+				)])
 				if str(role_id).startswith("draft-"):
-					await asyncio.to_thread(update_role_id, role_id, real_id)
+					await asyncio.to_thread(update_role_id, role_id, real_id, audit)
 					desired_by_id[real_id] = role
 					role["role_id"] = real_id
 					actual_by_id[real_id] = new_role_discord
@@ -139,6 +166,12 @@ async def _sync_role_definitions(
 		try:
 			await edit_guild_role(DISCORD_GUILD_ID, role_id, token, payload)
 			updated += 1
+			# 記録するのは実際に送ったフィールドだけ。値は送信形式ではなく fetch_guild_roles / fetch_manifest の形式で残す
+			await record_discord_audit_safely(audit, [AuditLog(
+				SYSTEM_DISCORD, TARGET_ROLE, role_id, ACTION_UPDATE,
+				{f: actual.get(f) for f in payload},
+				{f: role.get(f) for f in payload},
+			)])
 		except Exception as exc:
 			msg = f"Failed to update role {role_id} ({describe_exception(exc)})"
 			_log_push_error("update role", exc, target_id=role_id)
@@ -154,6 +187,10 @@ async def _sync_role_definitions(
 			await delete_guild_role(DISCORD_GUILD_ID, role_id, token)
 			deleted += 1
 			deleted_role_ids.add(role_id)
+			await record_discord_audit_safely(audit, [AuditLog(
+				SYSTEM_DISCORD, TARGET_ROLE, role_id, ACTION_DELETE,
+				{f: role.get(f) for f in DISCORD_ROLE_AUDIT_FIELDS}, None,
+			)])
 		except Exception as exc:
 			msg = f"Failed to delete role {role_id} ({describe_exception(exc)})"
 			_log_push_error("delete role", exc, target_id=role_id)
@@ -166,13 +203,14 @@ async def _sync_role_definitions(
 	)
 
 
-def _count_moved_roles(position_payload: list[dict], actual_by_id: dict, created_real_ids: set[str]) -> int:
-	"""並び替えで、ほかのロールとの相対的な順序が変わるロールの数を返す。
+def _moved_role_ids(position_payload: list[dict], actual_by_id: dict, created_real_ids: set[str]) -> set[str]:
+	"""並び替えで、ほかのロールとの相対的な順序が変わるロールの ID を返す。
 
 	Discord の position の値そのものは比べない。ロールを作成すると既存ロールの position が一律にずれるため、
 	値で比べると並び順を変えていないロールまで数えてしまう。
-	push 前の並び順と送信する並び順を比べ、順序を保ったまま残せる最大のロール数（最長増加部分列）を
-	全体から引いた数を「並び替えたロールの数」とする。今回作成したロールは created で数えるため含めない。
+	push 前の並び順と送信する並び順を比べ、順序を保ったまま残せる最大のロール（最長増加部分列）以外を
+	「並び替えたロール」とする。今回作成したロールは created で数えるため含めない。
+	最長増加部分列が複数ある場合は、下の復元方法で決まる1つを使う（どのロールを並び替えたとみなすかは一意ではない）。
 	"""
 	existing_ids = [p["id"] for p in position_payload if p["id"] not in created_real_ids]
 
@@ -181,15 +219,26 @@ def _count_moved_roles(position_payload: list[dict], actual_by_id: dict, created
 		return (int(actual_by_id[role_id].get("position", 0)), int(role_id) if role_id.isdigit() else 0)
 
 	current_rank = {rid: rank for rank, rid in enumerate(sorted(existing_ids, key=_current_order_key))}
-	# 最長増加部分列の長さ（各長さの部分列の末尾の最小値を保持する）
+	ranks = [current_rank[rid] for rid in existing_ids]
+	# 最長増加部分列（各長さの部分列の末尾の最小値と、その添字を保持し、前の要素をたどって復元する）
 	tails: list[int] = []
-	for rank in (current_rank[rid] for rid in existing_ids):
+	tail_indexes: list[int] = []
+	previous: list[int] = [-1] * len(ranks)
+	for i, rank in enumerate(ranks):
 		index = bisect.bisect_left(tails, rank)
+		previous[i] = tail_indexes[index - 1] if index > 0 else -1
 		if index == len(tails):
 			tails.append(rank)
+			tail_indexes.append(i)
 		else:
 			tails[index] = rank
-	return len(existing_ids) - len(tails)
+			tail_indexes[index] = i
+	kept: set[str] = set()
+	i = tail_indexes[-1] if tail_indexes else -1
+	while i >= 0:
+		kept.add(existing_ids[i])
+		i = previous[i]
+	return set(existing_ids) - kept
 
 
 async def _reorder_roles(
@@ -197,10 +246,12 @@ async def _reorder_roles(
 	actual_by_id: dict,
 	created_real_ids: set[str],
 	token: str,
+	audit: AuditContext | None = None,
 ) -> tuple[int, list[str]]:
 	"""ロール順序の再編成（contiguous 1..N positions）
 
-	返す件数は、並び順が変わったロールの数（_count_moved_roles を参照）。送信したロールの数ではない。
+	返す件数は、並び順が変わったロールの数（_moved_role_ids を参照）。送信したロールの数ではない。
+	監査ログには、並び順が変わったロールだけを1ロール1行で記録する。
 	"""
 	errors: list[str] = []
 	desired_roles_sorted = sorted(desired_roles, key=lambda x: int(x.get("position", 0)))
@@ -217,7 +268,16 @@ async def _reorder_roles(
 	if position_payload:
 		try:
 			await reorder_guild_roles(DISCORD_GUILD_ID, token, position_payload)
-			reordered = _count_moved_roles(position_payload, actual_by_id, created_real_ids)
+			moved_ids = _moved_role_ids(position_payload, actual_by_id, created_real_ids)
+			reordered = len(moved_ids)
+			sent_positions = {p["id"]: p["position"] for p in position_payload}
+			await record_discord_audit_safely(audit, [
+				AuditLog(
+					SYSTEM_DISCORD, TARGET_ROLE, rid, ACTION_REORDER,
+					{"position": actual_by_id[rid].get("position")}, {"position": sent_positions[rid]},
+				)
+				for rid in sorted(moved_ids)
+			])
 		except Exception as exc:
 			msg = f"Failed to reorder roles ({describe_exception(exc)})"
 			_log_push_error("reorder roles", exc)
@@ -231,6 +291,7 @@ async def _apply_role_assignment_diffs(
 	created_real_ids: set[str],
 	deleted_role_ids: set[str],
 	token: str,
+	audit: AuditContext | None = None,
 ) -> tuple[int, int, int, list[str]]:
 	"""メンバーロール割り当ての差分適用
 
@@ -314,7 +375,7 @@ async def _apply_role_assignment_diffs(
 			for index, (user_id, current_roles, adds, removes) in enumerate(pending):
 				try:
 					added, removed = await _apply_member_role_diff(
-						user_id, current_roles, target_role_ids, token, client
+						user_id, current_roles, target_role_ids, token, client, audit
 					)
 					assigned_adds += added
 					assigned_removes += removed
@@ -372,6 +433,7 @@ async def _apply_member_role_diff(
 	target_role_ids: set[str],
 	token: str,
 	client: httpx.AsyncClient,
+	audit: AuditContext | None = None,
 ) -> tuple[int, int]:
 	"""1 メンバー分のロール差分を Discord に反映し、(追加数, 削除数) を返す。
 
@@ -392,9 +454,10 @@ async def _apply_member_role_diff(
 	if len(adds) + len(removes) == 1:
 		if adds:
 			await add_role_to_member(DISCORD_GUILD_ID, user_id, next(iter(adds)), token, client=client)
-			return 1, 0
-		await remove_role_from_member(DISCORD_GUILD_ID, user_id, next(iter(removes)), token, client=client)
-		return 0, 1
+		else:
+			await remove_role_from_member(DISCORD_GUILD_ID, user_id, next(iter(removes)), token, client=client)
+		await _record_member_roles(audit, user_id, adds, removes)
+		return len(adds), len(removes)
 
 	member = await fetch_guild_member(DISCORD_GUILD_ID, user_id, token, client=client)
 	if member is None:
@@ -406,7 +469,22 @@ async def _apply_member_role_diff(
 		return 0, 0
 	new_roles = (latest_roles - latest_removes) | latest_adds
 	await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
+	await _record_member_roles(audit, user_id, latest_adds, latest_removes)
 	return len(latest_adds), len(latest_removes)
+
+
+async def _record_member_roles(
+	audit: AuditContext | None,
+	user_id: str,
+	added: set[str],
+	removed: set[str],
+	action: str = ACTION_UPDATE,
+) -> None:
+	"""メンバーの Discord のロールの付け外しを監査ログに記録する（記録に失敗しても続行する）。"""
+	after = assignment_diff(added, removed)
+	if after is None:
+		return
+	await record_discord_audit_safely(audit, [AuditLog(SYSTEM_DISCORD, TARGET_MEMBER_ROLES, user_id, action, None, after)])
 
 
 def _error_status_code(exc: Exception) -> int | None:
@@ -469,7 +547,11 @@ def _manageable_role_ids(roles: list[dict], bot_member: dict | None) -> set[str]
 
 
 @router.post("/push")
-async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> dict:
+async def push_roles_to_discord(
+	_principal: dict = Depends(require_admin),
+	audit: AuditContext = Depends(get_audit_context),
+) -> dict:
+	audit = audit.with_operation(OP_PUSH)
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -487,18 +569,18 @@ async def push_roles_to_discord(_principal: dict = Depends(require_admin)) -> di
 		updated, created, deleted, skipped_managed,
 		created_real_ids, deleted_role_ids, sync_errors,
 		actual_by_id, desired_by_id
-	) = await _sync_role_definitions(desired_roles, actual_roles, token)
+	) = await _sync_role_definitions(desired_roles, actual_roles, token, audit)
 
 	reordered, reorder_errors = await _reorder_roles(
-		desired_roles, actual_by_id, created_real_ids, token
+		desired_roles, actual_by_id, created_real_ids, token, audit
 	)
 
 	assigned_adds, assigned_removes, skipped_members, assign_errors = await _apply_role_assignment_diffs(
-		actual_by_id, created_real_ids, deleted_role_ids, token
+		actual_by_id, created_real_ids, deleted_role_ids, token, audit
 	)
 
 	all_errors = sync_errors + reorder_errors + assign_errors
-	logger.info("Discord role push completed with %d error(s)", len(all_errors))
+	logger.info("Discord role push completed with %d error(s): request_id=%s", len(all_errors), audit.request_id)
 
 	# Notify Discord Bot to reconcile member_list / pre_member_list
 	logger.debug("Notifying Discord Bot to reconcile member lists...")
@@ -705,6 +787,7 @@ def _unwrap_discord_fetch(result: object, label: str):
 async def self_batch_roles(
 	payload: SelfBatchPayload,
 	_principal: dict = Depends(require_member),
+	audit: AuditContext = Depends(get_audit_context),
 ) -> dict:
 	"""memberが自分自身のロールを一括で付与・解除する。
 
@@ -713,7 +796,9 @@ async def self_batch_roles(
 	3. Discord の PATCH /members/{user_id} で1回の API 呼び出しで一括更新
 	4. DB を一括更新
 	5. Discord 更新後に DB 更新が失敗した場合はロールバック
+	Discord・DB の変更と、Discord のロールバックを監査ログに記録する。
 	"""
+	audit = audit.with_operation(OP_SELF_BATCH)
 	roles_to_add = set(payload.roles_to_add)
 	roles_to_remove = set(payload.roles_to_remove)
 	conflicting_role_ids = roles_to_add & roles_to_remove
@@ -812,6 +897,7 @@ async def self_batch_roles(
 	except Exception as exc:
 		logger.warning("Discord API call failed (update member roles)", exc_info=True)
 		raise HTTPException(status_code=502, detail="Discord API error (update member roles)") from exc
+	await _record_member_roles(audit, discord_id, set(actually_added), set(actually_removed))
 
 	# --- 5. DB 一括更新 ---
 	try:
@@ -820,6 +906,7 @@ async def self_batch_roles(
 			discord_id,
 			list(roles_to_add),
 			list(roles_to_remove),
+			audit,
 		)
 	except Exception as exc:
 		logger.error(
@@ -831,6 +918,9 @@ async def self_batch_roles(
 		try:
 			await set_member_roles(DISCORD_GUILD_ID, discord_id, list(current_role_ids), token)
 			rollback_succeeded = True
+			await _record_member_roles(
+				audit, discord_id, set(actually_removed), set(actually_added), ACTION_ROLLBACK,
+			)
 			logger.info(
 				"Compensating rollback succeeded for user=%s", _principal.get("sub")
 			)

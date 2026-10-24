@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin
 from app.core.errors import log_exception_without_message
+from app.db.audit_repository import OP_PRE_MEMBER_REGISTER, internal_audit_context
 from app.db.repository import (
 	register_pre_member,
 	get_pre_member_list_with_users,
@@ -59,7 +60,9 @@ async def register_pre_member_endpoint(
 		raise HTTPException(status_code=401, detail="Unauthorized")
 	
 	try:
-		result = await asyncio.to_thread(register_pre_member, payload.discord_id, payload.source)
+		# SHARED_SECRET で認証する内部呼び出しのため、操作した人は internal-service とする
+		audit = internal_audit_context(OP_PRE_MEMBER_REGISTER)
+		result = await asyncio.to_thread(register_pre_member, payload.discord_id, payload.source, audit)
 		return {"ok": True, "discord_id": payload.discord_id, "result": result}
 	except Exception as e:
 		log_exception_without_message(logger, "register_pre_member", e)

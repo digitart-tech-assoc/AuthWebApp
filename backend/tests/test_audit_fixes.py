@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.utils.otp import verify_otp_code
+from tests.request_factory import TEST_AUDIT
 
 
 class TestOTPPlaintextFallback:
@@ -89,7 +90,7 @@ class TestRolesCompensationTransactions:
                             with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
                                 with patch("app.api.v1.roles.batch_update_user_roles", side_effect=Exception("DB connection error")):
                                     with pytest.raises(HTTPException) as exc_info:
-                                        await self_batch_roles(payload, principal)
+                                        await self_batch_roles(payload, principal, audit=TEST_AUDIT)
 
                                     assert exc_info.value.status_code == 500
                                     assert "Discord state was reverted" in str(exc_info.value.detail)
@@ -106,6 +107,7 @@ class TestRolesCompensationTransactions:
             await self_batch_roles(
                 SelfBatchPayload(roles_to_add=["role-123"], roles_to_remove=["role-123"]),
                 {"discord_id": "user-456", "app_role": "member"},
+                audit=TEST_AUDIT,
             )
 
         assert exc_info.value.status_code == 400
@@ -137,7 +139,7 @@ class TestSelfBatchWhitelistValidation:
                         with patch("app.api.v1.roles.fetch_bot_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-bot"]}):
                             with patch("app.api.v1.roles.set_member_roles", new_callable=AsyncMock) as mock_set:
                                 with patch("app.api.v1.roles.batch_update_user_roles"):
-                                    result = await self_batch_roles(payload, self.PRINCIPAL)
+                                    result = await self_batch_roles(payload, self.PRINCIPAL, audit=TEST_AUDIT)
                                     return result, mock_set
 
     async def _assert_forbidden(self, role: dict, reason: str, *, add: bool = True):

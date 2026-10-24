@@ -63,6 +63,7 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 - サーバー起動: `uvicorn app.main:app --host 0.0.0.0 --port 5174 --reload`
 - テスト実行: `pytest`
 - DB マイグレーション適用: `alembic upgrade head`
+  - **本番では、Backend をデプロイする前に適用してください。** 例えば `0007_add_role_audit_logs` を適用せずに新しい Backend を動かすと、`role_audit_logs` への記録が失敗するため、マニフェストの保存やロールの割り当ての更新がすべて失敗します。
 - マイグレーション作成: `alembic revision -m "<message>"`
 - 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
 
