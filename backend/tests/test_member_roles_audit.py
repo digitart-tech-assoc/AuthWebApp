@@ -118,6 +118,7 @@ async def _self_batch(db_side_effect=None, set_side_effect=None):
 		patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=DISCORD_ROLES), \
 		patch.object(roles_api, "fetch_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["12"]}), \
 		patch.object(roles_api, "fetch_bot_guild_member", new_callable=AsyncMock, return_value={"role_ids": ["role-bot"]}), \
+		patch.object(roles_api, "fetch_role_ids_with_channel_permissions", new_callable=AsyncMock, return_value=set()), \
 		patch.object(roles_api, "set_member_roles", new_callable=AsyncMock, side_effect=set_side_effect), \
 		patch.object(roles_api, "batch_update_user_roles", side_effect=db_side_effect) as batch:
 		result = await roles_api.self_batch_roles(

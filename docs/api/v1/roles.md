@@ -113,6 +113,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
   - カテゴリ未設定（`category_id: null`）のロールが含まれる場合
   - 付与・解除できるカテゴリ（マニフェストに存在し、`is_restricted: false` かつ予約カテゴリ以外）に属さないロールが含まれる場合
   - マニフェスト上の `permissions` が `0` 以外（Discord 権限付き）のロールが含まれる場合
+  - 付与対象ロールに、Discord のチャンネル権限上書きで何らかの権限許可（`allow != 0`）が設定されている場合。上書き一覧を取得できない場合は `502` で更新を中止します。解除は許可します。
   - Discord のマネージドロール（Bot/連携用）または `@everyone` ロールが含まれる場合
   - Bot メンバーが持つ最上位ロール以上の位置にあるロールが含まれる場合。Bot メンバーまたは基準ロールを特定できない場合も、誤操作防止のため拒否します。
 - `404 Not Found`:
@@ -124,7 +125,8 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
   - Discord API との通信エラー。
 
 ### Discord API の呼び出し
-- 検証用ロール一覧（`GET /guilds/{guild_id}/roles`）、対象メンバーの現在のロール（`GET /guilds/{guild_id}/members/{user_id}`）、Bot メンバーの現在のロール（`GET /guilds/{guild_id}/members/{bot_user_id}`）は互いに依存しないため、並列に取得します。その後、ロールを一括更新（`PATCH /guilds/{guild_id}/members/{user_id}`）します。
+- 検証用ロール一覧（`GET /guilds/{guild_id}/roles`）、対象メンバーの現在のロール（`GET /guilds/{guild_id}/members/{user_id}`）、Bot メンバーの現在のロール（`GET /guilds/{guild_id}/members/{bot_user_id}`）、付与時のチャンネル上書き一覧（`GET /guilds/{guild_id}/channels`）は互いに依存しないため、並列に取得します。解除のみの場合はチャンネル上書きを取得しません。その後、ロールを一括更新（`PATCH /guilds/{guild_id}/members/{user_id}`）します。
+- チャンネル上書きの `type` がロールである項目について、`allow` が `0` 以外のロールはセルフ付与できません。Discord 側のチャンネル権限設定を DB のマニフェストには同期しないため、付与リクエストごとに Discord の現在値を検査します。`deny` のみが設定されたロールは付与できます。
 - Bot 自身のユーザー ID（`GET /users/@me`）はプロセスの稼働中に初回だけ取得し、以降はメモリ上のキャッシュを使います。Bot の操作可能範囲は統合ロールではなく、Bot メンバーが実際に持つロールの最上位位置を基準に判定します。
 - Bot メンバーまたはそのロール階層を特定できない場合は、セルフロール操作を拒否し、push の割り当て変更をすべてスキップします。
 - 並列に取得しても、エラーの判定順は「ロール一覧の取得失敗（502）→ Bot メンバー情報の取得失敗（502）→ 上記の 403 / 404 の検証 → 対象メンバー情報の取得失敗（502）」です。
