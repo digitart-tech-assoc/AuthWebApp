@@ -193,6 +193,32 @@ async def fetch_guild_roles(guild_id: str, token: str, client: httpx.AsyncClient
 	]
 
 
+async def fetch_role_ids_with_channel_permissions(
+	guild_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+) -> set[str]:
+	"""チャンネル上書きで何らかの権限を許可されているロール ID を取得する。"""
+	headers = _headers(token)
+	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/channels"
+	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
+		response = await _request(client, "GET", url, headers=headers)
+		response.raise_for_status()
+		channels = response.json()
+		if not isinstance(channels, list):
+			raise ValueError("Discord returned an invalid guild channel list")
+
+	role_ids: set[str] = set()
+	for channel in channels:
+		overwrites = channel.get("permission_overwrites")
+		if not isinstance(overwrites, list):
+			raise ValueError("Discord returned invalid channel permission overwrites")
+		for overwrite in overwrites:
+			if int(overwrite.get("type", -1)) == 0 and int(overwrite.get("allow", "0")) != 0:
+				role_ids.add(str(overwrite["id"]))
+	return role_ids
+
+
 def _headers(token: str) -> dict[str, str]:
 	return {
 		"Authorization": f"Bot {token}",

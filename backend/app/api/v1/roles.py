@@ -65,6 +65,7 @@ from app.services.discord_client import (
 	fetch_bot_guild_member,
 	fetch_guild_member,
 	fetch_guild_roles,
+	fetch_role_ids_with_channel_permissions,
 	redact_snowflakes,
 	remove_role_from_member,
 	reorder_guild_roles,
@@ -852,13 +853,16 @@ async def self_batch_roles(
 			)
 
 	# UIの表示制約に依存せず、Discord側のロール階層とmanagedフラグもAPIで検証する。
-	# ロール一覧と対象メンバーの現在のロールは互いに依存しないため、並列に取得して待ち時間を減らす。
-	roles_result, member_result, bot_member_result = await asyncio.gather(
+	# 付与時はチャンネル上書きも確認する。独立した取得は並列に実行する。
+	fetches = [
 		fetch_guild_roles(DISCORD_GUILD_ID, token),
 		fetch_guild_member(DISCORD_GUILD_ID, discord_id, token),
 		fetch_bot_guild_member(DISCORD_GUILD_ID, token),
-		return_exceptions=True,
-	)
+	]
+	if roles_to_add:
+		fetches.append(fetch_role_ids_with_channel_permissions(DISCORD_GUILD_ID, token))
+	fetch_results = await asyncio.gather(*fetches, return_exceptions=True)
+	roles_result, member_result, bot_member_result = fetch_results[:3]
 	discord_roles = _unwrap_discord_fetch(roles_result, "fetch roles")
 
 	discord_roles_by_id = {role["role_id"]: role for role in discord_roles}
@@ -873,6 +877,18 @@ async def self_batch_roles(
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' は変更できません")
 		if role_id not in manageable_role_ids:
 			raise HTTPException(status_code=403, detail=f"ロール '{role_info.get('name', role_id)}' はBotの権限範囲外です")
+
+	if roles_to_add:
+		role_ids_with_channel_permissions = _unwrap_discord_fetch(
+			fetch_results[3], "fetch channel permission overwrites",
+		)
+		for role_id in roles_to_add:
+			if role_id in role_ids_with_channel_permissions:
+				role_name = roles_in_manifest[role_id].get("name", role_id)
+				raise HTTPException(
+					status_code=403,
+					detail=f"ロール '{role_name}' はチャンネル権限上書きがあるため付与できません",
+				)
 
 	# --- 2. 現在のメンバーロール取得（上で並列に取得済み。取得に失敗していても、検証で拒否した場合はそちらのエラーを優先する） ---
 	member_info = _unwrap_discord_fetch(member_result, "fetch member")
