@@ -328,7 +328,7 @@ export default function NewRoleModal({
           onClick={handleSave}
           disabled={!name.trim() || saving}
         >
-          {saving ? "作成中..." : isEditMode ? "更新" : "作成"}
+          {isEditMode ? (saving ? "更新中..." : "更新") : (saving ? "作成中..." : "作成")}
         </button>
       </div>
     </ModalFrame>
