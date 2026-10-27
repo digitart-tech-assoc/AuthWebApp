@@ -309,7 +309,8 @@ def insert_member_created_role(role: dict[str, Any], audit: AuditContext | None 
 	"""member が作成したロールを、Discord で作成済みの実 ID でマニフェストに追加する。
 
 	同名ロールの確認から追加までを、member によるロール作成同士で直列化する。
-	position は管理者画面の新規作成と同じく、既存ロールの最小値の1つ下（1 未満にはしない）にする。
+	position は既存ロールの最小値の1つ下（1 未満にはしない）にする。
+	管理者画面の新規作成は Bot より下のロールだけから最小値を取るが、最下位のロールは通常 Bot より下にあるため、結果は同じになる。
 	同じ名前のロールがあれば RoleNameConflictError を送出する。追加した行を返す。
 	"""
 	with _connect() as conn:

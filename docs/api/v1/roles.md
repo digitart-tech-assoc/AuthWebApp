@@ -177,7 +177,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 ### 処理の流れ
 1. DB のマニフェストを正として、カテゴリと同名ロールの有無を検証します。
 2. Discord にロールを作成します（`POST /guilds/{guild_id}/roles`）。Discord はロールを最下部に作るため、Bot の操作可能範囲に入ります。
-3. Discord が返した実 ID で `role_manifests` に保存します。`position` は管理画面の新規作成と同じく、既存ロールの最小値の 1 つ下（1 未満にはしない）にします。同名ロールの確認から保存までは、ロール作成同士で直列化します（`pg_advisory_xact_lock`）。
+3. Discord が返した実 ID で `role_manifests` に保存します。`position` は既存ロールの最小値の 1 つ下（1 未満にはしない）にします（管理画面の新規作成は Bot より下のロールだけから最小値を取りますが、最下位のロールは通常 Bot より下にあるため、結果は同じになります）。同名ロールの確認から保存までは、ロール作成同士で直列化します（`pg_advisory_xact_lock`）。
    * 保存に失敗した場合（同名ロールが直前に作られた場合を含む）は、作成した Discord のロールを削除します。
    * push はマニフェストにないロールを Discord から削除するため、Discord にだけロールが残ることはありません（削除にも失敗した場合は、次の push で削除されます）。
 4. 作成者に付与します（`PUT /guilds/{guild_id}/members/{user_id}/roles/{role_id}` → `role_member_assignments`）。DB への保存に失敗した場合は Discord 側の付与を取り消し、`assigned: false` を返します。
