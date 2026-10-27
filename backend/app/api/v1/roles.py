@@ -773,6 +773,17 @@ class SelfBatchPayload(BaseModel):
 	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
+def _self_assignable_category_ids(manifest: dict) -> set[str]:
+	"""member が自分で扱えるロールのカテゴリ ID を返す。
+
+	is_restricted = false と確認できたカテゴリのみ許可する。フラグ欠損時は拒否側に倒す。
+	"""
+	return {
+		c["id"] for c in manifest.get("categories", [])
+		if c["name"] not in MEMBER_RESTRICTED_CATEGORY_NAMES and not c.get("is_restricted", True)
+	}
+
+
 def _unwrap_discord_fetch(result: object, label: str):
 	"""asyncio.gather(return_exceptions=True) の結果を取り出す。Discord API の失敗は 502 に変換する。"""
 	if isinstance(result, Exception):
@@ -824,11 +835,7 @@ async def self_batch_roles(
 	# --- 1. 一括バリデーション（ホワイトリスト方式・DB のマニフェストを正とする） ---
 	manifest = await asyncio.to_thread(fetch_manifest)
 	roles_in_manifest = {r["role_id"]: r for r in manifest.get("roles", [])}
-	# is_restricted = false と確認できたカテゴリのみ許可する。フラグ欠損時は拒否側に倒す。
-	self_assignable_cat_ids = {
-		c["id"] for c in manifest.get("categories", [])
-		if c["name"] not in MEMBER_RESTRICTED_CATEGORY_NAMES and not c.get("is_restricted", True)
-	}
+	self_assignable_cat_ids = _self_assignable_category_ids(manifest)
 
 	for role_id in all_role_ids:
 		role_info = roles_in_manifest.get(role_id)
