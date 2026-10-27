@@ -158,6 +158,21 @@ async def test_duplicate_name_is_rejected(db, name):
 	discord.create.assert_not_called()
 
 
+@pytest.mark.parametrize("name", [
+	"administrator", "Administrator", "ADMINISTRATOR", " 管理者 ",
+	"member", "会員", "OBOG", "OB/OG", "ob-og", "pre-member", "sub垢",
+])
+@pytest.mark.asyncio
+async def test_reserved_role_name_is_rejected(db, name):
+	# /members/sync がロール名で admin などを判定するため、予約名のロールは作らせない
+	discord = _Discord()
+	with pytest.raises(HTTPException) as exc_info:
+		await _self_create(db, discord, _payload(name=name))
+	assert exc_info.value.status_code == 409
+	discord.create.assert_not_called()
+	assert NEW_ROLE_ID not in db.roles
+
+
 # --- 正常系 ---
 
 @pytest.mark.asyncio

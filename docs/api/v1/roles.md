@@ -185,7 +185,9 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 ### バリデーション & エラーレスポンス
 - `400 Bad Request`: Discord ID が特定できない場合
 - `403 Forbidden`: 作成先のカテゴリが存在しない、または `self-batch` で扱えないカテゴリの場合
-- `409 Conflict`: 同じ名前のロールがすでにある場合（大文字・小文字と前後の空白の違いは無視）
+- `409 Conflict`: 次のいずれかの場合（どちらも大文字・小文字と前後の空白の違いは無視）
+  - 同じ名前のロールがすでにある場合
+  - 予約名の場合。`/members/sync` はロール名で会員種別を判定するため、`backend/app/core/config.py` の `ADMIN_ROLE_NAMES` / `MEMBER_ROLE_NAMES` / `OBOG_ROLE_NAMES` / `SUB_USER_ROLE_NAMES` / `PRE_MEMBER_ROLE_NAME` に含まれる名前は作成できません
 - `422 Unprocessable Entity`: ロール名・色・カテゴリ ID の形式が正しくない場合
 - `429 Too Many Requests`: Discord ID ごとに 10 分間に 5 回を超えて呼び出した場合（`backend/app/core/config.py` の `ROLE_SELF_CREATE_RATE_LIMIT` / `ROLE_SELF_CREATE_RATE_WINDOW_SECONDS`）。`Retry-After` ヘッダーに待ち秒数を返します。
 - `500 Internal Server Error`:

@@ -990,6 +990,15 @@ class SelfCreateRolePayload(BaseModel):
 		return value.strip() if isinstance(value, str) else value
 
 
+# /members/sync はロール名で会員種別（admin など）を判定するため、member はこれらの名前のロールを作れない
+_RESERVED_ROLE_NAME_KEYS = frozenset(
+	normalize_role_name(name)
+	for name in (
+		*ADMIN_ROLE_NAMES, *MEMBER_ROLE_NAMES, *OBOG_ROLE_NAMES, *SUB_USER_ROLE_NAMES, PRE_MEMBER_ROLE_NAME,
+	)
+)
+
+
 async def _rollback_created_role(role_id: str, created: dict, token: str, audit: AuditContext) -> bool:
 	"""DB に保存できなかったロールを Discord から削除する。成功したら True を返す。"""
 	try:
@@ -1058,6 +1067,8 @@ async def self_create_role(
 	if payload.category_id not in _self_assignable_category_ids(manifest):
 		raise HTTPException(status_code=403, detail="このカテゴリにはロールを作成できません")
 	name_key = normalize_role_name(payload.name)
+	if name_key in _RESERVED_ROLE_NAME_KEYS:
+		raise HTTPException(status_code=409, detail=f"ロール名 '{payload.name}' は予約されているため使用できません")
 	if any(normalize_role_name(str(r.get("name", ""))) == name_key for r in manifest.get("roles", [])):
 		raise HTTPException(status_code=409, detail=f"ロール '{payload.name}' はすでに存在します")
 
