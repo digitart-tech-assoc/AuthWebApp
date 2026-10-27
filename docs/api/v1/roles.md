@@ -1,6 +1,6 @@
 # ロール操作 API 仕様 (`/api/v1/roles`)
 
-本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除、権限変更に関する API 仕様です。
+本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除・作成、権限変更に関する API 仕様です。
 
 ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord の状態を DB に取り込み直す API はありません（Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります）。
 
@@ -130,6 +130,68 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 - Bot 自身のユーザー ID（`GET /users/@me`）はプロセスの稼働中に初回だけ取得し、以降はメモリ上のキャッシュを使います。Bot の操作可能範囲は統合ロールではなく、Bot メンバーが実際に持つロールの最上位位置を基準に判定します。
 - Bot メンバーまたはそのロール階層を特定できない場合は、セルフロール操作を拒否し、push の割り当て変更をすべてスキップします。
 - 並列に取得しても、取得結果の判定順は「ロール一覧の取得失敗（502）→ Bot メンバー情報の取得失敗（502）→ ロールの 403 / 404 検証 → 付与時のチャンネル上書き一覧の取得失敗（502）→ チャンネル上書きによる 403 検証 → 対象メンバー情報の取得失敗（502）」です。解除のみの場合、チャンネル上書き一覧の取得・検証は行いません。
+
+---
+
+## POST `/api/v1/roles/self-create`
+
+ログインメンバーが、セルフ付与できるカテゴリ（ゲーム・スキルなど）に Discord 権限なしのロールを作成し、自分に付与します。
+作成したロールは作成者個人のものではなく、サーバー全体で共有されます。他のメンバーも `self-batch` で付与・解除できます。編集・削除・並び替えは管理者が `/roles` の管理画面から行います。
+
+* **認可レベル**: `Member`（`member`, `sub_user`, `obog`, `admin`）
+* **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
+* **リクエストボディ**:
+```json
+{
+  "name": "Minecraft",
+  "color": "#3498DB",
+  "category_id": "cat-game"
+}
+```
+
+| 項目 | 説明 |
+|---|---|
+| `name` | ロール名。前後の空白を除いて 1〜100 文字（Discord の上限） |
+| `color` | `#rrggbb` 形式の色 |
+| `category_id` | 作成先のカテゴリ ID。`self-batch` で付与・解除できるカテゴリ（マニフェストに存在し、`is_restricted: false` かつ予約カテゴリ以外）に限る |
+
+`permissions` / `hoist` / `mentionable` は受け付けず、Backend で `permissions = 0`・`hoist = false`・`mentionable = true`（管理画面の新規作成と同じ既定値）に固定します。
+
+### レスポンス (200 OK)
+```json
+{
+  "ok": true,
+  "role": {
+    "role_id": "123456789012345678",
+    "name": "Minecraft",
+    "color": "#3498DB",
+    "permissions": 0,
+    "position": 1,
+    "category_id": "cat-game"
+  },
+  "assigned": true
+}
+```
+* `assigned`: 作成者への付与（Discord と DB の両方）まで完了したか。`false` の場合もロールは作成済みのため、通常のセルフ付与で付与できます。
+
+### 処理の流れ
+1. DB のマニフェストを正として、カテゴリと同名ロールの有無を検証します。
+2. Discord にロールを作成します（`POST /guilds/{guild_id}/roles`）。Discord はロールを最下部に作るため、Bot の操作可能範囲に入ります。
+3. Discord が返した実 ID で `role_manifests` に保存します。`position` は管理画面の新規作成と同じく、既存ロールの最小値の 1 つ下（1 未満にはしない）にします。同名ロールの確認から保存までは、ロール作成同士で直列化します（`pg_advisory_xact_lock`）。
+   * 保存に失敗した場合（同名ロールが直前に作られた場合を含む）は、作成した Discord のロールを削除します。
+   * push はマニフェストにないロールを Discord から削除するため、Discord にだけロールが残ることはありません（削除にも失敗した場合は、次の push で削除されます）。
+4. 作成者に付与します（`PUT /guilds/{guild_id}/members/{user_id}/roles/{role_id}` → `role_member_assignments`）。DB への保存に失敗した場合は Discord 側の付与を取り消し、`assigned: false` を返します。
+
+### バリデーション & エラーレスポンス
+- `400 Bad Request`: Discord ID が特定できない場合
+- `403 Forbidden`: 作成先のカテゴリが存在しない、または `self-batch` で扱えないカテゴリの場合
+- `409 Conflict`: 同じ名前のロールがすでにある場合（大文字・小文字と前後の空白の違いは無視）
+- `422 Unprocessable Entity`: ロール名・色・カテゴリ ID の形式が正しくない場合
+- `429 Too Many Requests`: Discord ID ごとに 10 分間に 5 回を超えて呼び出した場合（`backend/app/core/config.py` の `ROLE_SELF_CREATE_RATE_LIMIT` / `ROLE_SELF_CREATE_RATE_WINDOW_SECONDS`）。`Retry-After` ヘッダーに待ち秒数を返します。
+- `500 Internal Server Error`:
+  - `DISCORD_TOKEN` が設定されていない場合
+  - DB への保存に失敗した場合。Discord に作成したロールは削除されます（削除にも失敗した場合は、その旨を `detail` に返します）。
+- `502 Bad Gateway`: Discord へのロール作成に失敗した場合。DB には何も保存しません。
 
 ---
 
