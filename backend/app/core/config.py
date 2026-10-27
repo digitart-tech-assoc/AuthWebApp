@@ -46,6 +46,9 @@ RATE_LIMIT_RELAXED_NETWORKS: tuple[str, ...] = ("133.2.0.0/16",)
 # お問い合わせ送信（Discord チャンネルへの投稿）: IP ごとに窓の秒数あたり最大回数
 CONTACT_RATE_LIMIT: int = 5
 CONTACT_RATE_WINDOW_SECONDS: int = 3600
+# member によるロール作成（Discord へのロール作成）: discord_id ごとに窓の秒数あたり最大回数
+ROLE_SELF_CREATE_RATE_LIMIT: int = 5
+ROLE_SELF_CREATE_RATE_WINDOW_SECONDS: int = 600
 
 
 # ============================================================================

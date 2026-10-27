@@ -294,3 +294,36 @@ def patch_manifest_db(
 					*_assignment_audit_logs(changes),
 				])
 		conn.commit()
+
+
+class RoleNameConflictError(Exception):
+	"""同じ名前のロールがすでにある。"""
+
+
+def normalize_role_name(name: str) -> str:
+	"""ロール名の重複判定に使う形にする（前後の空白と大文字・小文字の違いを無視する）。"""
+	return name.strip().casefold()
+
+
+def insert_member_created_role(role: dict[str, Any], audit: AuditContext | None = None) -> dict[str, Any]:
+	"""member が作成したロールを、Discord で作成済みの実 ID でマニフェストに追加する。
+
+	同名ロールの確認から追加までを、member によるロール作成同士で直列化する。
+	position は管理者画面の新規作成と同じく、既存ロールの最小値の1つ下（1 未満にはしない）にする。
+	同じ名前のロールがあれば RoleNameConflictError を送出する。追加した行を返す。
+	"""
+	with _connect() as conn:
+		with conn.cursor() as cur:
+			cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("member-role-create",))
+			existing = _snapshot_roles(cur, None, lock=True)
+			name_key = normalize_role_name(role["name"])
+			if any(normalize_role_name(str(r["name"])) == name_key for r in existing.values()):
+				raise RoleNameConflictError(role["name"])
+			positions = [int(r["position"]) for r in existing.values()]
+			row = {**role, "position": max(1, min(positions) - 1) if positions else 1}
+			_upsert_roles(cur, [row])
+			insert_audit_logs(cur, audit, _row_audit_logs(
+				TARGET_ROLE, ROLE_AUDIT_FIELDS, {}, _snapshot_roles(cur, [row["role_id"]], lock=False),
+			))
+		conn.commit()
+	return row
