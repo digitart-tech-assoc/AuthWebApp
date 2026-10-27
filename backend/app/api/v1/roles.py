@@ -34,15 +34,12 @@ from app.db.audit_repository import (
 )
 from app.core.errors import describe_exception
 from app.core.config import (
-	ADMIN_ROLE_NAMES,
 	DISCORD_API_TIMEOUT,
 	MEMBER_RESTRICTED_CATEGORY_NAMES,
-	MEMBER_ROLE_NAMES,
-	OBOG_ROLE_NAMES,
-	PRE_MEMBER_ROLE_NAME,
+	MEMBERSHIP_ROLE_NAMES,
 	ROLE_SELF_CREATE_RATE_LIMIT,
 	ROLE_SELF_CREATE_RATE_WINDOW_SECONDS,
-	SUB_USER_ROLE_NAMES,
+	MembershipType,
 )
 from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
 from app.db.manifest_repository import (
@@ -663,11 +660,15 @@ async def update_role_permissions(
 
 def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 	"""Discordロール一覧から期待されるロール種別のIDを特定する"""
-	member_role_ids = [r["role_id"] for r in roles if r["name"] in MEMBER_ROLE_NAMES]
-	obog_role_ids = [r["role_id"] for r in roles if r["name"] in OBOG_ROLE_NAMES]
-	admin_role_ids = [r["role_id"] for r in roles if r["name"] in ADMIN_ROLE_NAMES]
-	pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == PRE_MEMBER_ROLE_NAME), None)
-	sub_user_role_ids = [r["role_id"] for r in roles if r["name"] in SUB_USER_ROLE_NAMES]
+	def ids_of(membership_type: str) -> list[str]:
+		names = MEMBERSHIP_ROLE_NAMES[membership_type]
+		return [r["role_id"] for r in roles if r["name"] in names]
+
+	member_role_ids = ids_of(MembershipType.MEMBER)
+	obog_role_ids = ids_of(MembershipType.OBOG)
+	admin_role_ids = ids_of(MembershipType.ADMIN)
+	pre_member_role_id = next(iter(ids_of(MembershipType.PRE_MEMBER)), None)
+	sub_user_role_ids = ids_of(MembershipType.SUB_USER)
 
 	all_matched = member_role_ids + obog_role_ids + admin_role_ids + sub_user_role_ids
 	if pre_member_role_id:
@@ -992,10 +993,7 @@ class SelfCreateRolePayload(BaseModel):
 
 # /members/sync はロール名で会員種別（admin など）を判定するため、member はこれらの名前のロールを作れない
 _RESERVED_ROLE_NAME_KEYS = frozenset(
-	normalize_role_name(name)
-	for name in (
-		*ADMIN_ROLE_NAMES, *MEMBER_ROLE_NAMES, *OBOG_ROLE_NAMES, *SUB_USER_ROLE_NAMES, PRE_MEMBER_ROLE_NAME,
-	)
+	normalize_role_name(name) for names in MEMBERSHIP_ROLE_NAMES.values() for name in names
 )
 
 

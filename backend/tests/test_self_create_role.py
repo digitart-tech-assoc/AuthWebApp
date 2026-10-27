@@ -10,9 +10,10 @@ from pydantic import ValidationError
 
 from app.api.v1 import roles as roles_api
 from app.core.auth import require_member
-from app.core.config import ROLE_SELF_CREATE_RATE_LIMIT
+from app.core.config import MEMBERSHIP_ROLE_NAMES, ROLE_SELF_CREATE_RATE_LIMIT
 from app.db import audit_repository, guild_repository, manifest_repository
 from app.db.audit_repository import AuditContext
+from app.db.manifest_repository import normalize_role_name
 from tests.fake_role_db import FakeRoleDB
 
 CREATOR = {"sub": "sub-1", "discord_id": "500", "app_role": "member"}
@@ -173,6 +174,17 @@ async def test_reserved_role_name_is_rejected(db, name):
 	assert NEW_ROLE_ID not in db.roles
 
 
+def test_reserved_names_cover_all_names_matched_by_sync():
+	# /members/sync が会員種別の判定に使う名前は、すべて作成を拒否する
+	names = sorted({name for names in MEMBERSHIP_ROLE_NAMES.values() for name in names})
+	roles = [{"role_id": str(i), "name": name} for i, name in enumerate(names)]
+
+	matched = roles_api._match_role_ids(roles)
+
+	assert len(matched["all_matched_role_ids"]) == len(names)
+	assert {normalize_role_name(name) for name in names} <= roles_api._RESERVED_ROLE_NAME_KEYS
+
+
 # --- 正常系 ---
 
 @pytest.mark.asyncio
@@ -189,7 +201,7 @@ async def test_creates_role_without_permissions_and_assigns_creator(db):
 	assert result["role"]["role_id"] == NEW_ROLE_ID
 	saved = db.roles[NEW_ROLE_ID]
 	assert (saved["name"], saved["color"], saved["permissions"], saved["category_id"]) == ("Splatoon", "#3498DB", 0, "cat-game")
-	# 管理者画面の新規作成と同じく、既存ロールの最小 position の1つ下（1 未満にはしない）
+	# 既存ロールの最小 position の1つ下（1 未満にはしない）
 	assert saved["position"] == 1
 	discord.add.assert_awaited_once_with(roles_api.DISCORD_GUILD_ID, "500", NEW_ROLE_ID, "token")
 	assert db.members_of(NEW_ROLE_ID) == {"500"}
