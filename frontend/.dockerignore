@@ -1,0 +1,17 @@
+# 依存パッケージはコンテナ内の npm ci で入れるため、ホスト側のものは送らない
+**/node_modules
+
+# ビルド成果物・キャッシュ（コンテナ内の npm run build で生成する）
+**/.next
+*.tsbuildinfo
+next-env.d.ts
+
+# 環境変数ファイル（ビルド時の値は build args で渡す）
+.env*
+
+# ログ
+npm-debug.log*
+
+# Docker 関連
+Dockerfile
+.dockerignore
