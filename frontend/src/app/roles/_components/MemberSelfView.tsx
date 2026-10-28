@@ -1,12 +1,15 @@
 // 役割: Member専用ロール管理ビュー（個人単位）
 // ロール付与/解除はローカルで変更 → 確定時にDB保存+Discord同期を自動実行
+// セルフ付与できるカテゴリには、権限なしのロールを作成できる（作成と同時に自分に付与）
 
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
-import { fetchMyRoleAssignments, selfBatchRoles } from "@/lib/api/roles";
-import { type StatusMessages, messageForStatus } from "@/lib/errorMessages";
+import { useRouter } from "next/navigation";
+import { fetchMyRoleAssignments, selfBatchRoles, selfCreateRole } from "@/lib/api/roles";
+import { DisplayableError, type StatusMessages, messageForStatus } from "@/lib/errorMessages";
+import NewRoleModal from "./NewRoleModal";
 import { statusBanner, unsavedBar, unsavedBarBtn } from "./roleStyles";
 
 type Category = {
@@ -51,10 +54,24 @@ const SELF_BATCH_ERROR_MESSAGES: StatusMessages = {
   default: "ロール変更に失敗しました。時間をおいて再度お試しください。",
 };
 
+const SELF_CREATE_ERROR_MESSAGES: StatusMessages = {
+  400: "Discord ID が特定できません。Discordアカウントで再ログインしてください。",
+  401: "ログインの有効期限が切れました。再度ログインしてください。",
+  403: "このカテゴリにはロールを作成できません。",
+  409: "この名前のロールは作成できません（同じ名前のロールがあるか、システムで使う名前です）。別の名前にするか、既存のロールを付与してください。",
+  422: "ロール名またはカラーの形式が正しくありません。",
+  429: "ロールの作成回数が上限に達しました。しばらく時間をおいてから再度お試しください。",
+  502: "Discordへのロール作成に失敗しました。時間をおいて再度お試しください。",
+  default: "ロールの作成に失敗しました。時間をおいて再度お試しください。",
+};
+
 const catGroupClass = "mb-2.5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm";
 const catHeaderClass = "flex min-h-10 cursor-pointer select-none items-center gap-2 px-4 py-3 transition-colors hover:bg-slate-50";
 const catNameClass = "flex-1 text-sm font-semibold text-slate-900";
 const catCountClass = "rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500";
+const catAddBtnClass =
+  "inline-flex size-7 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-base font-semibold text-blue-700 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40";
+const emptyCatClass = "px-4 py-2 text-sm text-slate-500";
 const catRoleListClass = "border-t border-slate-100 py-1";
 const catRoleItemClass = "flex min-h-10 items-center gap-2.5 px-4 py-1 transition-colors hover:bg-slate-50";
 const catRoleItemDisabledClass = `${catRoleItemClass} cursor-not-allowed opacity-40`;
@@ -69,7 +86,10 @@ const chevronClass = (open: boolean) =>
   `size-3.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`;
 
 export default function MemberSelfView({ categories, roles, myDiscordId, displayName, avatarUrl }: Props) {
+  const router = useRouter();
   const [status, setStatus] = useState<Status | null>(null);
+  // ロール作成モーダルを開いているカテゴリ
+  const [createCategoryId, setCreateCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
 
@@ -193,6 +213,49 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
     }
   }
 
+  function openCreateRole(catId: string) {
+    // 作成後に最新のロール一覧を読み直すため、未確定の付与・解除を先に確定してもらう
+    if (hasUnsaved) {
+      showStatus({ kind: "info", msg: "未確定のロール変更があります。「変更を確定」してからロールを作成してください" });
+      return;
+    }
+    setCreateCategoryId(catId);
+  }
+
+  // --- ロール作成（Discord への作成と自分への付与まで Backend が行う） ---
+  async function handleCreateRole(role: { name: string; color: string; category_id: string | null }) {
+    if (!role.category_id) return;
+    const result = await selfCreateRole({ name: role.name, color: role.color, category_id: role.category_id });
+    if (!result.ok || !result.role) {
+      // Backend のエラー文言は表示せず、HTTP ステータスに応じた固定文言を使う（モーダル内に表示する）
+      throw new DisplayableError(messageForStatus(result.status ?? 0, SELF_CREATE_ERROR_MESSAGES));
+    }
+
+    const created = result.role;
+    if (result.assigned && myDiscordId) {
+      const withCreated = (assignments: Record<string, string[]>) => ({
+        ...assignments,
+        [created.role_id]: [...(assignments[created.role_id] ?? []), myDiscordId],
+      });
+      setMembersByRole(withCreated);
+      initialAssignmentsRef.current = withCreated(initialAssignmentsRef.current);
+    }
+    setCreateCategoryId(null);
+    setCollapsedCats((prev) => {
+      const next = new Set(prev);
+      next.delete(role.category_id!);
+      return next;
+    });
+    showStatus(
+      result.assigned
+        ? { kind: "success", msg: `ロール「${created.name}」を作成して付与しました` }
+        : { kind: "error", msg: `ロール「${created.name}」は作成しましたが、付与に失敗しました。一覧から「＋ 付与」してください` },
+      result.assigned ? 5000 : 0,
+    );
+    // 作成したロールを一覧に出すため、Server Component のマニフェストを読み直す
+    router.refresh();
+  }
+
   function toggleCat(catId: string) {
     setCollapsedCats((prev) => {
       const next = new Set(prev);
@@ -297,9 +360,10 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
 
         {sortedCategories.map((cat) => {
           const catRoles = sortedRoles.filter((r) => r.category_id === cat.id);
-          if (catRoles.length === 0) return null;
-          const isOpen = !collapsedCats.has(cat.id);
           const catRestricted = cat.is_restricted;
+          // セルフ付与できるカテゴリはロールを作成できるため、ロールがなくても表示する
+          if (catRoles.length === 0 && catRestricted) return null;
+          const isOpen = !collapsedCats.has(cat.id);
 
           return (
             <div key={cat.id} className={catGroupClass}>
@@ -308,12 +372,33 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
                   <path d="M5.5 3.5L10.5 8l-5 4.5" strokeWidth="1.5" stroke="currentColor" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 <span className={catNameClass}>{cat.name}</span>
-                <span className={catCountClass}>{catRoles.length}</span>
-                {catRestricted && <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">管理者専用</span>}
+                {catRestricted ? (
+                  <>
+                    <span className={catCountClass}>{catRoles.length}</span>
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-600">管理者専用</span>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className={catAddBtnClass}
+                    disabled={saveState === "saving"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCreateRole(cat.id);
+                    }}
+                    title={`「${cat.name}」にロールを作成`}
+                    aria-label={`「${cat.name}」にロールを作成`}
+                  >
+                    ＋
+                  </button>
+                )}
               </div>
 
               {isOpen && (
                 <div className={catRoleListClass}>
+                  {catRoles.length === 0 && (
+                    <div className={emptyCatClass}>ロールはまだありません。「＋」から作成できます</div>
+                  )}
                   {catRoles.map((role) => {
                     const assigned = hasRole(role.role_id);
                     const aboveBot = isAboveBot(role);
@@ -403,6 +488,16 @@ export default function MemberSelfView({ categories, roles, myDiscordId, display
             {saveState === "saving" ? "処理中..." : "変更を確定"}
           </button>
         </div>
+      )}
+
+      {createCategoryId && (
+        <NewRoleModal
+          categories={categories}
+          botPermissions={0n}
+          memberCategoryId={createCategoryId}
+          onSaved={handleCreateRole}
+          onClose={() => setCreateCategoryId(null)}
+        />
       )}
     </div>
   );

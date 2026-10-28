@@ -105,3 +105,18 @@ class TestSyncMembersSavesGuildMembers:
 		members_data = mock_sync.call_args.args[4]
 		assert members_data["role-obog"] == []
 		assert members_data["role-pre"] == []
+
+
+def test_match_role_ids_by_membership_type():
+	roles = [*DISCORD_ROLES, {"role_id": "role-game", "name": "Minecraft"}]
+
+	matched = roles_api._match_role_ids(roles)
+
+	assert matched == {
+		"member_role_ids": ["role-member"],
+		"obog_role_ids": ["role-obog"],
+		"admin_role_ids": ["role-admin"],
+		"pre_member_role_id": "role-pre",
+		"sub_user_role_ids": ["role-sub"],
+		"all_matched_role_ids": ["role-member", "role-obog", "role-admin", "role-sub", "role-pre"],
+	}

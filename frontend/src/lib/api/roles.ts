@@ -29,6 +29,30 @@ export interface SelfBatchResponse {
   removed?: string[];
 }
 
+export interface SelfCreateRolePayload {
+  name: string;
+  color: string;
+  category_id: string;
+}
+
+export interface SelfCreatedRole {
+  role_id: string;
+  name: string;
+  color: string;
+  permissions: number;
+  position: number;
+  category_id: string;
+}
+
+export interface SelfCreateRoleResponse {
+  ok: boolean;
+  /** 失敗時の HTTP ステータス。画面の文言はこの値から Frontend で決める（Backend の detail は使わない） */
+  status?: number;
+  role?: SelfCreatedRole;
+  /** 作成者への付与まで完了したか。false でもロールは作成済み */
+  assigned?: boolean;
+}
+
 /**
  * ロールに割り当てられているメンバー一覧およびアサイン状態を取得する
  */
@@ -101,4 +125,20 @@ export async function selfBatchRoles(payload: SelfBatchPayload): Promise<SelfBat
     removed: data.removed,
     detail: data.detail,
   };
+}
+
+/**
+ * セルフ付与できるカテゴリにロールを作成し、自分に付与する
+ */
+export async function selfCreateRole(payload: SelfCreateRolePayload): Promise<SelfCreateRoleResponse> {
+  const res = await fetch("/api/roles/self-create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as SelfCreateRoleResponse;
+  if (!res.ok) {
+    return { ok: false, status: res.status };
+  }
+  return { ok: true, role: data.role, assigned: data.assigned };
 }

@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ from app.db.audit_repository import (
 	ACTION_UPDATE,
 	OP_PUSH,
 	OP_SELF_BATCH,
+	OP_SELF_CREATE,
 	SYSTEM_DISCORD,
 	TARGET_MEMBER_ROLES,
 	TARGET_ROLE,
@@ -33,13 +34,18 @@ from app.db.audit_repository import (
 )
 from app.core.errors import describe_exception
 from app.core.config import (
-	ADMIN_ROLE_NAMES,
 	DISCORD_API_TIMEOUT,
 	MEMBER_RESTRICTED_CATEGORY_NAMES,
-	MEMBER_ROLE_NAMES,
-	OBOG_ROLE_NAMES,
-	PRE_MEMBER_ROLE_NAME,
-	SUB_USER_ROLE_NAMES,
+	MEMBERSHIP_ROLE_NAMES,
+	ROLE_SELF_CREATE_RATE_LIMIT,
+	ROLE_SELF_CREATE_RATE_WINDOW_SECONDS,
+	MembershipType,
+)
+from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
+from app.db.manifest_repository import (
+	RoleNameConflictError,
+	insert_member_created_role,
+	normalize_role_name,
 )
 from app.db.repository import (
 	batch_update_user_roles,
@@ -80,6 +86,7 @@ DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://discord-bot:8000")
 # 監査ログに記録する Discord のロール定義のフィールド（fetch_guild_roles の戻り値の形式）
 DISCORD_ROLE_AUDIT_FIELDS = ("name", "color", "hoist", "mentionable", "permissions", "position")
 SHARED_SECRET = os.getenv("SHARED_SECRET", "")
+_self_create_limiter = SlidingWindowRateLimiter(ROLE_SELF_CREATE_RATE_LIMIT, ROLE_SELF_CREATE_RATE_WINDOW_SECONDS)
 
 
 def _get_token() -> str:
@@ -653,11 +660,15 @@ async def update_role_permissions(
 
 def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 	"""Discordロール一覧から期待されるロール種別のIDを特定する"""
-	member_role_ids = [r["role_id"] for r in roles if r["name"] in MEMBER_ROLE_NAMES]
-	obog_role_ids = [r["role_id"] for r in roles if r["name"] in OBOG_ROLE_NAMES]
-	admin_role_ids = [r["role_id"] for r in roles if r["name"] in ADMIN_ROLE_NAMES]
-	pre_member_role_id = next((r["role_id"] for r in roles if r["name"] == PRE_MEMBER_ROLE_NAME), None)
-	sub_user_role_ids = [r["role_id"] for r in roles if r["name"] in SUB_USER_ROLE_NAMES]
+	def ids_of(membership_type: str) -> list[str]:
+		names = MEMBERSHIP_ROLE_NAMES[membership_type]
+		return [r["role_id"] for r in roles if r["name"] in names]
+
+	member_role_ids = ids_of(MembershipType.MEMBER)
+	obog_role_ids = ids_of(MembershipType.OBOG)
+	admin_role_ids = ids_of(MembershipType.ADMIN)
+	pre_member_role_id = next(iter(ids_of(MembershipType.PRE_MEMBER)), None)
+	sub_user_role_ids = ids_of(MembershipType.SUB_USER)
 
 	all_matched = member_role_ids + obog_role_ids + admin_role_ids + sub_user_role_ids
 	if pre_member_role_id:
@@ -773,6 +784,17 @@ class SelfBatchPayload(BaseModel):
 	roles_to_remove: list[str] = Field(default_factory=list, max_length=50)
 
 
+def _self_assignable_category_ids(manifest: dict) -> set[str]:
+	"""member が自分で扱えるロールのカテゴリ ID を返す。
+
+	is_restricted = false と確認できたカテゴリのみ許可する。フラグ欠損時は拒否側に倒す。
+	"""
+	return {
+		c["id"] for c in manifest.get("categories", [])
+		if c["name"] not in MEMBER_RESTRICTED_CATEGORY_NAMES and not c.get("is_restricted", True)
+	}
+
+
 def _unwrap_discord_fetch(result: object, label: str):
 	"""asyncio.gather(return_exceptions=True) の結果を取り出す。Discord API の失敗は 502 に変換する。"""
 	if isinstance(result, Exception):
@@ -824,11 +846,7 @@ async def self_batch_roles(
 	# --- 1. 一括バリデーション（ホワイトリスト方式・DB のマニフェストを正とする） ---
 	manifest = await asyncio.to_thread(fetch_manifest)
 	roles_in_manifest = {r["role_id"]: r for r in manifest.get("roles", [])}
-	# is_restricted = false と確認できたカテゴリのみ許可する。フラグ欠損時は拒否側に倒す。
-	self_assignable_cat_ids = {
-		c["id"] for c in manifest.get("categories", [])
-		if c["name"] not in MEMBER_RESTRICTED_CATEGORY_NAMES and not c.get("is_restricted", True)
-	}
+	self_assignable_cat_ids = _self_assignable_category_ids(manifest)
 
 	for role_id in all_role_ids:
 		role_info = roles_in_manifest.get(role_id)
@@ -959,6 +977,145 @@ async def self_batch_roles(
 		"discord_id": discord_id,
 		"added": actually_added,
 		"removed": actually_removed,
+	}
+
+
+class SelfCreateRolePayload(BaseModel):
+	name: str = Field(min_length=1, max_length=100)
+	color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+	category_id: str = Field(min_length=1, max_length=100)
+
+	@field_validator("name", mode="before")
+	@classmethod
+	def _strip_name(cls, value: object) -> object:
+		return value.strip() if isinstance(value, str) else value
+
+
+# /members/sync はロール名で会員種別（admin など）を判定するため、member はこれらの名前のロールを作れない
+_RESERVED_ROLE_NAME_KEYS = frozenset(
+	normalize_role_name(name) for names in MEMBERSHIP_ROLE_NAMES.values() for name in names
+)
+
+
+async def _rollback_created_role(role_id: str, created: dict, token: str, audit: AuditContext) -> bool:
+	"""DB に保存できなかったロールを Discord から削除する。成功したら True を返す。"""
+	try:
+		await delete_guild_role(DISCORD_GUILD_ID, role_id, token)
+	except Exception as exc:
+		logger.critical("Compensating delete FAILED for created role %s: %s", role_id, redact_snowflakes(exc))
+		return False
+	await record_discord_audit_safely(audit, [AuditLog(
+		SYSTEM_DISCORD, TARGET_ROLE, role_id, ACTION_ROLLBACK,
+		{f: created.get(f) for f in DISCORD_ROLE_AUDIT_FIELDS}, None,
+	)])
+	return True
+
+
+async def _assign_created_role(discord_id: str, role_id: str, token: str, audit: AuditContext) -> bool:
+	"""作成したロールを作成者に付与する。Discord と DB の両方に反映できたら True を返す。
+
+	DB への保存に失敗した場合は、Discord 側の付与を取り消す。
+	"""
+	try:
+		await add_role_to_member(DISCORD_GUILD_ID, discord_id, role_id, token)
+	except Exception:
+		logger.warning("Discord API call failed (assign created role %s)", role_id, exc_info=True)
+		return False
+	await _record_member_roles(audit, discord_id, {role_id}, set())
+	try:
+		await asyncio.to_thread(batch_update_user_roles, discord_id, [role_id], [], audit)
+	except Exception as exc:
+		logger.error("Failed to save assignment of created role %s to DB (%s)", role_id, type(exc).__name__)
+		try:
+			await remove_role_from_member(DISCORD_GUILD_ID, discord_id, role_id, token)
+			await _record_member_roles(audit, discord_id, set(), {role_id}, ACTION_ROLLBACK)
+		except Exception as rollback_exc:
+			logger.critical(
+				"Compensating unassign FAILED for created role %s: %s", role_id, redact_snowflakes(rollback_exc)
+			)
+		return False
+	return True
+
+
+@router.post("/self-create")
+async def self_create_role(
+	payload: SelfCreateRolePayload,
+	_principal: dict = Depends(require_member),
+	audit: AuditContext = Depends(get_audit_context),
+) -> dict:
+	"""member が、セルフ付与できるカテゴリに Discord 権限なしのロールを作成し、自分に付与する。
+
+	1. カテゴリ（セルフ付与と同じ条件）と、同名ロールがないことを検証する
+	2. Discord にロールを作成する（permissions = 0 に固定）
+	3. 実 ID でマニフェストに保存する。失敗したら Discord のロールを削除する
+	4. 作成者に付与する。失敗してもロールは残し、assigned = false を返す
+	"""
+	audit = audit.with_operation(OP_SELF_CREATE)
+	discord_id: str | None = _principal.get("discord_id")
+	if not discord_id:
+		raise HTTPException(status_code=400, detail="Discord ID が特定できません。Discordアカウントで再ログインしてください。")
+	await enforce_rate_limit(_self_create_limiter, f"discord_id:{discord_id}", "role self create")
+
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+
+	# --- 1. 検証（DB のマニフェストを正とする） ---
+	manifest = await asyncio.to_thread(fetch_manifest)
+	if payload.category_id not in _self_assignable_category_ids(manifest):
+		raise HTTPException(status_code=403, detail="このカテゴリにはロールを作成できません")
+	name_key = normalize_role_name(payload.name)
+	if name_key in _RESERVED_ROLE_NAME_KEYS:
+		raise HTTPException(status_code=409, detail=f"ロール名 '{payload.name}' は予約されているため使用できません")
+	if any(normalize_role_name(str(r.get("name", ""))) == name_key for r in manifest.get("roles", [])):
+		raise HTTPException(status_code=409, detail=f"ロール '{payload.name}' はすでに存在します")
+
+	role = {
+		"name": payload.name,
+		"color": payload.color,
+		"hoist": False,
+		"mentionable": True,
+		"permissions": 0,
+		"category_id": payload.category_id,
+		"is_our_bot": False,
+	}
+
+	# --- 2. Discord に作成 ---
+	try:
+		created = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
+	except Exception as exc:
+		logger.warning("Discord API call failed (create role)", exc_info=True)
+		raise HTTPException(status_code=502, detail="Discord API error (create role)") from exc
+	role_id = created["role_id"]
+	await record_discord_audit_safely(audit, [AuditLog(
+		SYSTEM_DISCORD, TARGET_ROLE, role_id, ACTION_CREATE,
+		None, {f: created.get(f) for f in DISCORD_ROLE_AUDIT_FIELDS},
+	)])
+
+	# --- 3. マニフェストに保存 ---
+	try:
+		saved = await asyncio.to_thread(insert_member_created_role, {**role, "role_id": role_id}, audit)
+	except RoleNameConflictError as exc:
+		# 検証後に同名のロールが作られた。作ったロールは取り消す
+		await _rollback_created_role(role_id, created, token, audit)
+		raise HTTPException(status_code=409, detail=f"ロール '{payload.name}' はすでに存在します") from exc
+	except Exception as exc:
+		logger.error("Failed to save created role %s to DB (%s)", role_id, type(exc).__name__)
+		rollback_succeeded = await _rollback_created_role(role_id, created, token, audit)
+		detail = (
+			"Failed to persist the created role to database. Discord role was deleted."
+			if rollback_succeeded
+			else "Failed to persist the created role and Discord rollback failed; states may be inconsistent."
+		)
+		raise HTTPException(status_code=500, detail=detail) from exc
+
+	# --- 4. 作成者に付与 ---
+	assigned = await _assign_created_role(discord_id, role_id, token, audit)
+
+	return {
+		"ok": True,
+		"role": {f: saved[f] for f in ("role_id", "name", "color", "permissions", "position", "category_id")},
+		"assigned": assigned,
 	}
 
 

@@ -83,6 +83,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | | `manifest_put` | `PUT /api/v1/manifest` |
 | | `push` | `POST /api/v1/roles/push` |
 | | `self_batch` | `POST /api/v1/roles/self-batch` |
+| | `self_create` | `POST /api/v1/roles/self-create` |
 | | `join_otp_verify` | `POST /api/v1/student/otp/verify` |
 | | `student_profile` | `POST /api/v1/student/profile` |
 | | `pre_member_register` | `POST /api/v1/members/pre_member/register`（Bot からの内部呼び出し） |
@@ -95,7 +96,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | `action` | `create` / `update` / `delete` | 作成・更新・削除 |
 | | `rename_id` | 仮 ID（`draft-…`）を正式な ID に置き換え |
 | | `reorder` | 並び順の変更 |
-| | `rollback` | self-batch の DB 更新に失敗したため、Discord のロールを元に戻した |
+| | `rollback` | self-batch・self-create の DB 更新に失敗したため、Discord の変更を元に戻した（self-create では、作成したロールの削除と作成者への付与の取り消し） |
 
 #### `before` / `after` の形式
 - 値の形式は `fetch_manifest` / `fetch_guild_roles` の戻り値に合わせます（`permissions` は int、`color` は文字列）。Discord API に送る形式（`permissions` は str、`color` は int）ではありません。

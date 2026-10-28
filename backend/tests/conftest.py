@@ -8,13 +8,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from app.api.v1 import contact, join, student
+from app.api.v1 import contact, join, roles, student
 
 
 @pytest.fixture(autouse=True)
 def reset_rate_limiters():
 	"""レート制限のカウントはモジュール変数に残るため、テストごとに消す"""
-	limiters = [student._otp_send_limiter, join._request_limiter, join._relaxed_request_limiter, contact._contact_limiter]
+	limiters = [
+		student._otp_send_limiter, join._request_limiter, join._relaxed_request_limiter, contact._contact_limiter,
+		roles._self_create_limiter,
+	]
 	for limiter in limiters:
 		limiter.reset()
 	yield

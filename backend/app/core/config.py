@@ -46,6 +46,9 @@ RATE_LIMIT_RELAXED_NETWORKS: tuple[str, ...] = ("133.2.0.0/16",)
 # お問い合わせ送信（Discord チャンネルへの投稿）: IP ごとに窓の秒数あたり最大回数
 CONTACT_RATE_LIMIT: int = 5
 CONTACT_RATE_WINDOW_SECONDS: int = 3600
+# member によるロール作成（Discord へのロール作成）: discord_id ごとに窓の秒数あたり最大回数
+ROLE_SELF_CREATE_RATE_LIMIT: int = 5
+ROLE_SELF_CREATE_RATE_WINDOW_SECONDS: int = 600
 
 
 # ============================================================================
@@ -72,6 +75,14 @@ OBOG_ROLE_NAMES: set[str] = {"OBOG", "OB/OG", "OB-OG"}
 ADMIN_ROLE_NAMES: set[str] = {"administrator", "管理者", "Administrator"}
 PRE_MEMBER_ROLE_NAME: str = "pre-member"
 SUB_USER_ROLE_NAMES: set[str] = {"sub垢"}
+# 会員種別ごとの、/members/sync が判定に使うロール名。member はこれらの名前のロールを作成できない
+MEMBERSHIP_ROLE_NAMES: dict[str, set[str]] = {
+	MembershipType.MEMBER: MEMBER_ROLE_NAMES,
+	MembershipType.OBOG: OBOG_ROLE_NAMES,
+	MembershipType.ADMIN: ADMIN_ROLE_NAMES,
+	MembershipType.PRE_MEMBER: {PRE_MEMBER_ROLE_NAME},
+	MembershipType.SUB_USER: SUB_USER_ROLE_NAMES,
+}
 
 
 # ============================================================================

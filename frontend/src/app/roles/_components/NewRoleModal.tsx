@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { displayMessage } from "@/lib/errorMessages";
 import { DISCORD_PERMISSIONS } from "./PermissionEditor";
 import ModalFrame from "./ModalFrame";
 import ToggleSwitch from "./ToggleSwitch";
@@ -32,12 +33,15 @@ type RoleData = {
 type Props = {
   categories: Category[];
   botPermissions: bigint;
-  onSaved: (role: RoleData) => void;
+  /** Promise を返すと完了まで「作成」を押せなくする。DisplayableError を送出するとその文言を表示する */
+  onSaved: (role: RoleData) => void | Promise<void>;
   onClose: () => void;
   /** カテゴリの選択肢から除くカテゴリ（管理者専用カテゴリ） */
   restrictedCategoryIds?: Set<string>;
   /** 編集モード: 既存ロールを渡すと編集UIになる */
   editingRole?: RoleData | null;
+  /** member のロール作成: 作成先のカテゴリを固定し、権限設定を出さない（permissions は 0 固定） */
+  memberCategoryId?: string;
 };
 
 // ===== Preset palette (Discord-like) =====
@@ -64,16 +68,19 @@ export default function NewRoleModal({
   categories, botPermissions, onSaved, onClose,
   restrictedCategoryIds = new Set(),
   editingRole = null,
+  memberCategoryId,
 }: Props) {
   const isEditMode = !!editingRole;
+  const isMemberMode = memberCategoryId !== undefined;
 
   const [name, setName] = useState(editingRole?.name ?? "");
   const [color, setColor] = useState(editingRole?.color ?? "#99AAB5");
   const [hexInput, setHexInput] = useState(editingRole?.color ?? "#99AAB5");
-  const [categoryId, setCategoryId] = useState<string | null>(editingRole?.category_id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(editingRole?.category_id ?? memberCategoryId ?? null);
   const [perms, setPerms] = useState<bigint>(BigInt(editingRole?.permissions ?? 0));
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"basic" | "permissions">("basic");
+  const [saving, setSaving] = useState(false);
 
   // 固定値: Hoist=false, Mentionable=true
   const hoist = false;
@@ -82,9 +89,10 @@ export default function NewRoleModal({
   // When category changes (新規作成時のみ), inherit its permissions
   useEffect(() => {
     if (isEditMode) return; // 編集モードではカテゴリ変更で権限は上書きしない
+    if (isMemberMode) return; // member が作成するロールは権限なし（0）で固定
     const cat = categories.find((c) => c.id === categoryId);
     setPerms(BigInt(cat?.permissions ?? 0));
-  }, [categoryId, categories, isEditMode]);
+  }, [categoryId, categories, isEditMode, isMemberMode]);
 
   function handleColorPick(c: string) {
     setColor(c);
@@ -106,7 +114,7 @@ export default function NewRoleModal({
   const isAdminActive = hasBitExact(perms, 3n);
   const botHasAdmin = hasBitExact(botPermissions, 3n);
 
-  function handleSave() {
+  async function handleSave() {
     if (!name.trim()) {
       setError("ロール名を入力してください");
       return;
@@ -114,18 +122,27 @@ export default function NewRoleModal({
     setError(null);
 
     const roleId = isEditMode ? editingRole!.role_id : `draft-${Date.now()}`;
-    onSaved({
-      role_id: roleId,
-      name: name.trim(),
-      color,
-      hoist,
-      mentionable,
-      permissions: Number(perms),
-      category_id: categoryId,
-      position: editingRole?.position ?? 0,
-      is_our_bot: editingRole?.is_our_bot,
-    });
+    setSaving(true);
+    try {
+      await onSaved({
+        role_id: roleId,
+        name: name.trim(),
+        color,
+        hoist,
+        mentionable,
+        permissions: isMemberMode ? 0 : Number(perms),
+        category_id: categoryId,
+        position: editingRole?.position ?? 0,
+        is_our_bot: editingRole?.is_our_bot,
+      });
+    } catch (e) {
+      setError(displayMessage(e, "保存に失敗しました。接続を確認してください。"));
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const memberCategoryName = categories.find((c) => c.id === memberCategoryId)?.name;
 
   return (
     <ModalFrame onBackdropClick={onClose} size="xl" ariaLabel={isEditMode ? "ロール編集" : "新規ロール作成"}>
@@ -134,15 +151,17 @@ export default function NewRoleModal({
         <div>
           <p className={modalTitle}>{isEditMode ? "✏ ロールを編集" : "＋ 新規ロールを作成"}</p>
           <p className={modalSubtitle}>
-            {isEditMode
-              ? "変更を確定すると、DBへの保存とDiscordへの同期が自動で行われます"
-              : "作成を確定すると、DBへの保存とDiscordへの同期が自動で行われます"}
+            {isMemberMode
+              ? "作成するとDiscordにロールが作られ、あなたに付与されます。ロールはサーバー全体で共有され、他のメンバーも付与できます（編集・削除は管理者のみ）"
+              : isEditMode
+                ? "変更を確定すると、DBへの保存とDiscordへの同期が自動で行われます"
+                : "作成を確定すると、DBへの保存とDiscordへの同期が自動で行われます"}
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex shrink-0 gap-0.5 border-b border-slate-200 px-6 pt-3">
+      {/* Tabs（member の作成では権限を設定しないため出さない） */}
+      <div className={`${isMemberMode ? "hidden" : "flex"} shrink-0 gap-0.5 border-b border-slate-200 px-6 pt-3`}>
         <button
           type="button"
           className={tabClass(step === "basic")}
@@ -177,26 +196,31 @@ export default function NewRoleModal({
             <input
               type="text"
               className={textInput}
-              placeholder="例: メンバー、モデレーター"
+              placeholder={isMemberMode ? "例: Minecraft、Python" : "例: メンバー、モデレーター"}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              maxLength={isMemberMode ? 100 : undefined}
               autoFocus
             />
 
             {/* Category */}
             <label className={fieldLabel}>カテゴリ</label>
-            <select
-              className={selectInput}
-              value={categoryId ?? ""}
-              onChange={(e) => setCategoryId(e.target.value || null)}
-            >
-              <option value="">カテゴリなし</option>
-              {categories
-                .filter((c) => !restrictedCategoryIds.has(c.id))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-            </select>
+            {isMemberMode ? (
+              <div className="text-sm font-semibold text-slate-900">{memberCategoryName}</div>
+            ) : (
+              <select
+                className={selectInput}
+                value={categoryId ?? ""}
+                onChange={(e) => setCategoryId(e.target.value || null)}
+              >
+                <option value="">カテゴリなし</option>
+                {categories
+                  .filter((c) => !restrictedCategoryIds.has(c.id))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+              </select>
+            )}
 
             {/* Color palette */}
             <label className={fieldLabel}>カラー</label>
@@ -247,7 +271,7 @@ export default function NewRoleModal({
           </div>
         )}
 
-        {step === "permissions" && (
+        {step === "permissions" && !isMemberMode && (
           <div className="flex flex-col">
             {categoryId && (
               <div className="mb-2.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
@@ -297,14 +321,14 @@ export default function NewRoleModal({
       {/* Footer */}
       <div className={modalFooter}>
         {error && <span className={modalErrorMsg}>✕ {error}</span>}
-        <button type="button" className={btnSecondary} onClick={onClose}>戻る</button>
+        <button type="button" className={btnSecondary} onClick={onClose} disabled={saving}>戻る</button>
         <button
           type="button"
           className={btnPrimary}
           onClick={handleSave}
-          disabled={!name.trim()}
+          disabled={!name.trim() || saving}
         >
-          {isEditMode ? "更新" : "作成"}
+          {isEditMode ? (saving ? "更新中..." : "更新") : (saving ? "作成中..." : "作成")}
         </button>
       </div>
     </ModalFrame>
