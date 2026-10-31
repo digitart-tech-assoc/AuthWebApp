@@ -78,13 +78,14 @@ export default function NewRoleModal({
   const [hexInput, setHexInput] = useState(editingRole?.color ?? "#99AAB5");
   const [categoryId, setCategoryId] = useState<string | null>(editingRole?.category_id ?? memberCategoryId ?? null);
   const [perms, setPerms] = useState<bigint>(BigInt(editingRole?.permissions ?? 0));
+  // 新規作成時の初期値はオン。member が作成するロールはトグルを無効にしてオンで固定（Backend の self-create も固定している）
+  const [mentionable, setMentionable] = useState(editingRole?.mentionable ?? true);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"basic" | "permissions">("basic");
   const [saving, setSaving] = useState(false);
 
-  // 固定値: Hoist=false, Mentionable=true
+  // 固定値: Hoist=false
   const hoist = false;
-  const mentionable = true;
 
   // When category changes (新規作成時のみ), inherit its permissions
   useEffect(() => {
@@ -264,9 +265,14 @@ export default function NewRoleModal({
             <div className={toggleRow}>
               <div>
                 <div className={toggleLabel}>このロールを誰でもメンションできるようにする</div>
-                <div className={toggleDesc}>（Mentionable）- 固定: オン</div>
+                <div className={toggleDesc}>（Mentionable）{isMemberMode && "- 固定: オン"}</div>
               </div>
-              <ToggleSwitch checked={mentionable} disabled ariaLabel="Mentionable" />
+              <ToggleSwitch
+                checked={mentionable}
+                disabled={isMemberMode}
+                onChange={setMentionable}
+                ariaLabel="Mentionable"
+              />
             </div>
           </div>
         )}
