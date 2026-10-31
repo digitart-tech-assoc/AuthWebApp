@@ -16,6 +16,7 @@ type Category = {
   id: string;
   name: string;
   permissions: number;
+  is_restricted?: boolean;
 };
 
 type RoleData = {
@@ -36,8 +37,6 @@ type Props = {
   /** Promise を返すと完了まで「作成」を押せなくする。DisplayableError を送出するとその文言を表示する */
   onSaved: (role: RoleData) => void | Promise<void>;
   onClose: () => void;
-  /** カテゴリの選択肢から除くカテゴリ（管理者専用カテゴリ） */
-  restrictedCategoryIds?: Set<string>;
   /** 編集モード: 既存ロールを渡すと編集UIになる */
   editingRole?: RoleData | null;
   /** member のロール作成: 作成先のカテゴリを固定し、権限設定を出さない（permissions は 0 固定） */
@@ -66,7 +65,6 @@ function setBit(perms: bigint, bit: bigint, value: boolean): bigint {
 
 export default function NewRoleModal({
   categories, botPermissions, onSaved, onClose,
-  restrictedCategoryIds = new Set(),
   editingRole = null,
   memberCategoryId,
 }: Props) {
@@ -213,11 +211,12 @@ export default function NewRoleModal({
                 onChange={(e) => setCategoryId(e.target.value || null)}
               >
                 <option value="">カテゴリなし</option>
-                {categories
-                  .filter((c) => !restrictedCategoryIds.has(c.id))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                {/* 管理者専用カテゴリも選べる（member がセルフ付与できないだけで、admin はロールを置ける） */}
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.is_restricted ? "（管理者専用）" : ""}
+                  </option>
+                ))}
               </select>
             )}
 

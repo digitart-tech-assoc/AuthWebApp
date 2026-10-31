@@ -142,12 +142,6 @@ function AdminRoleAccordion({ categories: initCategories, roles: initRoles, push
   const [baseRoles, setBaseRoles] = useState<Role[]>(initRoles);
   const [baseCategories, setBaseCategories] = useState<Category[]>(initCategories);
 
-  // 管理者専用カテゴリ（is_restricted）。ロール作成時のカテゴリの選択肢から除く
-  const restrictedCategoryIds = useMemo(
-    () => new Set(localCategories.filter((c) => c.is_restricted).map((c) => c.id)),
-    [localCategories]
-  );
-
   const showStatus = useCallback((s: Status, durationMs = 5000) => {
     setStatus(s);
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
@@ -687,7 +681,6 @@ function AdminRoleAccordion({ categories: initCategories, roles: initRoles, push
           botPermissions={botPermissions}
           onSaved={handleRoleSaved}
           onClose={() => { setShowNewRole(false); setEditingRole(null); }}
-          restrictedCategoryIds={restrictedCategoryIds}
           editingRole={editingRole}
         />
       )}
