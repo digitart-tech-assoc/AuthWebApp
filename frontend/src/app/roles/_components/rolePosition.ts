@@ -17,9 +17,7 @@ export function calcNewRoleInsertionIndex(
     const selectedRoles = rolesInCategory(selectedCategory.id);
 
     if (selectedRoles.length > 0) {
-      const bottomRole = selectedRoles.reduce((bottom, role) =>
-        role.position < bottom.position ? role : bottom
-      );
+      const bottomRole = selectedRoles[selectedRoles.length - 1];
       insertionIndex = orderedRoles.findIndex((role) => role.role_id === bottomRole.role_id) + 1;
     } else {
       const previousCategory = orderedCategories
