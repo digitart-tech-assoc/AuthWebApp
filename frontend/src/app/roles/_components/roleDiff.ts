@@ -21,6 +21,18 @@ export function calculateDifferences(
   // ロールの権限変更・順序変更の検知
   const permissionEdited: { roleId: string; roleName: string; oldPermissions: string; newPermissions: string }[] = [];
   const orderChanged: { roleId: string; roleName: string; oldPosition: number; newPosition: number }[] = [];
+  const baseOrder = baseRoles
+    .filter((role) => nextRoleIds.has(role.role_id))
+    .slice()
+    .sort((a, b) => b.position - a.position)
+    .map((role) => role.role_id);
+  const nextOrder = nextRoles
+    .filter((role) => baseRoleIds.has(role.role_id))
+    .slice()
+    .sort((a, b) => b.position - a.position)
+    .map((role) => role.role_id);
+  const baseRank = new Map(baseOrder.map((roleId, index) => [roleId, index]));
+  const nextRank = new Map(nextOrder.map((roleId, index) => [roleId, index]));
 
   for (const nextRole of nextRoles) {
     if (!baseRoleIds.has(nextRole.role_id)) continue;
@@ -35,7 +47,7 @@ export function calculateDifferences(
       });
     }
 
-    if (baseRole.position !== nextRole.position) {
+    if (baseRank.get(nextRole.role_id) !== nextRank.get(nextRole.role_id)) {
       orderChanged.push({
         roleId: nextRole.role_id,
         roleName: nextRole.name,

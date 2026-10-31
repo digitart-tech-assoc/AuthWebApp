@@ -19,6 +19,7 @@ import SortableCategoryItem from "./SortableCategoryItem";
 import RoleDiffModal from "./RoleDiffModal";
 import { useRoleModals } from "./useRoleModals";
 import { calculateDifferences, buildManifestPatchPayload } from "./roleDiff";
+import { calcNewRoleInsertionIndex } from "./rolePosition";
 import {
   fetchRoleMembers,
   patchManifest,
@@ -464,15 +465,18 @@ function AdminRoleAccordion({ categories: initCategories, roles: initRoles, push
       showStatus({ kind: "success", msg: `ロール「${role.name}」を更新しました。「変更を確定」で保存してDiscordに同期します` });
     } else {
       // 新規作成モード
-      const editableRoles = botPosition !== undefined
-        ? allRoles.filter((r) => r.position < botPosition)
-        : allRoles;
-      const lowestEditablePos = editableRoles.length > 0
-        ? Math.min(...editableRoles.map((r) => r.position))
-        : 1;
-      const newPos = Math.max(1, lowestEditablePos - 1);
-      const roleWithPos = { ...role, position: newPos };
-      setAllRoles((prev) => [...prev, roleWithPos]);
+      const insertionIndex = calcNewRoleInsertionIndex(
+        allRoles,
+        localCategories,
+        role.category_id,
+        botPosition
+      );
+      const nextRoles = [...allRoles].sort((a, b) => b.position - a.position);
+      nextRoles.splice(insertionIndex, 0, role);
+      setAllRoles(nextRoles.map((item, index) => ({
+        ...item,
+        position: nextRoles.length - index,
+      })));
       setShowNewRole(false);
       showStatus({ kind: "success", msg: `ロール「${role.name}」を追加しました。「変更を確定」で保存してDiscordに同期します` });
     }
