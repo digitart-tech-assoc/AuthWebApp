@@ -78,14 +78,12 @@ export default function NewRoleModal({
   const [hexInput, setHexInput] = useState(editingRole?.color ?? "#99AAB5");
   const [categoryId, setCategoryId] = useState<string | null>(editingRole?.category_id ?? memberCategoryId ?? null);
   const [perms, setPerms] = useState<bigint>(BigInt(editingRole?.permissions ?? 0));
-  // 新規作成時の初期値はオン。member が作成するロールはトグルを無効にしてオンで固定（Backend の self-create も固定している）
+  // 新規作成時の初期値は Hoist=オフ / Mentionable=オン。member が作成するロールはトグルを無効にして初期値で固定（Backend の self-create も固定している）
+  const [hoist, setHoist] = useState(editingRole?.hoist ?? false);
   const [mentionable, setMentionable] = useState(editingRole?.mentionable ?? true);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"basic" | "permissions">("basic");
   const [saving, setSaving] = useState(false);
-
-  // 固定値: Hoist=false
-  const hoist = false;
 
   // When category changes (新規作成時のみ), inherit its permissions
   useEffect(() => {
@@ -258,9 +256,14 @@ export default function NewRoleModal({
             <div className={toggleRow}>
               <div>
                 <div className={toggleLabel}>メンバーをオンライン一覧で分けて表示</div>
-                <div className={toggleDesc}>（Hoist）- 固定: オフ</div>
+                <div className={toggleDesc}>（Hoist）{isMemberMode && "- 固定: オフ"}</div>
               </div>
-              <ToggleSwitch checked={hoist} disabled ariaLabel="Hoist" />
+              <ToggleSwitch
+                checked={hoist}
+                disabled={isMemberMode}
+                onChange={setHoist}
+                ariaLabel="Hoist"
+              />
             </div>
             <div className={toggleRow}>
               <div>
