@@ -12,10 +12,9 @@ from jwt import PyJWKClient
 from fastapi import Depends, Header, HTTPException
 
 from app.core.config import MembershipType
+from app.core.shared_secret import is_internal_token
 from app.db.user_repository import get_user_role, upsert_user
 
-
-SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 # Supabase JWT 署名検証用シークレット（従来のHS256用）
 SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
@@ -183,7 +182,7 @@ def get_current_principal(authorization: str | None = Header(default=None)) -> d
 		raise e
 
 	# 内部連携用 shared secret を許容（開発・ボット間通信用）
-	if SHARED_SECRET and token == SHARED_SECRET:
+	if is_internal_token(token):
 		return {"auth_type": "internal", "sub": "internal-service", "app_role": "admin"}
 
 	try:

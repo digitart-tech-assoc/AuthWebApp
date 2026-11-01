@@ -11,6 +11,7 @@ from app import main
 from app.api.v1 import members as members_api
 from app.api.v1 import roles as roles_api
 from app.api.v1 import student as student_api
+from app.core import shared_secret
 from app.db import audit_repository, guild_repository, membership_repository
 from app.db.audit_repository import AuditContext
 from tests.fake_role_db import AuditInsertError, FakeRoleDB
@@ -220,7 +221,7 @@ async def test_create_profile_records_each_discord_role_assignment(db, monkeypat
 # --- pre-member 登録（内部エンドポイント） ---
 
 def test_pre_member_register_endpoint_uses_internal_audit_context(monkeypatch):
-	monkeypatch.setattr(members_api, "SHARED_SECRET", "test-secret")
+	monkeypatch.setattr(shared_secret, "SHARED_SECRET", "test-secret")
 	calls = []
 	monkeypatch.setattr(
 		members_api, "register_pre_member",
