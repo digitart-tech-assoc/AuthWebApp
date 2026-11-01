@@ -1,8 +1,8 @@
 import "server-only";
+import { getSharedSecret } from "./sharedSecret";
 import { createSupabaseServer } from "./supabase";
 
 const AUTH_REQUIRED = process.env.AUTH_REQUIRED !== "false";
-const SHARED_SECRET = process.env.SHARED_SECRET ?? "dev-secret";
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function getBackendAuthorizationHeader(): Promise<string | null> {
@@ -29,7 +29,8 @@ export async function getBackendAuthorizationHeader(): Promise<string | null> {
 	}
 
 	if (!AUTH_REQUIRED) {
-		return `Bearer ${SHARED_SECRET}`;
+		const sharedSecret = getSharedSecret();
+		return sharedSecret ? `Bearer ${sharedSecret}` : null;
 	}
 
 	return null;
