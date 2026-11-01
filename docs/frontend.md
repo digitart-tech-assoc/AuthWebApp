@@ -59,7 +59,7 @@ UI とユーザー操作に専念し、すべてのデータ永続化・認可�
 | `NEXT_PUBLIC_BACKEND_URL` | ○ | クライアント側（ブラウザ）から呼ぶバックエンド URL | `http://localhost:5174` |
 | `NEXT_PUBLIC_SITE_URL` | ○ | フロントエンドの公開ルート URL | `http://127.0.0.1:5173` |
 | `BACKEND_URL` | ○ | サーバーサイド（Route Handlers / SSR）から呼ぶバックエンド URL | `http://backend:5174` |
-| `AUTH_REQUIRED` | - | 認証強制フラグ（デフォルト: `true`） | `true` / `false` |
+| `AUTH_REQUIRED` | - | 認証強制フラグ（デフォルト: `true`）。`false` は開発環境でのみ有効。本番（`NODE_ENV=production`）で `false` の場合は起動せず、値にかかわらず認証必須として扱う | `true` / `false` |
 | `SHARED_SECRET` | - | 内部サービス間通信用シークレット。`AUTH_REQUIRED=false` で未ログインのとき、バックエンドへの認証に使う。16文字以上。本番（`NODE_ENV=production`）で未設定または16文字未満の場合は起動しない（それ以外の環境では警告のみ） | `openssl rand -hex 32` で生成 |
 
 ---
