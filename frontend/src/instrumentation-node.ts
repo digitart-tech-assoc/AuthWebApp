@@ -1,3 +1,4 @@
+import { validateAuthRequired } from "@/lib/authRequired";
 import { validateSharedSecret } from "@/lib/sharedSecret";
 
 /**
@@ -7,9 +8,10 @@ import { validateSharedSecret } from "@/lib/sharedSecret";
  */
 export function validateOnStartup(): void {
 	try {
+		validateAuthRequired();
 		validateSharedSecret();
 	} catch (error) {
-		// validateSharedSecret のメッセージには秘密情報を含めていない
+		// 各 validate のメッセージには秘密情報を含めていない
 		console.error(`${error instanceof Error ? error.message : "Invalid configuration"}. Exiting.`);
 		process.exit(1);
 	}
