@@ -18,7 +18,7 @@ import httpx
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 PRE_MEMBER_ROLE_ID = os.getenv("PRE_MEMBER_ROLE_ID", "")
