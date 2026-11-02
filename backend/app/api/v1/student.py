@@ -201,7 +201,7 @@ async def _notify_discord_bot_sync(discord_id: str) -> bool:
 	"""
 	try:
 		discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
-		shared_secret = os.getenv("SHARED_SECRET", "dev-secret")
+		shared_secret = os.getenv("SHARED_SECRET", "")
 		
 		endpoint = discord_bot_url if discord_bot_url.rstrip("/").endswith("/internal/sync") \
 				   else f"{discord_bot_url.rstrip('/')}/internal/sync"

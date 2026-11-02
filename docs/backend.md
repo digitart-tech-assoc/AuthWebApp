@@ -45,7 +45,7 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 | `DB_POOL_MAX_OVERFLOW` | - | `DB_POOL_SIZE` を超えて一時的に作成できる接続数（デフォルト: `5`） |
 | `DB_POOL_TIMEOUT` | - | プール枯渇時に接続の返却を待つ秒数。超過するとエラー（デフォルト: `10`） |
 | `DB_POOL_RECYCLE` | - | 接続を再作成するまでの経過秒数。Pooler 側のアイドル切断対策（デフォルト: `300`） |
-| `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット |
+| `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット。16文字以上。`FASTAPI_ENV=production` で未設定または16文字未満の場合は起動しない（それ以外の環境では警告のみ） |
 | `SUPABASE_JWT_SECRET` | ○ | Supabase JWT 署名検証シークレット（HS256用） |
 | `NEXT_PUBLIC_SUPABASE_URL` | ○ | Supabase プロジェクト URL（JWKS 公開鍵取得用） |
 | `DISCORD_TOKEN` | ○ | Discord Bot トークン（メンバー取得・ロール操作用） |

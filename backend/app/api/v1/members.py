@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 from app.core.auth import require_admin
 from app.core.errors import log_exception_without_message
+from app.core.shared_secret import verify_internal_authorization
 from app.db.audit_repository import OP_PRE_MEMBER_REGISTER, internal_audit_context
 from app.db.repository import (
 	register_pre_member,
@@ -26,7 +27,6 @@ from app.services.discord_client import fetch_guild_member, redact_snowflakes
 
 
 router = APIRouter(prefix="/api/v1/members", tags=["members"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 
@@ -55,9 +55,7 @@ async def register_pre_member_endpoint(
 	
 	認証: SHARED_SECRET によるベアラートークン認証
 	"""
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+	verify_internal_authorization(authorization)
 	
 	try:
 		# SHARED_SECRET で認証する内部呼び出しのため、操作した人は internal-service とする
@@ -75,9 +73,7 @@ async def internal_get_lists(authorization: str | None = Header(default=None)) -
 
 	認証: SHARED_SECRET によるベアラートークン
 	"""
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+	verify_internal_authorization(authorization)
 
 	try:
 		result = await asyncio.to_thread(get_member_lists)
@@ -95,9 +91,7 @@ async def cleanup_pre_members_endpoint(
 
 	Intended to be called by the discord-bot (internal), protected by SHARED_SECRET.
 	"""
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+	verify_internal_authorization(authorization)
 
 	try:
 		result = await asyncio.to_thread(cleanup_expired_prospective_members)
