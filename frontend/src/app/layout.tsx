@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isAuthRequired } from "@/lib/authRequired";
 import { createSupabaseServer } from "@/lib/supabase";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
@@ -25,7 +26,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const authRequired = process.env.AUTH_REQUIRED !== "false";
+  const authRequired = isAuthRequired();
   let user = null;
   let displayName = null;
 

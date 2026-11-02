@@ -37,7 +37,8 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
 | `DISCORD_TOKEN` | ○ | Discord Bot トークン |
 | `DISCORD_GUILD_ID` | ○ | 対象 Discord サーバー（ギルド）の ID |
 | `BACKEND_URL` | ○ | バックエンド API の URL（例: `http://backend:8000`） |
-| `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット |
+| `SHARED_SECRET` | ○ | 内部サービス間通信用シークレット。16文字以上。`BOT_ENV=production` で未設定または16文字未満の場合は起動しない（それ以外の環境では警告のみ） |
+| `BOT_ENV` | - | 稼働環境（`production`, `development` 等）。本番の k8s では `production` を設定する |
 | `PRE_MEMBER_ROLE_ID` | ○ | 仮入会者ロールの Discord ロール ID |
 | `MEMBER_ROLE_IDS` | ○ | 正式メンバーロールの Discord ロール ID（カンマ区切りで複数指定可） |
 | `SUB_USER_ROLE_IDS` | | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、sub垢 ロールは付与しない |

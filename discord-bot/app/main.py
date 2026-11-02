@@ -12,6 +12,7 @@ import uvicorn
 from discord.ext import commands, tasks
 from fastapi import FastAPI
 
+from app.shared_secret import validate_shared_secret
 from app.web.internal_api import router as internal_router
 
 
@@ -24,7 +25,9 @@ BOT_PORT = int(os.getenv("BOT_PORT", "8000"))
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID", "")
 PRE_MEMBER_ROLE_ID = os.getenv("PRE_MEMBER_ROLE_ID", "")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
-SHARED_SECRET = os.getenv("SHARED_SECRET", "dev-secret")
+SHARED_SECRET = os.getenv("SHARED_SECRET", "")
+# 稼働環境。production のときは SHARED_SECRET が弱いと起動しない（#80）
+BOT_ENV = os.getenv("BOT_ENV", "").strip().lower()
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -111,6 +114,7 @@ async def run_web_api() -> None:
 
 
 async def main() -> None:
+	validate_shared_secret(BOT_ENV)
 	await asyncio.gather(run_web_api(), run_bot_if_configured())
 
 

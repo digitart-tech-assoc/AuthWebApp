@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import os
-
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header
 from pydantic import BaseModel
 
 from app.services.reconcile import run_reconcile
+from app.shared_secret import verify_internal_authorization
 
 
 router = APIRouter(prefix="/internal", tags=["internal"])
-SHARED_SECRET = os.getenv("SHARED_SECRET", "")
 
 
 class SyncPayload(BaseModel):
@@ -20,9 +18,7 @@ class SyncPayload(BaseModel):
 
 @router.post("/sync")
 async def internal_sync(payload: SyncPayload, authorization: str | None = Header(default=None)) -> dict:
-	expected = f"Bearer {SHARED_SECRET}"
-	if authorization != expected:
-		raise HTTPException(status_code=401, detail="Unauthorized")
+	verify_internal_authorization(authorization)
 	result = await run_reconcile()
 	return {"received": payload.action, "result": result}
 

@@ -97,6 +97,9 @@ spec:
           env:
             - name: BACKEND_URL
               value: "http://authwebapp-backend-service:5174"
+            # 本番環境明示（SHARED_SECRET が弱い場合は起動しない）
+            - name: BOT_ENV
+              value: "production"
           envFrom:
             - secretRef:
                 name: authwebapp-secret
