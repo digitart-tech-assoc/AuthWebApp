@@ -75,7 +75,7 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true, val
   };
 
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="flex justify-center gap-2">
       {Array.from({ length }).map((_, i) => (
         <input
           key={i}
@@ -88,15 +88,7 @@ export default function OTPInput({ length = 6, onComplete, autoFocus = true, val
           onKeyDown={(e) => handleKeyDown(e, i)}
           onPaste={(e) => handlePaste(e, i)}
           disabled={disabled}
-          style={{
-            width: 48,
-            height: 56,
-            textAlign: "center",
-            fontSize: 24,
-            borderRadius: 8,
-            border: "1px solid #cbd5e1",
-            background: disabled ? "#f1f5f9" : "white",
-          }}
+          className="h-14 w-12 rounded-lg border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
         />
       ))}
     </div>
