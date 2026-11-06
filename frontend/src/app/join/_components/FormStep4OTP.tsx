@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { sendOTP, verifyOTP, submitStudentProfile } from "@/actions/studentRegistration";
 import OTPInput from "@/components/OTPInput";
 import { alertError, btnPrimary, btnSecondary, card, cardTitle, fieldLabel } from "./joinStyles";
+import UniversityMailNotice from "./UniversityMailNotice";
 import type { StudentProfileInput } from "@/types/join";
 
 interface FormStep4Props {
@@ -108,6 +109,8 @@ export default function FormStep4OTP({
             <p className="mb-4 text-xs text-slate-500">
               有効期限: {expiresIn ? `${Math.floor(expiresIn / 60)} 分` : "10 分"}
             </p>
+
+            <UniversityMailNotice />
 
             <div className="mb-4">
               <label className={fieldLabel}>

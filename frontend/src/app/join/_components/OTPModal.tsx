@@ -6,6 +6,7 @@ import { displayMessage } from "@/lib/errorMessages";
 import { requestOtp, verifyOtp } from "@/lib/join";
 import { LoaderCircle } from "lucide-react";
 import { btnPrimary, btnSecondary } from "./joinStyles";
+import UniversityMailNotice from "./UniversityMailNotice";
 
 const infoText = "my-2 text-sm text-slate-700";
 const spinner = "mr-2 inline size-4 animate-spin align-middle text-slate-500";
@@ -121,6 +122,7 @@ export default function OTPModal({ email, name, formType, metadata, onClose, aut
           {status === "sent" && (
             <div>
               <p className={infoText}>認証コードを送信しました。メールに届いた6桁のコードを入力してください。</p>
+              {formType === "aoyama-student" && <UniversityMailNotice />}
               <OTPInput onComplete={handleComplete} />
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={sendOtp} className={btnSecondary} disabled={resendSeconds > 0 || isBusy}>
