@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from psycopg2.extras import execute_values
+
 from app.db.audit_repository import (
 	ACTION_UPDATE,
 	SYSTEM_DB,
@@ -28,22 +30,27 @@ def member_roles_audit_logs(user_id: str, added: list[str], removed: list[str]) 
 
 
 def save_guild_members(members: list[dict[str, Any]]) -> None:
-	"""Discordから取得したギルドメンバーを保存/更新する。"""
+	"""Discordから取得したギルドメンバーを一括で保存/更新する。"""
+	# 同じ文に同じ user_id が複数あると ON CONFLICT DO UPDATE が失敗するため、後の行を残して1行にまとめる
+	rows = {
+		m["user_id"]: (m["user_id"], m["username"], m.get("display_name"), m.get("avatar"))
+		for m in members
+	}
 	with _connect() as conn:
 		with conn.cursor() as cur:
-			for m in members:
-				cur.execute(
-					"""
-					INSERT INTO guild_members (user_id, username, display_name, avatar)
-					VALUES (%s, %s, %s, %s)
-					ON CONFLICT (user_id) DO UPDATE SET
-						username = EXCLUDED.username,
-						display_name = EXCLUDED.display_name,
-						avatar = EXCLUDED.avatar,
-						updated_at = now()
-					""",
-					(m["user_id"], m["username"], m.get("display_name"), m.get("avatar")),
-				)
+			execute_values(
+				cur,
+				"""
+				INSERT INTO guild_members (user_id, username, display_name, avatar)
+				VALUES %s
+				ON CONFLICT (user_id) DO UPDATE SET
+					username = EXCLUDED.username,
+					display_name = EXCLUDED.display_name,
+					avatar = EXCLUDED.avatar,
+					updated_at = now()
+				""",
+				list(rows.values()),
+			)
 		conn.commit()
 
 
