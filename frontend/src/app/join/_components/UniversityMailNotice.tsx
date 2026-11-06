@@ -6,7 +6,7 @@ import { alertWarning, textLink } from "./joinStyles";
 export default function UniversityMailNotice() {
   return (
     <div className={`${alertWarning} my-3`}>
-      <p>大学のメールサーバーが認証メールを受信できない不具合が報告されています。</p>
+      <p>大学のメールアドレス宛ての認証メールが、届かない、または大幅に遅れる場合があります。</p>
       <p>
         メールが届かなかった場合は
         {/* 入力中のフォームの内容を失わないよう、別タブで開く */}
