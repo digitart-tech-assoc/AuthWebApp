@@ -8,12 +8,12 @@ export default function UniversityMailNotice() {
     <div className={`${alertWarning} my-3`}>
       <p>大学のメールサーバーが認証メールを受信できない不具合が報告されています。</p>
       <p>
-        一度試しメールが届かなかった場合は
+        メールが届かなかった場合は
         {/* 入力中のフォームの内容を失わないよう、別タブで開く */}
         <Link href="/contact" target="_blank" rel="noreferrer" className={textLink}>
           お問い合わせフォーム
         </Link>
-        にてお声がけください
+        にてお声がけください。
       </p>
     </div>
   );
