@@ -7,9 +7,10 @@ import ipaddress
 import logging
 import os
 import traceback
+import unicodedata
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.config import (
 	JOIN_REQUEST_RATE_LIMIT,
@@ -42,9 +43,22 @@ class JoinRequestCreate(BaseModel):
 	"""OTP送信リクエスト"""
 	email: EmailStr
 	confirm_email: EmailStr
-	name: str
+	name: str = Field(..., min_length=1, max_length=100)
 	form_type: str  # "prospective-student", "contact"
 	metadata: dict | None = None  # form-specific fields (year, etc.)
+
+	@field_validator("name", mode="before")
+	@classmethod
+	def _strip_name(cls, value: object) -> object:
+		return value.strip() if isinstance(value, str) else value
+
+	@field_validator("name")
+	@classmethod
+	def _reject_control_chars(cls, value: str) -> str:
+		# 制御文字や、表示順を変える書式文字などを拒否する
+		if any(unicodedata.category(ch).startswith("C") for ch in value):
+			raise ValueError("name contains invalid characters")
+		return value
 
 
 class JoinVerifyRequest(BaseModel):
@@ -136,7 +150,6 @@ async def request_otp(req: JoinRequestCreate, request: Request) -> JoinRequestRe
 		result = await brevo.send_otp_email(
 			email=req.email,
 			code=otp_code,
-			name=req.name,
 			form_type=req.form_type,
 		)
 
@@ -206,9 +219,8 @@ async def verify_otp(req: JoinVerifyRequest) -> JoinVerifyResponse:
 			join_req = await asyncio.to_thread(repository.get_join_request, req.join_request_id)
 			if join_req:
 				email = join_req.get("email")
-				name = join_req.get("name")
 				try:
-					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, name=name, form_type=join_req.get("form_type"))
+					result = await brevo.send_invite_email(email=email, invite_url=discord_invite_url, form_type=join_req.get("form_type"))
 					if result.get("status") != "success":
 						# error にはメールアドレスを含む Brevo の応答本文が入ることがあるため出さない
 						logger.error("Failed to send invite email: status=%s", result.get("status"))

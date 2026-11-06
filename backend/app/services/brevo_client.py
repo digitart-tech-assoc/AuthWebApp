@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import html
 import logging
 import os
 from datetime import datetime
@@ -30,7 +31,6 @@ class BrevoClient:
 		self,
 		email: str,
 		code: str,
-		name: str,
 		form_type: str,
 		expires_in_minutes: int = 10,
 	) -> dict[str, Any]:
@@ -39,7 +39,6 @@ class BrevoClient:
 		Args:
 			email: recipient email
 			code: 6-digit OTP code
-			name: recipient name
 			form_type: "prospective-student" or "contact"
 			expires_in_minutes: OTP expiration time in minutes (default 10)
 
@@ -53,7 +52,7 @@ class BrevoClient:
 		<html>
 		<body style="font-family: Arial, sans-serif; color: #333;">
 			<h2 style="color: #2563eb;">メール認証コード</h2>
-			<p>こんにちは {name} さん、</p>
+			<p>こんにちは。</p>
 			<p>以下の認証コードを {expires_in_minutes} 分以内に入力してください。</p>
 			<div style="background-color: #f0f0f0; padding: 20px; text-align: center; border-radius: 8px;">
 				<h1 style="letter-spacing: 0.5em; color: #0f172a;">{code}</h1>
@@ -72,7 +71,7 @@ class BrevoClient:
 		text_body = f"""
 メール認証コード - Digitart
 
-こんにちは {name} さん、
+こんにちは。
 
 以下の認証コードを {expires_in_minutes} 分以内に入力してください：
 
@@ -85,11 +84,8 @@ Digitart Technology Association
 © 2026 All rights reserved.
 		"""
 
-		# Ensure recipient name is present for Brevo API (some templates require it)
-		recipient_name = (name or "").strip()
-		if not recipient_name:
-			# fallback to local-part of email if name is missing
-			recipient_name = email.split("@")[0]
+		# 申請者が自由に入力できる値を宛先の表示名にも使わない
+		recipient_name = email.split("@")[0]
 
 		payload = {
 			"sender": {"email": self.sender_email, "name": self.sender_name},
@@ -138,27 +134,27 @@ Digitart Technology Association
 			logger.error(f"Unexpected error ({operation_name}): {e}", exc_info=True)
 			return {"error": str(e), "status": "failed"}
 
-	async def send_invite_email(self, email: str, invite_url: str, name: str, form_type: str) -> dict[str, Any]:
+	async def send_invite_email(self, email: str, invite_url: str, form_type: str) -> dict[str, Any]:
 		"""Send Discord invite link via email using Brevo API
 
 		Args:
 			email: recipient email
 			invite_url: full URL to the Discord invite
-			name: recipient name
 			form_type: form identifier for context
 		Returns:
 			{"message_id": "...", "status": "success"} or {"error": "..."}
 		"""
 		subject = "Discord招待リンク - Digitart"
+		safe_invite_url = html.escape(invite_url, quote=True)
 
 		html_body = f"""
 		<html>
 		<body style="font-family: Arial, sans-serif; color: #333;">
 			<h2 style="color: #2563eb;">Discord 招待リンク</h2>
-			<p>こんにちは {name} さん、</p>
+			<p>こんにちは。</p>
 			<p>認証が完了しました。以下のリンクから Discord サーバーに参加してください（招待は一度のみ使用可能、期限あり(7日間)）。</p>
 			<div style="background-color: #f8fafc; padding: 16px; border-radius: 8px;">
-				<p style="margin:0;"><a href=\"{invite_url}\" target=\"_blank\" rel=\"noreferrer\">{invite_url}</a></p>
+				<p style="margin:0;"><a href=\"{safe_invite_url}\" target=\"_blank\" rel=\"noreferrer\">{safe_invite_url}</a></p>
 			</div>
 			<p style="color: #64748b;">このメールに心当たりがない場合は、このメッセージを無視してください。</p>
 			<hr style="border: none; border-top: 1px solid #e5e7eb;">
@@ -173,7 +169,7 @@ Digitart Technology Association
 		text_body = f"""
         Discord 招待リンク - Digitart
 
-        こんにちは {name} さん、
+        こんにちは。
 
         認証が完了しました。以下のリンクから Discord サーバーに参加してください：
 
@@ -184,9 +180,8 @@ Digitart Technology Association
         © 2026 All rights reserved.
 		"""
 
-		recipient_name = (name or "").strip()
-		if not recipient_name:
-			recipient_name = email.split("@")[0]
+		# 申請者が自由に入力できる値を宛先の表示名にも使わない
+		recipient_name = email.split("@")[0]
 
 		payload = {
 			"sender": {"email": self.sender_email, "name": self.sender_name},
@@ -204,7 +199,7 @@ Digitart Technology Association
 # Synchronous wrapper functions for backward compatibility
 # ============================================================================
 
-def send_otp_email(email: str, code: str, name: str, expires_in_minutes: int = 10) -> dict[str, Any]:
+def send_otp_email(email: str, code: str, expires_in_minutes: int = 10) -> dict[str, Any]:
 	"""後方互換用同期ラッパー（非同期コンテキスト外からの呼び出し用）"""
 	client = BrevoClient()
 	try:
@@ -212,9 +207,9 @@ def send_otp_email(email: str, code: str, name: str, expires_in_minutes: int = 1
 		# すでに非同期イベントループが稼働中の場合は別スレッドで安全に実行
 		logger.warning("send_otp_email called synchronously inside an existing event loop. Offloading to worker thread. Use 'await BrevoClient().send_otp_email()' instead.")
 		with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-			future = executor.submit(asyncio.run, client.send_otp_email(email, code, name, "full-registration", expires_in_minutes))
+			future = executor.submit(asyncio.run, client.send_otp_email(email, code, "full-registration", expires_in_minutes))
 			return future.result()
 	except RuntimeError:
 		# イベントループが存在しない場合は直接 asyncio.run で実行
-		return asyncio.run(client.send_otp_email(email, code, name, "full-registration", expires_in_minutes))
+		return asyncio.run(client.send_otp_email(email, code, "full-registration", expires_in_minutes))
 

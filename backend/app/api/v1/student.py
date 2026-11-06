@@ -315,7 +315,6 @@ async def send_otp(
 		result = await brevo.send_otp_email(
 			email=email_aoyama,
 			code=otp_code,
-			name=req.name,
 			form_type="full-registration",
 			expires_in_minutes=OTP_EXPIRY_MINUTES,
 		)
