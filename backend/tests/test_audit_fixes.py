@@ -47,7 +47,6 @@ class TestBrevoExpiryFormatting:
         await client.send_otp_email(
             email="student@example.com",
             code="123456",
-            name="太郎",
             form_type="prospective-student",
             expires_in_minutes=20,
         )

@@ -24,6 +24,7 @@
 }
 ```
 
+* `name`: 前後の空白を除いて 1〜100 文字。制御文字や書式文字（Unicode カテゴリ `C*`）は使用不可。メールの本文と宛先表示名には使用しない。
 * `metadata`: `join_requests` に専用カラムがないフォーム固有の項目を入れ、`join_requests.metadata`（JSONB）に保存する。省略時は `{}`。
   * `prospective-student`: `year`（入学予定年度、整数）。**必須**。
   * `aoyama-student`: `student_id`（学生番号）
@@ -46,6 +47,7 @@
   * `form_type == "prospective-student"` で `metadata.year` が整数でない、または存在しない（`"metadata.year is required for prospective-student"`）。
 * `403 Forbidden`: `form_type == "prospective-student"` で受付期間外の場合。
 * `409 Conflict`: 同じメールアドレスで処理中・完了済みの申請がある場合（`"Email already registered"`）。
+* `422 Unprocessable Entity`: リクエストボディの検証に失敗した場合（`name` が上記の制約を満たさない場合を含む）。
 * `429 Too Many Requests`: レート制限の上限に達した場合（`"Too many requests. Please try again later."`）。申請の作成・メール送信は行わない。`Retry-After` ヘッダーに待ち秒数が入る。
 * `500 Internal Server Error`: OTP メールの送信に失敗した場合（`"Failed to send OTP email"`）、またはその他の処理に失敗した場合（`"Internal server error"`）。
 
