@@ -223,13 +223,25 @@ class TestSyncMemberListsExcludesSubUserFromMember:
 		assert set(table) == {("user-sub", "admin"), ("user-sub", "sub_user")}
 
 
+def _configure_membership_roles(monkeypatch) -> list[dict]:
+	"""会員種別のロール ID を環境変数に設定し、それらを含む Discord のロール一覧を返す（#234）。"""
+	monkeypatch.setenv("MEMBER_ROLE_IDS", "role-member")
+	monkeypatch.setenv("SUB_USER_ROLE_IDS", "role-sub")
+	monkeypatch.setenv("ADMIN_ROLE_IDS", "role-admin")
+	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "role-pre")
+	monkeypatch.delenv("OBOG_ROLE_IDS", raising=False)
+	return [
+		{"role_id": "role-member", "name": "member"},
+		{"role_id": "role-sub", "name": "sub垢"},
+		{"role_id": "role-admin", "name": "管理者"},
+		{"role_id": "role-pre", "name": "pre-member"},
+	]
+
+
 class TestMembersSyncPassesSubUser:
 	@pytest.mark.asyncio
-	async def test_passes_sub_user_role_and_returns_sub_user_list(self):
-		discord_roles = [
-			{"role_id": "role-member", "name": "member"},
-			{"role_id": "role-sub", "name": "sub垢"},
-		]
+	async def test_passes_sub_user_role_and_returns_sub_user_list(self, monkeypatch):
+		discord_roles = _configure_membership_roles(monkeypatch)
 		guild_members = [
 			{"user_id": "user-sub", "username": "sub", "display_name": "sub", "avatar": None, "role_ids": ["role-sub"]},
 		]
@@ -255,11 +267,8 @@ class TestMembersSyncPassesSubUser:
 
 class TestMembersSyncAbortsOnEmptyGuild:
 	@pytest.mark.asyncio
-	async def test_aborts_without_saving_when_guild_members_are_empty(self):
-		discord_roles = [
-			{"role_id": "role-member", "name": "member"},
-			{"role_id": "role-sub", "name": "sub垢"},
-		]
+	async def test_aborts_without_saving_when_guild_members_are_empty(self, monkeypatch):
+		discord_roles = _configure_membership_roles(monkeypatch)
 		with patch.object(roles_api, "_get_token", return_value="token"), \
 			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=discord_roles), \
 			patch.object(roles_api, "fetch_all_guild_members", new_callable=AsyncMock, return_value=[]), \

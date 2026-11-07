@@ -187,7 +187,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 - `403 Forbidden`: 作成先のカテゴリが存在しない、または `self-batch` で扱えないカテゴリの場合
 - `409 Conflict`: 次のいずれかの場合（どちらも大文字・小文字と前後の空白の違いは無視）
   - 同じ名前のロールがすでにある場合
-  - 予約名の場合。`/members/sync` はロール名で会員種別を判定するため、`backend/app/core/config.py` の `ADMIN_ROLE_NAMES` / `MEMBER_ROLE_NAMES` / `OBOG_ROLE_NAMES` / `SUB_USER_ROLE_NAMES` / `PRE_MEMBER_ROLE_NAME` に含まれる名前は作成できません
+  - 予約名の場合。会員種別と紛らわしい名前のロールを作らせないため、`backend/app/core/config.py` の `ADMIN_ROLE_NAMES` / `MEMBER_ROLE_NAMES` / `OBOG_ROLE_NAMES` / `SUB_USER_ROLE_NAMES` / `PRE_MEMBER_ROLE_NAME` に含まれる名前は作成できません（会員種別の判定はロール名ではなくロール ID で行うため、この名前のロールがあっても種別は付与されません）
 - `422 Unprocessable Entity`: ロール名・色・カテゴリ ID の形式が正しくない場合
 - `429 Too Many Requests`: Discord ID ごとに 10 分間に 5 回を超えて呼び出した場合（`backend/app/core/config.py` の `ROLE_SELF_CREATE_RATE_LIMIT` / `ROLE_SELF_CREATE_RATE_WINDOW_SECONDS`）。`Retry-After` ヘッダーに待ち秒数を返します。
 - `500 Internal Server Error`:
@@ -268,11 +268,27 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 同期時に Discord のギルドメンバーを全件取得し、同期対象のロールを持たないメンバー（Bot を含む）も含めた全員の名前・アイコンを `guild_members` に保存します。
 
-`user_memberships` は種別（`member` / `sub_user` / `obog` / `admin` / `pre_member`）ごとに差分で同期します。Discord で対応するロールを持たなくなったユーザーの行だけを削除し、新しくロールを持ったユーザーの行だけを追加します。既存の行の `assigned_by` / `assigned_at` は変更しません。対応するロール（`sub_user` は `sub垢`）が Discord に見つからない種別は変更せず、警告ログを出します。
+`user_memberships` は種別（`member` / `sub_user` / `obog` / `admin` / `pre_member`）ごとに差分で同期します。Discord で対応するロールを持たなくなったユーザーの行だけを削除し、新しくロールを持ったユーザーの行だけを追加します。既存の行の `assigned_by` / `assigned_at` は変更しません。
+
+種別の判定には、環境変数で設定したロール ID を使います（ロール名では判定しません。ロールをリネームしても判定は変わらず、予約名と同じ名前のロールがあっても種別は付与されません）。
+
+| 種別 | 環境変数 | 必須 |
+| :--- | :--- | :---: |
+| `admin` | `ADMIN_ROLE_IDS` | ○ |
+| `member` | `MEMBER_ROLE_IDS` | ○ |
+| `pre_member` | `PRE_MEMBER_ROLE_ID` | ○ |
+| `obog` | `OBOG_ROLE_IDS` | - |
+| `sub_user` | `SUB_USER_ROLE_IDS` | - |
+
+任意の種別の ID が未設定の場合、その種別は変更せず、警告ログを出します。
 
 `sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（サブアカウントは Bot の reconcile で member ロールも付与されるため）。
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
+
+次の場合は同期を中止し、`400` を返します（`guild_members` / `user_memberships` は変更しません）。
+- 必須の種別のロール ID が設定されていない場合
+- 設定したロール ID が Discord のロール一覧に存在しない場合（ロールの削除や ID の設定誤りのまま同期して、その種別の行を消さないため）
 
 レスポンスの各一覧（`member_list` / `sub_user_list` / `admin_list` / `pre_member_list` / `obog_list`）には、同期後のその種別の全行が入ります。
 

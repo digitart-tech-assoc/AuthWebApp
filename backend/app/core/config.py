@@ -82,7 +82,8 @@ OBOG_ROLE_NAMES: set[str] = {"OBOG", "OB/OG", "OB-OG"}
 ADMIN_ROLE_NAMES: set[str] = {"administrator", "管理者", "Administrator"}
 PRE_MEMBER_ROLE_NAME: str = "pre-member"
 SUB_USER_ROLE_NAMES: set[str] = {"sub垢"}
-# 会員種別ごとの、/members/sync が判定に使うロール名。member はこれらの名前のロールを作成できない
+# 会員種別の予約名。member はこれらの名前のロールを作成できない（self-create）。
+# 会員種別の判定はロール名ではなくロール ID で行う（app.core.membership_roles, #234）
 MEMBERSHIP_ROLE_NAMES: dict[str, set[str]] = {
 	MembershipType.MEMBER: MEMBER_ROLE_NAMES,
 	MembershipType.OBOG: OBOG_ROLE_NAMES,

@@ -165,7 +165,7 @@ async def test_duplicate_name_is_rejected(db, name):
 ])
 @pytest.mark.asyncio
 async def test_reserved_role_name_is_rejected(db, name):
-	# /members/sync がロール名で admin などを判定するため、予約名のロールは作らせない
+	# 会員種別と紛らわしい名前（予約名）のロールは作らせない
 	discord = _Discord()
 	with pytest.raises(HTTPException) as exc_info:
 		await _self_create(db, discord, _payload(name=name))
@@ -174,14 +174,10 @@ async def test_reserved_role_name_is_rejected(db, name):
 	assert NEW_ROLE_ID not in db.roles
 
 
-def test_reserved_names_cover_all_names_matched_by_sync():
-	# /members/sync が会員種別の判定に使う名前は、すべて作成を拒否する
-	names = sorted({name for names in MEMBERSHIP_ROLE_NAMES.values() for name in names})
-	roles = [{"role_id": str(i), "name": name} for i, name in enumerate(names)]
+def test_reserved_names_cover_all_membership_role_names():
+	# 会員種別の判定はロール ID で行う（#234）が、会員種別の名前はすべて作成を拒否する
+	names = {name for names in MEMBERSHIP_ROLE_NAMES.values() for name in names}
 
-	matched = roles_api._match_role_ids(roles)
-
-	assert len(matched["all_matched_role_ids"]) == len(names)
 	assert {normalize_role_name(name) for name in names} <= roles_api._RESERVED_ROLE_NAME_KEYS
 
 
