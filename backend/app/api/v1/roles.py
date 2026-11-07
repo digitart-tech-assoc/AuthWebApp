@@ -41,6 +41,12 @@ from app.core.config import (
 	ROLE_SELF_CREATE_RATE_WINDOW_SECONDS,
 	MembershipType,
 )
+from app.core.membership_roles import (
+	MEMBERSHIP_ROLE_ID_ENV_VARS,
+	REQUIRED_MEMBERSHIP_TYPES,
+	membership_role_ids,
+	missing_membership_role_id_env_vars,
+)
 from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
 from app.db.manifest_repository import (
 	RoleNameConflictError,
@@ -659,20 +665,35 @@ async def update_role_permissions(
 
 
 def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
-	"""Discordロール一覧から期待されるロール種別のIDを特定する"""
-	def ids_of(membership_type: str) -> list[str]:
-		names = MEMBERSHIP_ROLE_NAMES[membership_type]
-		return [r["role_id"] for r in roles if r["name"] in names]
+	"""環境変数で設定した会員種別のロール ID を、Discord のロール一覧と照合して返す（#234）。
 
-	member_role_ids = ids_of(MembershipType.MEMBER)
-	obog_role_ids = ids_of(MembershipType.OBOG)
-	admin_role_ids = ids_of(MembershipType.ADMIN)
-	pre_member_role_id = next(iter(ids_of(MembershipType.PRE_MEMBER)), None)
-	sub_user_role_ids = ids_of(MembershipType.SUB_USER)
+	ロール名では判定しない（同じ名前のロールの作成やリネームで種別が付与されるのを防ぐ）。
+	必須の種別の ID が未設定の場合、または設定した ID が Discord に存在しない場合は 400 を返す。
+	後者は、ロールの削除や ID の設定誤りのまま同期して、その種別の行を誤って消さないため。
+	"""
+	missing_env_vars = missing_membership_role_id_env_vars(REQUIRED_MEMBERSHIP_TYPES)
+	if missing_env_vars:
+		detail = f"Membership role IDs are not configured: {', '.join(missing_env_vars)}"
+		logger.error("%s", detail)
+		raise HTTPException(status_code=400, detail=detail)
 
-	all_matched = member_role_ids + obog_role_ids + admin_role_ids + sub_user_role_ids
-	if pre_member_role_id:
-		all_matched.append(pre_member_role_id)
+	configured = membership_role_ids()
+	discord_role_ids = {r["role_id"] for r in roles}
+	not_found_env_vars = [
+		MEMBERSHIP_ROLE_ID_ENV_VARS[m_type]
+		for m_type, ids in configured.items()
+		if any(role_id not in discord_role_ids for role_id in ids)
+	]
+	if not_found_env_vars:
+		detail = f"Configured membership role IDs were not found in Discord: {', '.join(not_found_env_vars)}"
+		logger.error("%s", detail)
+		raise HTTPException(status_code=400, detail=detail)
+
+	member_role_ids = list(configured[MembershipType.MEMBER])
+	obog_role_ids = list(configured[MembershipType.OBOG])
+	admin_role_ids = list(configured[MembershipType.ADMIN])
+	pre_member_role_id = next(iter(configured[MembershipType.PRE_MEMBER]), None)
+	sub_user_role_ids = list(configured[MembershipType.SUB_USER])
 
 	return {
 		"member_role_ids": member_role_ids,
@@ -680,7 +701,6 @@ def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 		"admin_role_ids": admin_role_ids,
 		"pre_member_role_id": pre_member_role_id,
 		"sub_user_role_ids": sub_user_role_ids,
-		"all_matched_role_ids": all_matched,
 	}
 
 
@@ -700,14 +720,13 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		for r in roles:
 			logger.debug("  Role: %s (id=%s)", r['name'], r['role_id'])
 		
-		# Identify role IDs by name pattern (from app.core.config)
+		# 環境変数で設定したロール ID で会員種別を判定する（#234）
 		matched = _match_role_ids(roles)
 		member_role_ids = matched["member_role_ids"]
 		obog_role_ids = matched["obog_role_ids"]
 		admin_role_ids = matched["admin_role_ids"]
 		pre_member_role_id = matched["pre_member_role_id"]
 		sub_user_role_ids = matched["sub_user_role_ids"]
-		all_matched_role_ids = matched["all_matched_role_ids"]
 		
 		logger.debug("Matched roles:")
 		logger.debug("  member_role_ids=%s", member_role_ids)
@@ -715,17 +734,6 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 		logger.debug("  admin_role_ids=%s", admin_role_ids)
 		logger.debug("  pre_member_role_id=%s", pre_member_role_id)
 		logger.debug("  sub_user_role_ids=%s", sub_user_role_ids)
-		
-		if not all_matched_role_ids:
-			available_names = [r["name"] for r in roles]
-			error_detail = (
-				f"Failed to match Discord role names to expected roles. "
-				f"Expected to find at least one of: member/会員/Member, OBOG/OB/OG/OB-OG, "
-				f"administrator/管理者, pre-member, sub垢. "
-				f"Available Discord role names: {available_names}"
-			)
-			logger.error("%s", error_detail)
-			raise HTTPException(status_code=400, detail=error_detail)
 		
 		# ギルドの全メンバーを 1 回で取得し、ロールごとの所属メンバーはメンバーの role_ids から組み立てる。
 		# 対象ロールを持たないメンバー（sub垢 のみのアカウントや Bot など）も guild_members に保存し、
@@ -991,7 +999,7 @@ class SelfCreateRolePayload(BaseModel):
 		return value.strip() if isinstance(value, str) else value
 
 
-# /members/sync はロール名で会員種別（admin など）を判定するため、member はこれらの名前のロールを作れない
+# 会員種別の判定はロール ID で行う（#234）が、紛らわしい名前のロールを作らせないよう、member はこれらの名前のロールを作れない
 _RESERVED_ROLE_NAME_KEYS = frozenset(
 	normalize_role_name(name) for names in MEMBERSHIP_ROLE_NAMES.values() for name in names
 )

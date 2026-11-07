@@ -50,12 +50,17 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 | `NEXT_PUBLIC_SUPABASE_URL` | ○ | Supabase プロジェクト URL（JWKS 公開鍵取得用） |
 | `DISCORD_TOKEN` | ○ | Discord Bot トークン（メンバー取得・ロール操作用） |
 | `DISCORD_GUILD_ID` | ○ | 対象 Discord サーバー（ギルド）の ID |
+| `ADMIN_ROLE_IDS` | ○ | admin ロールの Discord ロール ID（カンマ区切りで複数指定可）。会員種別はロール名ではなく ID で判定する |
+| `MEMBER_ROLE_IDS` | ○ | member ロールの Discord ロール ID（カンマ区切りで複数指定可） |
+| `PRE_MEMBER_ROLE_ID` | ○ | pre-member ロールの Discord ロール ID |
+| `OBOG_ROLE_IDS` | - | OBOG ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で obog を同期しない |
+| `SUB_USER_ROLE_IDS` | - | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で sub_user を同期しない |
 | `DISCORD_BOT_URL` | - | Discord Bot サーバーの内部 URL（デフォルト: `http://discord-bot:8000`） |
 | `BREVO_API_KEY` | ○ | Brevo メール送信 API キー |
 | `BREVO_SENDER_EMAIL` | ○ | 送信元メールアドレス |
 | `BREVO_SENDER_NAME` | ○ | 送信元表示名 |
 | `CONTACT_CHANNEL_ID` | - | お問い合わせ通知先 Discord チャンネル ID |
-| `FASTAPI_ENV` | - | 稼働環境（`production`, `development`, `local` 等） |
+| `FASTAPI_ENV` | - | 稼働環境（`production`, `development`, `local` 等）。`production` では `ADMIN_ROLE_IDS` / `MEMBER_ROLE_IDS` / `PRE_MEMBER_ROLE_ID` が未設定だと起動しない（それ以外の環境では警告のみ） |
 
 ---
 
