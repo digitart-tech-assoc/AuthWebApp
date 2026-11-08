@@ -24,6 +24,7 @@ from app.db.repository import init_db
 
 
 from app.core.constants import DEV_ENVS
+from app.core.membership_roles import validate_membership_role_ids
 from app.core.shared_secret import validate_shared_secret
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,8 @@ _is_dev = _fastapi_env in DEV_ENVS
 async def lifespan(app: FastAPI):
 	# SHARED_SECRET が弱い場合、本番では起動を止める（#80）
 	validate_shared_secret(_fastapi_env)
+	# 会員種別のロール ID が未設定なら、本番では起動を止める（#234）
+	validate_membership_role_ids(_fastapi_env)
 	# DB初期化を環境変数 SKIP_DB_INIT でスキップ可能
 	# SKIP_DB_INIT が "true" または未設定の場合は初期化をスキップ（デフォルト）
 	# SKIP_DB_INIT が "false" の場合のみ初期化を実行
