@@ -4,6 +4,7 @@
 - sub_user_list にいないユーザーには sub垢 ロールを付与しない
 - SUB_USER_ROLE_IDS が未設定なら sub垢 ロールは付与しない
 - リストにいないユーザーからロールを外さない
+- sub_user_list のユーザーには member ロールを付与しない（#251）
 """
 
 import asyncio
@@ -75,8 +76,20 @@ class RunReconcileSubUserRoleTest(unittest.TestCase):
 		_, operations = _run("")
 
 		self.assertFalse(any(role == SUB_ROLE for _, _, role in operations))
-		# sub_user には従来どおり member ロールを付与する
-		self.assertIn(("PUT", "user-sub", MEMBER_ROLE), operations)
+
+	def test_adds_member_role_only_to_members(self):
+		# sub_user に member ロールを付けると、管理画面で外しても push のたびに戻るため付けない（#251）
+		_, operations = _run(SUB_ROLE)
+
+		member_role_targets = {user for method, user, role in operations if role == MEMBER_ROLE}
+		self.assertEqual(member_role_targets, {"user-member"})
+		self.assertNotIn(("PUT", "user-sub", MEMBER_ROLE), operations)
+
+	def test_does_not_add_pre_member_role_to_members_or_sub_users(self):
+		_, operations = _run(SUB_ROLE)
+
+		added_pre = {user for method, user, role in operations if method == "PUT" and role == PRE_ROLE}
+		self.assertEqual(added_pre, {"user-pre"})
 
 	def test_removes_only_pre_member_role(self):
 		_, operations = _run(SUB_ROLE)
