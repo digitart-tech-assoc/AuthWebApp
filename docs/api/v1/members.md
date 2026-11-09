@@ -70,6 +70,8 @@
 
 管理者がユーザーを正式メンバー（本会員）として承認し、本会員ロールを付与します。
 
+同じトランザクションで、`user_memberships` の `pre_member` の行を消して `member` の行を作り、ロールの割当（`role_member_assignments`）も合わせます（#251）。`MEMBER_ROLE_IDS` のロールの割当を追加し、`PRE_MEMBER_ROLE_ID` のロールの割当を外します。実際に変えた割当は監査ログ（`operation = 'member_add'`、`target_type = 'member_roles'`）に記録します。Discord のロールは、次の push で反映します。すでに `member` の行がある場合は何も変更しません。sub_user の行または sub垢 ロールの割当がある人は、member と sub垢 の両方を持つことになるため `400 Bad Request`（`"Failed to add member"`）を返し、何も変更しません。
+
 * **認可レベル**: `Admin`
 * **リクエストヘッダー**: `Authorization: Bearer <SUPABASE_JWT_TOKEN>`
 * **リクエストボディ**:
