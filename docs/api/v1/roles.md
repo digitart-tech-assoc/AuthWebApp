@@ -183,6 +183,8 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
    * push はマニフェストにないロールを Discord から削除するため、Discord にだけロールが残ることはありません（削除にも失敗した場合は、次の push で削除されます）。
 4. 作成者に付与します（`PUT /guilds/{guild_id}/members/{user_id}/roles/{role_id}` → `role_member_assignments`）。DB への保存に失敗した場合は Discord 側の付与を取り消し、`assigned: false` を返します。
 
+作成するロールの ID は Discord が新しく発行するため、会員種別のロール（環境変数で指定した ID）にはなりません。そのため self-batch と違い、会員種別のロールかどうかは確認しません（#251）。会員種別の予約名のロールは作成できません（`409`）。
+
 ### バリデーション & エラーレスポンス
 - `400 Bad Request`: Discord ID が特定できない場合
 - `403 Forbidden`: 作成先のカテゴリが存在しない、または `self-batch` で扱えないカテゴリの場合
