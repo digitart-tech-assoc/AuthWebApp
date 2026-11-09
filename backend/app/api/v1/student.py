@@ -21,13 +21,14 @@ from app.core.config import (
 	OTP_EXPIRY_SECONDS,
 	OTP_SEND_RATE_LIMIT,
 	OTP_SEND_RATE_WINDOW_SECONDS,
+	MembershipType,
 )
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
+from app.core.membership_roles import membership_role_ids
 from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
 from app.db.audit_repository import (
 	ACTION_UPDATE,
-	OP_JOIN_OTP_VERIFY,
 	OP_STUDENT_PROFILE,
 	SYSTEM_DISCORD,
 	TARGET_MEMBER_ROLES,
@@ -38,7 +39,6 @@ from app.db.audit_repository import (
 )
 from app.utils.otp import hash_otp_code
 from app.db.membership_repository import is_pre_member
-from app.db.repository import add_user_to_role, remove_user_from_role
 from app.db import student_repository
 from app.services.brevo_client import BrevoClient
 from app.services.discord_client import add_role_to_member, redact_snowflakes
@@ -336,10 +336,8 @@ async def send_otp(
 async def verify_otp(
 	req: VerifyOTPRequest,
 	principal: dict = Depends(get_current_principal),
-	audit: AuditContext = Depends(get_audit_context),
 ) -> VerifyOTPResponse:
-	"""OTP コードを検証する"""
-	audit = audit.with_operation(OP_JOIN_OTP_VERIFY)
+	"""OTP コードを検証する（ロールの割当・会員種別は変えない）"""
 	discord_id = principal.get("discord_id")
 	if not discord_id:
 		raise HTTPException(status_code=401, detail="Discord account not linked")
@@ -370,24 +368,8 @@ async def verify_otp(
 	if is_valid is student_repository.OTPVerificationResult.INVALID:
 		raise HTTPException(status_code=400, detail="Incorrect OTP code.")
 
-	# OTP 検証完了後、role_member_assignments を更新する
-	# - member ロールを追加
-	# - pre-member ロールを削除
-	try:
-		member_role_id = os.getenv("MEMBER_ROLE_IDS", "")
-		if member_role_id:
-			# MEMBER_ROLE_IDS が複数存在する場合は最初の1つを使用
-			member_role_id = member_role_id.split(",")[0].strip()
-			await asyncio.to_thread(add_user_to_role, discord_id, member_role_id, audit)
-			logger.info("Added user %s to member role %s", principal.get("sub"), member_role_id)
-
-		pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "")
-		if pre_member_role_id:
-			await asyncio.to_thread(remove_user_from_role, discord_id, pre_member_role_id, audit)
-			logger.info("Removed user %s from pre-member role %s", principal.get("sub"), pre_member_role_id)
-	except Exception as e:
-		logger.error("Failed to update role_member_assignments for user %s: %s", principal.get("sub"), str(e))
-		# OTP 検証自体は成功したため、ここでエラーにはしない
+	# ロールの割当は、本会員化（プロフィール送信）と同じトランザクションで変える（#251）。
+	# ここで変えると、プロフィール送信前の push と sync で member ロールと member の行が作られる
 
 	return VerifyOTPResponse(
 		verified=True,
@@ -420,12 +402,13 @@ async def create_student_profile(
 
 	email_aoyama = _generate_student_email(req.student_number)
 
-	member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
-	member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
+	configured_role_ids = membership_role_ids()
+	member_role_ids = list(configured_role_ids[MembershipType.MEMBER])
+	pre_member_role_id = next(iter(configured_role_ids[MembershipType.PRE_MEMBER]), None)
 
 	# 資格確認後に失効・削除された場合に備え、本会員化と同一トランザクションで再検証する
 	try:
-		profile_id = await asyncio.to_thread(
+		profile_id, promoted = await asyncio.to_thread(
 			student_repository.upsert_student_profile_and_promote,
 			profile_id=f"prof_{uuid.uuid4().hex[:12]}",
 			discord_id=discord_id,
@@ -439,16 +422,18 @@ async def create_student_profile(
 			member_role_ids=member_role_ids,
 			require_eligibility=not is_registered,
 			audit=audit,
+			pre_member_role_id=pre_member_role_id,
 		)
 	except RegistrationNotEligibleError as e:
 		# 自前の例外で、文言は固定（student_repository で定めた入会資格の不足理由）
 		raise HTTPException(status_code=403, detail=str(e))
 
-	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与
-	logger.info("DB commit completed; applying member roles to Discord member: user=%s", principal.get("sub"))
+	# DB commit 直後に Discord 側の会員ロールを当該学生に直接付与する。
+	# 本会員化しなかった場合（登録済みの会員のプロフィール更新）は付与しない（sub_user・obog に member ロールを付けない, #251）
 	token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
 	guild_id = os.getenv("DISCORD_GUILD_ID")
-	if token and guild_id and member_role_ids:
+	if promoted and token and guild_id and member_role_ids:
+		logger.info("DB commit completed; applying member roles to Discord member: user=%s", principal.get("sub"))
 		for role_id in member_role_ids:
 			try:
 				await add_role_to_member(guild_id, discord_id, role_id, token)

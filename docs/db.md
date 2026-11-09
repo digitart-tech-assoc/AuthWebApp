@@ -84,7 +84,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | | `push` | `POST /api/v1/roles/push` |
 | | `self_batch` | `POST /api/v1/roles/self-batch` |
 | | `self_create` | `POST /api/v1/roles/self-create` |
-| | `join_otp_verify` | `POST /api/v1/student/otp/verify` |
+| | `join_otp_verify` | `POST /api/v1/student/otp/verify`（#251 以前の記録のみ。現在は OTP 検証でロールの割当を変えないため記録しない） |
 | | `student_profile` | `POST /api/v1/student/profile` |
 | | `pre_member_register` | `POST /api/v1/members/pre_member/register`（Bot からの内部呼び出し） |
 | | `member_add` | `POST /api/v1/members/member/add` |

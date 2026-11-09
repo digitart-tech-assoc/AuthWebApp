@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from enum import Enum, auto
-from typing import Any
+from typing import Any, NamedTuple
 
 from app.core.config import OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
@@ -15,6 +15,13 @@ from app.db.guild_repository import member_roles_audit_logs
 from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
+
+
+class PromotionResult(NamedTuple):
+	"""upsert_student_profile_and_promote の結果。promoted は pre_member から member に変わったか。"""
+
+	profile_id: str
+	promoted: bool
 
 
 class OTPVerificationResult(Enum):
@@ -123,12 +130,17 @@ def upsert_student_profile_and_promote(
 	member_role_ids: list[str],
 	require_eligibility: bool = True,
 	audit: AuditContext | None = None,
-) -> str:
-	"""学生プロフィールを保存し、pre_memberからmemberへ昇格、ロール割り当てを追加する。
+	pre_member_role_id: str | None = None,
+) -> PromotionResult:
+	"""学生プロフィールを保存し、pre_memberからmemberへ昇格する。
 
 	require_eligibility が True の場合、同一トランザクション内で入会資格
 	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
+
+	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
+	同じトランザクションでロールの割当を変える（#251）。member ロールの割当を追加し、pre-member ロールの割当を外す。
+	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えない。
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -193,32 +205,57 @@ def upsert_student_profile_and_promote(
 				)
 				final_profile_id = profile_id
 
-			# ロール変更：pre_memberからmemberへ
-			cur.execute(
-				"""
-				UPDATE user_memberships
-				SET membership_type = 'member', assigned_at = now()
-				WHERE discord_id = %s AND membership_type = 'pre_member'
-				""",
-				(discord_id,),
-			)
-
-			added_role_ids: list[str] = []
-			for role_id in member_role_ids:
+			# ロール変更：pre_memberからmemberへ。
+			# 新規入会（require_eligibility）のときだけ行う。登録済みの会員（sub_user・obog など）に
+			# pre_member の行が残っていても、プロフィール更新で member にはしない（#251）。
+			# member の行がすでにある場合に主キーが衝突しないよう、UPDATE ではなく DELETE と INSERT で変える
+			promoted = False
+			if require_eligibility:
 				cur.execute(
 					"""
-					INSERT INTO role_member_assignments (role_id, user_id)
-					VALUES (%s, %s)
-					ON CONFLICT DO NOTHING
+					DELETE FROM user_memberships
+					WHERE discord_id = %s AND membership_type = 'pre_member'
+					RETURNING assigned_by
 					""",
-					(role_id, discord_id),
+					(discord_id,),
 				)
-				if cur.rowcount > 0:
-					added_role_ids.append(role_id)
-			insert_audit_logs(cur, audit, member_roles_audit_logs(discord_id, added_role_ids, []))
+				pre_member_row = cur.fetchone()
+				promoted = pre_member_row is not None
+				if promoted:
+					cur.execute(
+						"""
+						INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
+						VALUES (%s, 'member', %s, now(), now())
+						ON CONFLICT (discord_id, membership_type) DO NOTHING
+						""",
+						(discord_id, pre_member_row[0]),
+					)
+
+			if promoted:
+				added_role_ids: list[str] = []
+				for role_id in member_role_ids:
+					cur.execute(
+						"""
+						INSERT INTO role_member_assignments (role_id, user_id)
+						VALUES (%s, %s)
+						ON CONFLICT DO NOTHING
+						""",
+						(role_id, discord_id),
+					)
+					if cur.rowcount > 0:
+						added_role_ids.append(role_id)
+				removed_role_ids: list[str] = []
+				if pre_member_role_id:
+					cur.execute(
+						"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
+						(pre_member_role_id, discord_id),
+					)
+					if cur.rowcount > 0:
+						removed_role_ids.append(pre_member_role_id)
+				insert_audit_logs(cur, audit, member_roles_audit_logs(discord_id, added_role_ids, removed_role_ids))
 
 			conn.commit()
-			return final_profile_id
+			return PromotionResult(final_profile_id, promoted)
 
 
 def verify_otp_transactional(discord_id: str, code_plain: str) -> OTPVerificationResult:
