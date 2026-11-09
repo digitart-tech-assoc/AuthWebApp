@@ -1,5 +1,6 @@
-"""ロール関連テーブル（role_categories / role_manifests / role_member_assignments / role_audit_logs）の
-インメモリの代替（user_memberships は register_pre_member が新規登録として進む分だけ）。リポジトリ関数が発行する SQL だけを解釈する。
+"""ロール関連テーブル（role_categories / role_manifests / role_member_assignments / role_audit_logs / user_memberships）の
+インメモリの代替。リポジトリ関数が発行する SQL だけを解釈する。
+user_memberships の既存行の確認（register_pre_member の SELECT）は、未登録として扱う。
 
 _connect() の代わりに使い、with を抜けるときに _PooledConnection と同じく、正常終了なら commit、例外なら rollback する。
 """
@@ -28,6 +29,8 @@ class FakeRoleDB:
 		self.categories: dict[str, dict[str, Any]] = {}
 		self.roles: dict[str, dict[str, Any]] = {}
 		self.assignments: set[tuple[str, str]] = set()
+		# (discord_id, membership_type) -> assigned_by
+		self.memberships: dict[tuple[str, str], str | None] = {}
 		self.audit_logs: list[dict[str, Any]] = []
 		self.executed: list[str] = []
 		self.fail_audit_insert = False
@@ -52,6 +55,12 @@ class FakeRoleDB:
 		for user_id in user_ids:
 			self.assignments.add((role_id, user_id))
 
+	def add_membership(self, discord_id: str, membership_type: str, assigned_by: str | None = None) -> None:
+		self.memberships[(discord_id, membership_type)] = assigned_by
+
+	def membership_types_of(self, discord_id: str) -> set[str]:
+		return {t for d, t in self.memberships if d == discord_id}
+
 	def members_of(self, role_id: str) -> set[str]:
 		return {u for r, u in self.assignments if r == role_id}
 
@@ -62,10 +71,13 @@ class FakeRoleDB:
 		return [sql for sql in self.executed if not sql.startswith("SELECT")]
 
 	def _state(self):
-		return (copy.deepcopy(self.categories), copy.deepcopy(self.roles), set(self.assignments), list(self.audit_logs))
+		return (
+			copy.deepcopy(self.categories), copy.deepcopy(self.roles), set(self.assignments),
+			dict(self.memberships), list(self.audit_logs),
+		)
 
 	def _restore(self, state) -> None:
-		self.categories, self.roles, self.assignments, self.audit_logs = state
+		self.categories, self.roles, self.assignments, self.memberships, self.audit_logs = state
 
 
 class FakeConnection:
@@ -191,9 +203,20 @@ class FakeCursor:
 			# register_pre_member: 未登録のメンバーとして扱う
 			pass
 		elif q.startswith("INSERT INTO user_memberships"):
-			now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-			self._rows = [(now, now)]
-			self.rowcount = 1
+			if "VALUES (%s, 'pre_member', %s," in q:
+				key, assigned_by = (params[0], "pre_member"), params[1]
+			else:
+				key, assigned_by = (params[0], params[1]), params[2]
+			if key not in db.memberships:
+				db.memberships[key] = assigned_by
+				self.rowcount = 1
+				now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+				self._rows = [(now, now)]
+		elif q.startswith("DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = %s"):
+			key = (params[0], params[1])
+			if key in db.memberships:
+				del db.memberships[key]
+				self.rowcount = 1
 		else:
 			raise AssertionError(f"unexpected SQL: {q}")
 

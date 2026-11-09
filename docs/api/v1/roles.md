@@ -4,6 +4,16 @@
 
 ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord の状態を DB に取り込み直す API はありません（Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります）。
 
+ロールは次の 3 つに分け、区分ごとに正とするデータを 1 つにします（#251）。
+
+| 区分 | 対象 | 正 | 変更の入口 | Discord への反映 |
+|---|---|---|---|---|
+| ① 会員種別 | member / sub垢 / OBOG / pre-member | `user_memberships` | 管理画面の割当の保存（[マニフェスト API](manifest.md)）、入会フロー | push、Bot の reconcile |
+| ② 一般ロール | ゲーム・スキルなど | `role_member_assignments` | 管理画面の割当の保存、self-batch | push |
+| ③ Discord 管理 | admin ロール、Bot に付けるロール（Bot より上のロール・managed ロール） | Discord | Discord で直接操作する | なし（admin は `POST /members/sync` で `user_memberships` に取り込む） |
+
+① のロールの割当を管理画面で保存すると、`user_memberships` も同じトランザクションで更新します。
+
 ---
 
 ## POST `/api/v1/roles/push`
