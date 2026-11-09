@@ -62,7 +62,7 @@ def validate_membership_role_ids(env: str) -> None:
 	"""会員種別のロール ID の設定を確認する。
 
 	必須の種別が未設定の場合、本番では起動を止め、それ以外では警告する。
-	任意の種別（obog / sub_user）が未設定の場合は警告のみ（その種別は /members/sync で同期しない）。
+	任意の種別（obog / sub_user）が未設定の場合は警告のみ（その種別は /members/sync で差分を計算しない）。
 	メッセージにはロール ID の値を出さない。
 	"""
 	missing_required = missing_membership_role_id_env_vars(REQUIRED_MEMBERSHIP_TYPES)
