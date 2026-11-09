@@ -139,12 +139,12 @@ Discord アカウントが連携されていない場合（`"Discord account not
 ※前提として、入会資格（仮入会ロール所持かつ入会費支払い済み）を満たし、事前の OTP 検証が完了している必要があります。
 ※既に `member` / `sub_user` / `obog` / `admin` のユーザーはプロフィール更新として扱い、入会資格・OTP の検証を省略します。
 
-本会員化（`user_memberships` の `pre_member` の行を `member` に変更）と同じトランザクションで、ロールの割当を次のように変更します（#251）。
+新規入会のときは、本会員化（`user_memberships` の `pre_member` の行を消し、同じ `assigned_by` で `member` の行を作る。`member` の行がすでにあれば作らない）と同じトランザクションで、ロールの割当を次のように変更します（#251）。
 * `MEMBER_ROLE_IDS` のロールの割当を追加し、`PRE_MEMBER_ROLE_ID` のロールの割当を外す。
 * 変更は監査ログ（`role_audit_logs`、`target_type = 'member_roles'`）に記録する。
 * コミット後、Discord で `MEMBER_ROLE_IDS` のロールを付与する（pre-member ロールはここでは外さない。次の push で、割当に合わせて外れる）。
 
-`pre_member` の行がないユーザー（プロフィール更新）では、ロールの割当も Discord のロールも変更しません（sub_user・obog に member ロールを付けないため）。
+登録済みの会員（プロフィール更新）では、`pre_member` の行が残っていても、会員種別・ロールの割当・Discord のロールを変更しません（sub_user・obog に member ロールを付けないため）。
 
 * **認可レベル**: `Authenticated`
 * **リクエストボディ**:

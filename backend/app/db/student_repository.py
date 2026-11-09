@@ -138,9 +138,9 @@ def upsert_student_profile_and_promote(
 	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
 
-	pre_member の行を member に変えたときだけ、同じトランザクションでロールの割当を変える（#251）。
-	member ロールの割当を追加し、pre-member ロールの割当を外す。
-	登録済みの会員（sub_user・obog など）のプロフィール更新では、割当を変えない。
+	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
+	同じトランザクションでロールの割当を変える（#251）。member ロールの割当を追加し、pre-member ロールの割当を外す。
+	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えない。
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -205,16 +205,31 @@ def upsert_student_profile_and_promote(
 				)
 				final_profile_id = profile_id
 
-			# ロール変更：pre_memberからmemberへ
-			cur.execute(
-				"""
-				UPDATE user_memberships
-				SET membership_type = 'member', assigned_at = now()
-				WHERE discord_id = %s AND membership_type = 'pre_member'
-				""",
-				(discord_id,),
-			)
-			promoted = cur.rowcount > 0
+			# ロール変更：pre_memberからmemberへ。
+			# 新規入会（require_eligibility）のときだけ行う。登録済みの会員（sub_user・obog など）に
+			# pre_member の行が残っていても、プロフィール更新で member にはしない（#251）。
+			# member の行がすでにある場合に主キーが衝突しないよう、UPDATE ではなく DELETE と INSERT で変える
+			promoted = False
+			if require_eligibility:
+				cur.execute(
+					"""
+					DELETE FROM user_memberships
+					WHERE discord_id = %s AND membership_type = 'pre_member'
+					RETURNING assigned_by
+					""",
+					(discord_id,),
+				)
+				pre_member_row = cur.fetchone()
+				promoted = pre_member_row is not None
+				if promoted:
+					cur.execute(
+						"""
+						INSERT INTO user_memberships (discord_id, membership_type, assigned_by, assigned_at, created_at)
+						VALUES (%s, 'member', %s, now(), now())
+						ON CONFLICT (discord_id, membership_type) DO NOTHING
+						""",
+						(discord_id, pre_member_row[0]),
+					)
 
 			if promoted:
 				added_role_ids: list[str] = []

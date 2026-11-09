@@ -21,9 +21,11 @@ from app.core.config import (
 	OTP_EXPIRY_SECONDS,
 	OTP_SEND_RATE_LIMIT,
 	OTP_SEND_RATE_WINDOW_SECONDS,
+	MembershipType,
 )
 from app.core.errors import log_exception_without_message
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
+from app.core.membership_roles import membership_role_ids
 from app.core.rate_limit import SlidingWindowRateLimiter, enforce_rate_limit
 from app.db.audit_repository import (
 	ACTION_UPDATE,
@@ -400,9 +402,9 @@ async def create_student_profile(
 
 	email_aoyama = _generate_student_email(req.student_number)
 
-	member_role_ids_env = os.getenv("MEMBER_ROLE_IDS", "")
-	member_role_ids = [r.strip() for r in member_role_ids_env.split(",") if r.strip()]
-	pre_member_role_id = os.getenv("PRE_MEMBER_ROLE_ID", "").strip() or None
+	configured_role_ids = membership_role_ids()
+	member_role_ids = list(configured_role_ids[MembershipType.MEMBER])
+	pre_member_role_id = next(iter(configured_role_ids[MembershipType.PRE_MEMBER]), None)
 
 	# 資格確認後に失効・削除された場合に備え、本会員化と同一トランザクションで再検証する
 	try:
