@@ -33,6 +33,7 @@ OP_JOIN_OTP_VERIFY = "join_otp_verify"
 OP_STUDENT_PROFILE = "student_profile"
 OP_PRE_MEMBER_REGISTER = "pre_member_register"
 OP_MEMBER_ADD = "member_add"
+OP_MEMBERSHIP_BACKFILL = "membership_backfill"
 
 # system
 SYSTEM_DB = "db"

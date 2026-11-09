@@ -72,4 +72,34 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 - マイグレーション作成: `alembic revision -m "<message>"`
 - 動作確認: `docker compose up --build` で Docker 環境を立ち上げて実施
 
+## 5. 保守用スクリプト
 
+### 会員種別とロールの割当の整理（`app.scripts.fix_membership_assignments`、#251）
+`user_memberships`（会員種別）と `role_member_assignments`（ロールの割当）の既存データの食い違いを整理します。内容は `app/db/membership_backfill.py` を参照してください。
+
+- sub垢 と member の両方を持つ人: member ロールの割当を外します。sub_user の行もある場合は member の行も消します。
+- 行はあるが割当がない人（member / sub_user / obog / pre_member）: その種別のロールの割当を補完します。ただし次の場合は補完せず、件数だけを表示します。
+  - 補完すると、同時に持てない組（member と sub垢、pre-member と member / sub垢）になる場合（`skipped_conflicting_rows`）。例: OTP 検証済みでプロフィール未送信の、pre_member の行と member の割当を持つ人
+  - sub垢 の割当があり、sub_user の行がなく member の行だけがある人（`member_rows_of_sub_role_holders`）。先に sync で揃えてください
+- 割当はあるが行がない人: 変更せず、件数だけを表示します（`assignments_without_row`）。
+- admin の行と admin ロールの割当は扱いません。
+- 任意の種別（`SUB_USER_ROLE_IDS` / `OBOG_ROLE_IDS`）が未設定だと、その種別は整理しません。出力の `unconfigured_role_id_env_vars` で確認してください。
+
+```bash
+# Backend のコンテナ内で実行する（DATABASE_URL と会員種別のロール ID の環境変数が必要）
+python -m app.scripts.fix_membership_assignments           # 件数の確認だけ（dry-run。何も書き込まない）
+python -m app.scripts.fix_membership_assignments --apply   # 反映する（監査ログに operation = 'membership_backfill' で記録する）
+```
+
+- 出力は件数だけで、Discord ID は出しません。`--apply` では、記録した監査ログの `request_id` も出します。
+- 両テーブルのロックを 5 秒待っても取れない場合は、何も変更せずに失敗します。時間をおいて再実行してください。
+
+#### 推奨する手順
+**#173 の修正（push 後の Bot の reconcile が届くようになる）より前に行ってください。** 行はあるが割当がない人は、reconcile が届くと push のたびにロールを外して付け直すことになります。
+
+1. sub垢 ロールの Discord の権限を確認する（手順 5 の push で、sub垢 と member の両方を持つ人の member ロールが外れるため）。
+2. 管理画面の「Discord同期」（`POST /api/v1/roles/members/sync`）を実行し、sub垢 を持つ人の行を sub_user に揃える。
+3. dry-run で件数を確認する。`skipped_conflicting_rows` / `member_rows_of_sub_role_holders` / `assignments_without_row` が 0 でない場合は、個別に確認する。
+4. `--apply` で反映する。
+5. 管理画面から push する（補完した割当が Discord に付き、外した member ロールが外れる）。429 で途中で止まった場合は、もう一度 push する。
+6. 必要なら、もう一度 sync する。

@@ -68,7 +68,7 @@ CREATE TABLE role_audit_logs (
   action           TEXT NOT NULL,   -- 下の表を参照
   before           JSONB,           -- 変更のあったフィールドだけ
   after            JSONB,
-  actor_sub        TEXT,            -- Supabase UUID、'internal-service'
+  actor_sub        TEXT,            -- Supabase UUID、'internal-service'、または 'maintenance-script'（保守用スクリプト）
   actor_discord_id TEXT             -- 操作した人の Discord ID（内部連携からの呼び出しでは NULL）
 );
 CREATE INDEX idx_role_audit_logs_target ON role_audit_logs (target_type, target_id, occurred_at DESC);
@@ -88,13 +88,14 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | | `student_profile` | `POST /api/v1/student/profile` |
 | | `pre_member_register` | `POST /api/v1/members/pre_member/register`（Bot からの内部呼び出し） |
 | | `member_add` | `POST /api/v1/members/member/add` |
+| | `membership_backfill` | 保守用スクリプト `python -m app.scripts.fix_membership_assignments --apply`（[backend.md](backend.md) の「保守用スクリプト」） |
 | `system` | `db` | DB への変更 |
 | | `discord` | Discord への変更 |
 | `target_type` | `category` | `target_id` = カテゴリ ID |
 | | `role` | `target_id` = ロール ID（ロール定義の変更） |
 | | `role_assignment` | `target_id` = ロール ID（ロール単位で見た割り当ての変更。マニフェスト保存で使う） |
-| | `member_roles` | `target_id` = Discord ユーザー ID（メンバー単位で見たロールの付け外し。push・self-batch・入会・pre-member 登録・本会員の承認（`member/add`）で使う） |
-| | `membership` | `target_id` = Discord ユーザー ID（`user_memberships` の会員種別の追加・削除。マニフェスト保存で使う） |
+| | `member_roles` | `target_id` = Discord ユーザー ID（メンバー単位で見たロールの付け外し。push・self-batch・入会・pre-member 登録・本会員の承認（`member/add`）・保守用スクリプトで使う） |
+| | `membership` | `target_id` = Discord ユーザー ID（`user_memberships` の会員種別の追加・削除。マニフェスト保存・保守用スクリプトで使う） |
 | `action` | `create` / `update` / `delete` | 作成・更新・削除 |
 | | `rename_id` | 仮 ID（`draft-…`）を正式な ID に置き換え |
 | | `reorder` | 並び順の変更 |
