@@ -1,3 +1,4 @@
+import { SAVE_MANAGED_MEMBERSHIP_TYPES } from "@/types/roles";
 import type { Role, Category, RoleDiffData, ManifestPatchPayload } from "@/types/roles";
 export type { ManifestPatchPayload };
 
@@ -63,8 +64,9 @@ export function calculateDifferences(
     memberCount: (membersByRole[r.role_id] || []).length,
   }));
 
-  const memberAssigned: { roleId: string; roleName: string; added: string[]; removed: string[] }[] = [];
-  const baseRoleMap = new Map(baseRoles.map((r) => [r.role_id, r.name]));
+  const memberAssigned: RoleDiffData["memberAssigned"] = [];
+  const baseRoleMap = new Map(baseRoles.map((r) => [r.role_id, r]));
+  const managedTypes: readonly string[] = SAVE_MANAGED_MEMBERSHIP_TYPES;
 
   for (const roleId of baseRoleIds) {
     const baseMemberIds = baseMembersByRole[roleId] || [];
@@ -77,11 +79,13 @@ export function calculateDifferences(
     const removedMembers = baseMemberIds.filter((m) => !nextMemberSet.has(m));
 
     if (addedMembers.length > 0 || removedMembers.length > 0) {
+      const baseRole = baseRoleMap.get(roleId);
       memberAssigned.push({
         roleId,
-        roleName: baseRoleMap.get(roleId) || roleId,
+        roleName: baseRole?.name || roleId,
         added: addedMembers,
         removed: removedMembers,
+        changesMembership: managedTypes.includes(baseRole?.membership_type ?? ""),
       });
     }
   }

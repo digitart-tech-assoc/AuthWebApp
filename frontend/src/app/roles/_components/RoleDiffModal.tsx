@@ -32,6 +32,8 @@ export default function RoleDiffModal({ diffData, onClose, onConfirm }: Props) {
     diffData.categoriesAdded.length > 0 ||
     diffData.categoriesDeleted.length > 0;
 
+  const changesMembership = diffData.memberAssigned.some((change) => change.changesMembership);
+
   return (
     <ModalFrame onBackdropClick={onClose} size="xl" ariaLabel="変更内容確認">
       <div className="flex shrink-0 flex-col gap-1 border-b border-slate-200 px-6 pt-6 pb-4">
@@ -41,6 +43,14 @@ export default function RoleDiffModal({ diffData, onClose, onConfirm }: Props) {
       <div className="min-h-0 flex-1 overflow-y-auto p-5 text-sm text-slate-700">
         {hasChanges ? (
           <>
+            {changesMembership && (
+              <div role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+                <p className="m-0 font-bold">会員権限も変更されます</p>
+                <p className="m-0 mt-1 text-xs">
+                  会員種別のロール（member・sub垢・OBOG・pre-member）の割当を変更すると、このアプリでの会員権限も同時に変わります。
+                </p>
+              </div>
+            )}
             {diffData.roleAdded.length > 0 && (
               <DiffSection titleClass="text-emerald-700" title={`＋ ロールを追加（${diffData.roleAdded.length}件）`}>
                 {diffData.roleAdded.map((item) => (
@@ -59,6 +69,9 @@ export default function RoleDiffModal({ diffData, onClose, onConfirm }: Props) {
                 {diffData.memberAssigned.map((change) => (
                   <li key={change.roleId}>
                     <strong>{change.roleName}</strong>
+                    {change.changesMembership && (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">会員権限も変更</span>
+                    )}
                     {change.added.length > 0 && (
                       <div className="ml-3 text-emerald-700">➕ {change.added.length}名追加</div>
                     )}

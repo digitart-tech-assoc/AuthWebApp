@@ -74,6 +74,20 @@ function formatPushResultMessage({ updated, created, deleted, reordered, skipped
   return summary;
 }
 
+/** マニフェストの保存に失敗したときの文言。Backend の detail は使わず、ステータスで出し分ける（#251） */
+function saveErrorMessage(status: number): string {
+  if (status === 400) {
+    return "会員種別のロールの組み合わせが正しくないため、保存できませんでした。member と sub垢・pre-member は同時に付けられません。種別のロールが複数ある場合は、すべて付けるか、すべて外してください。";
+  }
+  if (status === 403) {
+    return "保存できませんでした。Bot より上のロール（admin など）の割当は、Discord で直接変更してください。";
+  }
+  if (status === 502) {
+    return "Discord からロールの情報を取得できなかったため、保存できませんでした。時間をおいて再度お試しください。";
+  }
+  return "保存に失敗しました。再度お試しください。";
+}
+
 // ===== Component =====
 
 /**
@@ -264,7 +278,8 @@ function AdminRoleAccordion({ categories: initCategories, roles: initRoles, push
 
       if (!res.ok) {
         setSaveState("error");
-        showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
+        // Backend の detail は表示せず、ステータスで固定文言を出し分ける（docs/logging-and-errors.md §3.3）
+        showStatus({ kind: "error", msg: saveErrorMessage(res.status) });
         setPendingRoles(null);
         setPendingCats(null);
         return;
