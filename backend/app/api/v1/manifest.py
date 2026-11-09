@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.auth import require_admin, require_member
+from app.core.exceptions import MembershipAssignmentError
 from app.db.audit_repository import OP_MANIFEST_PATCH, OP_MANIFEST_PUT, AuditContext, get_audit_context
 from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest
 
@@ -62,14 +63,21 @@ async def put_manifest(
 	_principal: dict = Depends(require_admin),
 	audit: AuditContext = Depends(get_audit_context),
 ) -> Manifest:
-	"""マニフェスト保存。admin のみ許可。"""
-	await asyncio.to_thread(
-		replace_manifest,
-		[c.model_dump() for c in payload.categories],
-		[r.model_dump() for r in payload.roles],
-		payload.role_assignments,
-		audit.with_operation(OP_MANIFEST_PUT),
-	)
+	"""マニフェスト保存。admin のみ許可。
+
+	会員種別のロールの割当を変えると、user_memberships も更新する。種別として成り立たない割当は 400 を返す（#251）。
+	"""
+	try:
+		await asyncio.to_thread(
+			replace_manifest,
+			[c.model_dump() for c in payload.categories],
+			[r.model_dump() for r in payload.roles],
+			payload.role_assignments,
+			audit.with_operation(OP_MANIFEST_PUT),
+		)
+	except MembershipAssignmentError as exc:
+		# 固定文言に Discord ID と種別名だけを埋めたもの（app/core/exceptions.py）
+		raise HTTPException(status_code=400, detail=exc.response_detail) from exc
 	return payload
 
 
@@ -79,14 +87,21 @@ async def patch_manifest(
 	_principal: dict = Depends(require_admin),
 	audit: AuditContext = Depends(get_audit_context),
 ) -> dict:
-	"""マニフェスト差分保存。admin のみ許可。"""
-	await asyncio.to_thread(
-		patch_manifest_db,
-		[c.model_dump() for c in payload.upsert_categories],
-		payload.delete_category_ids,
-		[r.model_dump() for r in payload.upsert_roles],
-		payload.delete_role_ids,
-		payload.upsert_role_assignments,
-		audit.with_operation(OP_MANIFEST_PATCH),
-	)
+	"""マニフェスト差分保存。admin のみ許可。
+
+	会員種別のロールの割当を変えると、user_memberships も更新する。種別として成り立たない割当は 400 を返す（#251）。
+	"""
+	try:
+		await asyncio.to_thread(
+			patch_manifest_db,
+			[c.model_dump() for c in payload.upsert_categories],
+			payload.delete_category_ids,
+			[r.model_dump() for r in payload.upsert_roles],
+			payload.delete_role_ids,
+			payload.upsert_role_assignments,
+			audit.with_operation(OP_MANIFEST_PATCH),
+		)
+	except MembershipAssignmentError as exc:
+		# 固定文言に Discord ID と種別名だけを埋めたもの（app/core/exceptions.py）
+		raise HTTPException(status_code=400, detail=exc.response_detail) from exc
 	return {"ok": True}

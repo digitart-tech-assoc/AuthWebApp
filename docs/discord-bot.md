@@ -17,8 +17,8 @@ discord.py (Python 3.11+) をベースに、FastAPI による内部受信用 HTT
    - バックエンドの内部エンドポイント（`GET /api/v1/members/internal/lists`）から最新のメンバーおよび仮入会者リストを取得。
    - Discord REST API（`/guilds/{guild_id}/members/{user_id}/roles/{role_id}`）を用いて、`PRE_MEMBER_ROLE_ID`・`MEMBER_ROLE_IDS`・`SUB_USER_ROLE_IDS` の付与・剥奪を最小限の呼び出しで実行。
    - DB（`user_memberships`）を正とし、各リストのユーザーにロールを付与する。
-     - `member_list`・`sub_user_list`: `MEMBER_ROLE_IDS` を付与し、`PRE_MEMBER_ROLE_ID` を外す。
-     - `sub_user_list`: さらに `SUB_USER_ROLE_IDS`（sub垢 ロール）を付与する。
+     - `member_list`: `MEMBER_ROLE_IDS` を付与し、`PRE_MEMBER_ROLE_ID` を外す。
+     - `sub_user_list`: `SUB_USER_ROLE_IDS`（sub垢 ロール）を付与し、`PRE_MEMBER_ROLE_ID` を外す。`MEMBER_ROLE_IDS` は付与しない（member と sub垢 の両方を持つ状態は正常ではないものとして扱う。#251）。
      - `pre_member_list`（メンバー・sub_user を除く）: `PRE_MEMBER_ROLE_ID` を付与する。
    - リストにいないユーザーのロールは外さない。DB の割り当て（`role_member_assignments`）に合わせて外すのは `POST /api/v1/roles/push` の役割。
    - 処理結果（成功・失敗件数、エラー理由）を JSON レスポンスとして返却・ログ出力。

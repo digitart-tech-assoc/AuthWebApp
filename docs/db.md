@@ -93,6 +93,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | | `role` | `target_id` = ロール ID（ロール定義の変更） |
 | | `role_assignment` | `target_id` = ロール ID（ロール単位で見た割り当ての変更。マニフェスト保存で使う） |
 | | `member_roles` | `target_id` = Discord ユーザー ID（メンバー単位で見たロールの付け外し。push・self-batch・入会（プロフィール送信）・pre-member 登録で使う） |
+| | `membership` | `target_id` = Discord ユーザー ID（`user_memberships` の会員種別の追加・削除。マニフェスト保存で使う） |
 | `action` | `create` / `update` / `delete` | 作成・更新・削除 |
 | | `rename_id` | 仮 ID（`draft-…`）を正式な ID に置き換え |
 | | `reorder` | 並び順の変更 |
@@ -109,6 +110,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 - **並び替え（`reorder`）の行:** ほかのロールとの相対的な順序が変わったロールだけを、1ロール1行で `{"position": <Discord 上の値>}` → `{"position": <送信した値>}` として記録します。ロールの作成・削除で `position` が一律にずれただけのロールは記録しません。
   - 対象は「順序を保ったまま残せる最大のロールの集まり（最長増加部分列）に含まれないロール」です。最長増加部分列が複数ある場合はそのうち1つを使うため、**どのロールが記録されるかは一意ではありません**（件数は push のレスポンスの `reordered` と一致します）。
 - **割り当て（`role_assignment` / `member_roles`）:** 実際に追加・削除されたものだけを `after = {"added": [...], "removed": [...]}` で記録します（`before` は NULL）。
+- **会員種別（`membership`）:** 実際に追加・削除された種別（`member` / `sub_user` / `obog` / `pre_member`）だけを `after = {"added": [...], "removed": [...]}` で記録します（`before` は NULL）。
 
 #### `color` の表記
 `color` は正規化していないため、大文字・小文字の表記が混ざります。
@@ -176,6 +178,7 @@ CREATE TABLE users (
 
 ### `user_memberships`
 ユーザーに付与されたメンバーシップ権限を管理するテーブル（1ユーザーが複数の種別を持つことも可能）。
+会員種別（`member` / `sub_user` / `obog` / `pre_member`）はこのテーブルを正とします。管理画面で種別のロールの割当を保存すると、同じトランザクションでこのテーブルも更新します（[マニフェスト API](api/v1/manifest.md) の「会員種別のロールの割当」）。`admin` の行は保存では変更せず、`POST /api/v1/roles/members/sync` で Discord から取り込みます。
 
 ```sql
 CREATE TABLE user_memberships (

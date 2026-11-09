@@ -21,6 +21,7 @@ from app.db.audit_repository import (
 )
 from app.db.connection import _connect
 from app.db.guild_repository import replace_role_assignments
+from app.db.membership_assignment_repository import apply_membership_changes
 
 # 監査ログで比べるフィールド（updated_at・is_managed_by_app は含めない）
 CATEGORY_AUDIT_FIELDS = ("name", "display_order", "is_collapsed", "permissions", "is_restricted")
@@ -213,6 +214,9 @@ def replace_manifest(
 ) -> None:
 	"""PUT /api/v1/manifest の保存。マニフェストと割り当てを1つのトランザクションで置き換える。
 
+	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
+	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
+
 	audit を渡すと、変更前の全行と比べて実際に追加・更新・削除された行だけを同じトランザクションで記録する。
 	"""
 	with _connect() as conn:
@@ -222,6 +226,8 @@ def replace_manifest(
 				before_roles = _snapshot_roles(cur, None, lock=True)
 			_replace_manifest_rows(cur, categories, roles)
 			changes = replace_role_assignments(cur, role_assignments)
+			# 会員種別のロールの割当が変わった人の user_memberships を同じトランザクションで更新する（#251）
+			apply_membership_changes(cur, changes, audit)
 			if audit is not None:
 				insert_audit_logs(cur, audit, [
 					*_row_audit_logs(TARGET_CATEGORY, CATEGORY_AUDIT_FIELDS, before_categories, _snapshot_categories(cur, None, lock=False)),
@@ -259,6 +265,9 @@ def patch_manifest_db(
 ) -> None:
 	"""差分更新（PATCH）を使ってマニフェストを更新する
 
+	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
+	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
+
 	audit を渡すと、変更のあった行だけを同じトランザクションで記録する。記録に失敗したら変更も失敗させる。
 	"""
 	with _connect() as conn:
@@ -284,6 +293,8 @@ def patch_manifest_db(
 
 			# 4. メンバー割り当ての適用（指定された role_id のみ。差分だけを更新する）
 			changes = replace_role_assignments(cur, upsert_role_assignments)
+			# 会員種別のロールの割当が変わった人の user_memberships を同じトランザクションで更新する（#251）
+			apply_membership_changes(cur, changes, audit)
 
 			if audit is not None:
 				after_categories = _snapshot_categories(cur, category_ids, lock=False)

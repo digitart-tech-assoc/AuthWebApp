@@ -2,7 +2,17 @@
 
 本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除・作成、権限変更に関する API 仕様です。
 
-ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord の状態を DB に取り込み直す API はありません（Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります）。
+ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります。ただし、下の表の ③（Bot が操作できないロール）は Push の対象外で、Discord で直接付け外しします。会員種別は `POST /members/sync` で Discord から `user_memberships` に取り込みます。
+
+ロールは次の 3 つに分け、区分ごとに正とするデータを 1 つにします（#251）。
+
+| 区分 | 対象 | 正 | 変更の入口 | Discord への反映 |
+|---|---|---|---|---|
+| ① 会員種別 | member / sub垢 / OBOG / pre-member | `user_memberships` | 管理画面の割当の保存（[マニフェスト API](manifest.md)）、入会フロー | push、Bot の reconcile |
+| ② 一般ロール | ゲーム・スキルなど | `role_member_assignments` | 管理画面の割当の保存、self-batch | push |
+| ③ Discord 管理 | admin ロール、Bot に付けるロール（Bot より上のロール・managed ロール） | Discord | Discord で直接操作する | なし（admin は `POST /members/sync` で `user_memberships` に取り込む） |
+
+① のロールの割当を管理画面で保存すると、`user_memberships` も同じトランザクションで更新します。
 
 ---
 
@@ -110,6 +120,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
   - 同一ロールが `roles_to_add` と `roles_to_remove` の両方に指定されている場合
   - Discord ID が特定できない場合
 - `403 Forbidden`（ホワイトリスト方式。判定は DB のマニフェストを正とする）:
+  - 会員種別のロール（`MEMBER_ROLE_IDS` / `SUB_USER_ROLE_IDS` / `OBOG_ROLE_IDS` / `PRE_MEMBER_ROLE_ID` / `ADMIN_ROLE_IDS` で指定したロール）が含まれる場合。カテゴリや `permissions` の設定によらず拒否します（#251）。Discord には問い合わせません
   - カテゴリ未設定（`category_id: null`）のロールが含まれる場合
   - 付与・解除できるカテゴリ（マニフェストに存在し、`is_restricted: false` かつ予約カテゴリ以外）に属さないロールが含まれる場合
   - マニフェスト上の `permissions` が `0` 以外（Discord 権限付き）のロールが含まれる場合
@@ -181,6 +192,8 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
    * 保存に失敗した場合（同名ロールが直前に作られた場合を含む）は、作成した Discord のロールを削除します。
    * push はマニフェストにないロールを Discord から削除するため、Discord にだけロールが残ることはありません（削除にも失敗した場合は、次の push で削除されます）。
 4. 作成者に付与します（`PUT /guilds/{guild_id}/members/{user_id}/roles/{role_id}` → `role_member_assignments`）。DB への保存に失敗した場合は Discord 側の付与を取り消し、`assigned: false` を返します。
+
+作成するロールの ID は Discord が新しく発行するため、会員種別のロール（環境変数で指定した ID）にはなりません。そのため self-batch と違い、会員種別のロールかどうかは確認しません（#251）。会員種別の予約名のロールは作成できません（`409`）。
 
 ### バリデーション & エラーレスポンス
 - `400 Bad Request`: Discord ID が特定できない場合
@@ -282,7 +295,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 任意の種別の ID が未設定の場合、その種別は変更せず、警告ログを出します。
 
-`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（サブアカウントは Bot の reconcile で member ロールも付与されるため）。
+`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（#187）。Bot の reconcile は sub_user に member ロールを付けなくなりましたが（#251）、既存のデータで両方のロールを持つ人の整理が終わるまで、この扱いを残します。
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 

@@ -41,6 +41,7 @@ TARGET_CATEGORY = "category"
 TARGET_ROLE = "role"
 TARGET_ROLE_ASSIGNMENT = "role_assignment"
 TARGET_MEMBER_ROLES = "member_roles"
+TARGET_MEMBERSHIP = "membership"
 
 # action
 ACTION_CREATE = "create"

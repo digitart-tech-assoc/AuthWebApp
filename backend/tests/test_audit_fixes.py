@@ -193,3 +193,30 @@ class TestSelfBatchWhitelistValidation:
         assert result["ok"] is True
         assert result["added"] == ["role-x"]
         mock_set.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "env_var",
+        ["MEMBER_ROLE_IDS", "SUB_USER_ROLE_IDS", "OBOG_ROLE_IDS", "PRE_MEMBER_ROLE_ID", "ADMIN_ROLE_IDS"],
+    )
+    @pytest.mark.parametrize("add", [True, False])
+    async def test_rejects_membership_role_even_in_open_category(self, monkeypatch, env_var, add):
+        """会員種別のロールは、許可カテゴリ・permissions = 0 でも付け外しできない（#251）"""
+        monkeypatch.setenv(env_var, "role-x")
+        await self._assert_forbidden({"category_id": "cat-open", "permissions": 0}, "会員種別のロール", add=add)
+
+    @pytest.mark.asyncio
+    async def test_membership_role_check_does_not_call_discord(self, monkeypatch):
+        """会員種別のロールは、Discord に問い合わせる前に拒否する（#251）"""
+        from app.api.v1.roles import SelfBatchPayload, self_batch_roles
+        from fastapi import HTTPException
+
+        monkeypatch.setenv("MEMBER_ROLE_IDS", "role-x")
+        manifest = {"roles": [{"role_id": "role-x", "name": "X", "category_id": "cat-open", "permissions": 0}], "categories": self.CATEGORIES}
+        with patch("app.api.v1.roles._get_token", return_value="token"):
+            with patch("app.api.v1.roles.fetch_manifest", return_value=manifest):
+                with patch("app.api.v1.roles.fetch_guild_roles", new_callable=AsyncMock) as fetch_roles:
+                    with pytest.raises(HTTPException) as exc_info:
+                        await self_batch_roles(SelfBatchPayload(roles_to_add=["role-x"]), self.PRINCIPAL, audit=TEST_AUDIT)
+        assert exc_info.value.status_code == 403
+        fetch_roles.assert_not_called()

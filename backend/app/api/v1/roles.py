@@ -855,12 +855,19 @@ async def self_batch_roles(
 	manifest = await asyncio.to_thread(fetch_manifest)
 	roles_in_manifest = {r["role_id"]: r for r in manifest.get("roles", [])}
 	self_assignable_cat_ids = _self_assignable_category_ids(manifest)
+	# 会員種別のロール（admin を含む）は、カテゴリや権限値の設定によらず変更させない（#251）
+	membership_role_id_set = {rid for ids in membership_role_ids().values() for rid in ids}
 
 	for role_id in all_role_ids:
 		role_info = roles_in_manifest.get(role_id)
 		if role_info is None:
 			raise HTTPException(status_code=404, detail=f"指定されたロール {role_id} が見つかりません")
 		role_name = role_info.get("name", role_id)
+		if role_id in membership_role_id_set:
+			raise HTTPException(
+				status_code=403,
+				detail=f"ロール '{role_name}' は変更できません（会員種別のロール）",
+			)
 		category_id = role_info.get("category_id")
 		if category_id is None:
 			raise HTTPException(
