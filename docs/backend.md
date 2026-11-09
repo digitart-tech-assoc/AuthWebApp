@@ -53,8 +53,8 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 | `ADMIN_ROLE_IDS` | ○ | admin ロールの Discord ロール ID（カンマ区切りで複数指定可）。会員種別はロール名ではなく ID で判定する |
 | `MEMBER_ROLE_IDS` | ○ | member ロールの Discord ロール ID（カンマ区切りで複数指定可） |
 | `PRE_MEMBER_ROLE_ID` | ○ | pre-member ロールの Discord ロール ID |
-| `OBOG_ROLE_IDS` | - | OBOG ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で obog を同期しない |
-| `SUB_USER_ROLE_IDS` | - | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で sub_user を同期しない |
+| `OBOG_ROLE_IDS` | - | OBOG ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で obog の差分を計算しない |
+| `SUB_USER_ROLE_IDS` | - | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で sub_user の差分を計算しない |
 | `BOT_INTERNAL_URL` | - | Discord Bot サーバーの内部 URL（`http://host:8000` でも、`/internal/sync` までを含む URL でもよい。デフォルト: `http://discord-bot:8000`）。旧名の `DISCORD_BOT_URL` は、`BOT_INTERNAL_URL` が未設定のときだけ読む |
 | `BREVO_API_KEY` | ○ | Brevo メール送信 API キー |
 | `BREVO_SENDER_EMAIL` | ○ | 送信元メールアドレス |
@@ -95,6 +95,8 @@ python -m app.scripts.fix_membership_assignments --apply   # 反映する（監�
 - 両テーブルのロックを 5 秒待っても取れない場合は、何も変更せずに失敗します。時間をおいて再実行してください。
 
 #### 推奨する手順
+> **#251 段階 6 以降の注意:** sync は member / sub_user / obog / pre_member の行を書き込まなくなりました。下の手順 2・6 と、`member_rows_of_sub_role_holders` の「先に sync で揃えてください」は、段階 6 より前の手順です。段階 6 以降に件数が 0 でない場合は、管理画面の割当の保存で揃えてください。
+
 **#173 の修正（push 後の Bot の reconcile が届くようになる）より前に行ってください。** 行はあるが割当がない人は、reconcile が届くと push のたびにロールを外して付け直すことになります。
 
 1. sub垢 ロールの Discord の権限を確認する（手順 5 の push で、sub垢 と member の両方を持つ人の member ロールが外れるため）。

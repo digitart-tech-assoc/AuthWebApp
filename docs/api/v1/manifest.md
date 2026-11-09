@@ -205,7 +205,7 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 
 注意点:
 - `SUB_USER_ROLE_IDS` / `OBOG_ROLE_IDS` が未設定の場合、そのロールは一般ロールとして扱い、種別の更新も上の判定も行いません。
-- 既存のデータで member と sub垢 の両方の割当を持つ人の sub垢 だけを外すと、member の割当が残ります。このあと sync すると member の行が作られるため、先に member の割当を外してください（既存データの整理は `python -m app.scripts.fix_membership_assignments`。[backend.md](../../backend.md) の「保守用スクリプト」）。
+- 既存のデータで member と sub垢 の両方の割当を持つ人の sub垢 だけを外すと、member の割当が残ります。この状態で push すると Discord の member ロールが残るため、先に member の割当を外してください（#251 段階 6 より前は、sync で member の行も作られていました）（既存データの整理は `python -m app.scripts.fix_membership_assignments`。[backend.md](../../backend.md) の「保守用スクリプト」）。
 - 管理画面は、変更したロールについて、画面を開いた時点の一覧に手元の変更を加えた全員分を送ります。画面を開いたあとに別の経路（入会フロー・`/members/member/add` など）で割当が増えた人は、そのロールを保存すると外れ、会員種別も失効します（既知の制約）。
 
 ---
