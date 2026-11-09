@@ -285,7 +285,10 @@ def test_patch_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
 	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {SUB: [USER]}})
 
 	assert res.status_code == 400
-	assert res.json()["detail"] == "100: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません"
+	assert res.json()["detail"] == {
+		"code": "membership_assignment_invalid",
+		"message": "100: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません",
+	}
 
 
 def test_put_endpoint_returns_400_on_invalid_membership(client, monkeypatch):

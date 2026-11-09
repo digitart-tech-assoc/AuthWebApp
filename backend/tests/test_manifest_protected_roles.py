@@ -140,7 +140,10 @@ def test_patch_endpoint_returns_403_for_protected_role(client, monkeypatch):
 	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {ADMIN_ROLE: []}})
 
 	assert res.status_code == 403
-	assert res.json()["detail"] == f"ロール {ADMIN_ROLE} は Discord で直接付け外しするロールのため、割当を変更できません"
+	assert res.json()["detail"] == {
+		"code": "protected_role_assignment",
+		"message": f"ロール {ADMIN_ROLE} は Discord で直接付け外しするロールのため、割当を変更できません",
+	}
 
 
 def test_put_endpoint_returns_403_for_protected_role(client, monkeypatch):
@@ -184,7 +187,36 @@ def test_patch_endpoint_returns_502_when_discord_fetch_fails(client, monkeypatch
 	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {"role-game": ["100"]}})
 
 	assert res.status_code == 502
+	assert res.json()["detail"]["code"] == "discord_unavailable"
 	assert saved == []
+
+
+def test_patch_endpoint_returns_502_when_bot_member_fetch_fails(client, monkeypatch):
+	monkeypatch.setattr(roles_api, "DISCORD_TOKEN", "token")
+	monkeypatch.setattr(roles_api, "fetch_guild_roles", AsyncMock(return_value=[]))
+	monkeypatch.setattr(roles_api, "fetch_bot_guild_member", AsyncMock(side_effect=RuntimeError("boom")))
+	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args, **kwargs: pytest.fail("must not save"))
+
+	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {"role-game": ["100"]}})
+
+	assert res.status_code == 502
+	assert res.json()["detail"]["code"] == "discord_unavailable"
+
+
+def test_protected_role_is_rejected_before_membership_update(db, monkeypatch):
+	# 保護対象の拒否は、会員種別の更新より先に効く（admin ロールの割当の変更で種別の行が変わらない）
+	monkeypatch.setenv("MEMBER_ROLE_IDS", "role-member")
+	db.add_membership("100", "member")
+	db.assign("role-member", "100")
+
+	with pytest.raises(ProtectedRoleAssignmentError):
+		manifest_repository.patch_manifest_db(
+			[], [], [], [], {"role-member": [], ADMIN_ROLE: ["100"]}, AUDIT,
+			protected_role_ids=frozenset({ADMIN_ROLE}),
+		)
+
+	assert db.membership_types_of("100") == {"member"}
+	assert db.members_of("role-member") == {"100"}
 
 
 def test_get_manifest_returns_membership_type(client, monkeypatch):

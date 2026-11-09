@@ -37,7 +37,7 @@ class MembershipAssignmentError(ValueError):
 		return f"{self.discord_id}: 会員種別 {names} のロールを同時に付けることはできません"
 
 
-class ProtectedRoleAssignmentError(PermissionError):
+class ProtectedRoleAssignmentError(Exception):
 	"""Discord で直接付け外しするロール（Bot より上のロール・managed ロール）の割当を変更しようとした（#251）
 
 	レスポンスの detail には response_detail（固定文言にロール ID を埋めたもの）を使う。

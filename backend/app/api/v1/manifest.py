@@ -60,11 +60,27 @@ def _role_membership_types() -> dict[str, str]:
 	return {role_id: m_type for m_type, ids in membership_role_ids().items() for role_id in ids}
 
 
+# 保存の失敗の種類。画面は detail.code で文言を出し分ける（同じステータスを返す認可エラーなどと区別するため）
+ERROR_MEMBERSHIP_ASSIGNMENT_INVALID = "membership_assignment_invalid"
+ERROR_PROTECTED_ROLE_ASSIGNMENT = "protected_role_assignment"
+ERROR_DISCORD_UNAVAILABLE = "discord_unavailable"
+
+
+def _error(status_code: int, code: str, message: str) -> HTTPException:
+	return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
 async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozenset[str]:
 	"""割当を保存するときだけ、Discord で直接付け外しするロールを Discord から取得する。"""
 	if not assignments:
 		return frozenset()
-	return await fetch_protected_role_ids()
+	try:
+		return await fetch_protected_role_ids()
+	except HTTPException as exc:
+		if exc.status_code != 502:
+			raise
+		# detail は roles API の固定文言（_unwrap_discord_fetch）
+		raise _error(502, ERROR_DISCORD_UNAVAILABLE, exc.detail) from exc
 
 
 async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
@@ -73,10 +89,10 @@ async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
 		await asyncio.to_thread(func, *args, protected_role_ids=protected_role_ids)
 	except ProtectedRoleAssignmentError as exc:
 		# 固定文言にロール ID だけを埋めたもの（app/core/exceptions.py）
-		raise HTTPException(status_code=403, detail=exc.response_detail) from exc
+		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail) from exc
 	except MembershipAssignmentError as exc:
 		# 固定文言に Discord ID と種別名だけを埋めたもの（app/core/exceptions.py）
-		raise HTTPException(status_code=400, detail=exc.response_detail) from exc
+		raise _error(400, ERROR_MEMBERSHIP_ASSIGNMENT_INVALID, exc.response_detail) from exc
 
 
 @router.get("/manifest", response_model=Manifest)

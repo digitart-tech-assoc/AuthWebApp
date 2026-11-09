@@ -105,7 +105,15 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 - `400 Bad Request`: 会員種別として成り立たない割当を保存しようとした場合（「会員種別のロールの割当」を参照）
 - `403 Forbidden`: Discord で直接付け外しするロールの割当を変更しようとした場合（「Discord で直接付け外しするロール」を参照）
 - `500 Internal Server Error`: 割当を保存するときに `DISCORD_TOKEN` が設定されていない場合
-- `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません）
+- `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません。`code` は `discord_unavailable`）
+
+`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
+
+| `code` | ステータス | 意味 |
+|---|---|---|
+| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 |
+| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 |
+| `discord_unavailable` | 502 | Discord からロールの情報を取得できない |
 
 ---
 
@@ -163,7 +171,15 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 - `400 Bad Request`: 会員種別として成り立たない割当を保存しようとした場合（「会員種別のロールの割当」を参照）
 - `403 Forbidden`: Discord で直接付け外しするロールの割当を変更しようとした場合（「Discord で直接付け外しするロール」を参照）
 - `500 Internal Server Error`: 割当を保存するときに `DISCORD_TOKEN` が設定されていない場合
-- `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません）
+- `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません。`code` は `discord_unavailable`）
+
+`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
+
+| `code` | ステータス | 意味 |
+|---|---|---|
+| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 |
+| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 |
+| `discord_unavailable` | 502 | Discord からロールの情報を取得できない |
 
 ---
 
@@ -178,7 +194,7 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 
 次の状態になる保存は `400 Bad Request` を返し、何も保存しません（マニフェストの変更も含めてロールバックします）。判定は、その種別のロールの割当が変わった人だけに行います。
 
-| 条件 | `detail` の例 |
+| 条件 | `detail.message` の例 |
 |---|---|
 | 1 つの種別に複数のロールを設定している場合（例: `MEMBER_ROLE_IDS` に 2 つ）に、その一部だけを持つ状態にする | `"<Discord ID>: 会員種別 'member' のロールは、すべて付けるか、すべて外してください"` |
 | `member` と `sub_user`、`pre_member` と `member`、`pre_member` と `sub_user` のロールを同時に持つ状態にする | `"<Discord ID>: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません"` |
@@ -202,4 +218,4 @@ Bot が操作できないロール（Bot の最上位ロール以上のロール
 - 割当を含む保存のときだけ Discord に問い合わせます（`role_assignments` / `upsert_role_assignments` が空なら問い合わせません）。
 - Discord にないロール（仮 ID `draft-…` の新規ロールなど）は対象にしません。
 
-`detail` の例: `"ロール <role_id> は Discord で直接付け外しするロールのため、割当を変更できません"`
+`detail` の例: `{"code": "protected_role_assignment", "message": "ロール <role_id> は Discord で直接付け外しするロールのため、割当を変更できません"}`
