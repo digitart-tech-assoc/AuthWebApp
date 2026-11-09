@@ -19,6 +19,17 @@ export interface SyncedMembershipRow extends MemberItem {
 	created_at: string | null;
 }
 
+/** sync で書き込まない会員種別（user_memberships を正とし、管理画面の割当の保存で変える。#251） */
+export type DiffOnlyMembershipType = "member" | "sub_user" | "obog" | "pre_member";
+
+/** 1 種別分の、Discord のロールと user_memberships の差分（Discord ID の一覧） */
+export interface MembershipDiff {
+	/** Discord でロールを持つが、会員種別の行がない */
+	discord_only: string[];
+	/** 会員種別の行があるが、Discord でロールを持たない */
+	db_only: string[];
+}
+
 /** POST /api/v1/roles/members/sync のレスポンス */
 export interface MemberListResponse {
 	ok: boolean;
@@ -28,6 +39,8 @@ export interface MemberListResponse {
 	admin_list: SyncedMembershipRow[];
 	pre_member_list: SyncedMembershipRow[];
 	obog_list: SyncedMembershipRow[];
+	/** 書き込まない種別の差分。ロールが見つからない（環境変数が未設定の）種別は null */
+	diff: Partial<Record<DiffOnlyMembershipType, MembershipDiff | null>>;
 }
 
 /** GET /api/v1/roles/lists のレスポンス */
