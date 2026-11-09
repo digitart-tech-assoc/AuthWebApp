@@ -35,7 +35,7 @@ SAVE_MANAGED_TYPES: tuple[str, ...] = (
 )
 
 # 同時に持つ状態にする保存を拒否する種別の組
-_EXCLUSIVE_TYPE_PAIRS: tuple[tuple[str, str], ...] = (
+EXCLUSIVE_TYPE_PAIRS: tuple[tuple[str, str], ...] = (
 	(MembershipType.MEMBER, MembershipType.SUB_USER),
 	(MembershipType.PRE_MEMBER, MembershipType.MEMBER),
 	(MembershipType.PRE_MEMBER, MembershipType.SUB_USER),
@@ -83,17 +83,29 @@ def apply_membership_changes(
 	result: dict[str, tuple[list[str], list[str]]] = {}
 	logs: list[AuditLog] = []
 	assigned_by = audit.actor_discord_id if audit is not None else None
+	# 同じ人の種別を変える保存同士を直列化する（別のロールの保存が並行すると、互いの変更が見えずに排他の判定を通るため）。
+	# デッドロックを避けるため、Discord ID の順にロックする
+	for discord_id in sorted(changed_types):
+		cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"membership:{discord_id}",))
 	for discord_id in sorted(changed_types):
 		types = changed_types[discord_id]
 		cur.execute("SELECT role_id FROM role_member_assignments WHERE user_id = %s", (discord_id,))
 		held = {row[0] for row in cur.fetchall()}
 		held_counts = {m_type: len(ids & held) for m_type, ids in type_role_ids.items()}
+		cur.execute("SELECT membership_type FROM user_memberships WHERE discord_id = %s", (discord_id,))
+		rows = {row[0] for row in cur.fetchall()}
+		# 種別を持つか: 割当が変わった種別は保存後の割当で、変わっていない種別は割当または行で判断する
+		# （行だけあり割当がない人に、同時に持てない種別を付けさせないため）
+		has_type = {
+			m_type: held_counts[m_type] > 0 or (m_type not in types and m_type in rows)
+			for m_type in SAVE_MANAGED_TYPES
+		}
 
 		for m_type in sorted(types):
 			if 0 < held_counts[m_type] < len(type_role_ids[m_type]):
 				raise MembershipAssignmentError(MembershipAssignmentError.PARTIAL, discord_id, (m_type,))
-		for first, second in _EXCLUSIVE_TYPE_PAIRS:
-			if (first in types or second in types) and held_counts[first] > 0 and held_counts[second] > 0:
+		for first, second in EXCLUSIVE_TYPE_PAIRS:
+			if (first in types or second in types) and has_type[first] and has_type[second]:
 				raise MembershipAssignmentError(MembershipAssignmentError.EXCLUSIVE, discord_id, (first, second))
 
 		added_types: list[str] = []

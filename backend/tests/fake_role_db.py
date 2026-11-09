@@ -32,6 +32,7 @@ class FakeRoleDB:
 		# (discord_id, membership_type) -> assigned_by
 		self.memberships: dict[tuple[str, str], str | None] = {}
 		self.audit_logs: list[dict[str, Any]] = []
+		self.advisory_locks: list[str] = []
 		self.executed: list[str] = []
 		self.fail_audit_insert = False
 		self.commits = 0
@@ -198,7 +199,9 @@ class FakeCursor:
 			db.audit_logs.append(row)
 			self.rowcount = 1
 		elif q.startswith("SELECT pg_advisory_xact_lock"):
-			pass
+			db.advisory_locks.append(params[0])
+		elif q.startswith("SELECT membership_type FROM user_memberships WHERE discord_id = %s"):
+			self._rows = [(t,) for d, t in sorted(db.memberships) if d == params[0]]
 		elif q.startswith("SELECT assigned_at, created_at FROM user_memberships"):
 			# register_pre_member: 未登録のメンバーとして扱う
 			pass

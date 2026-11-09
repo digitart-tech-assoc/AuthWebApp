@@ -2,7 +2,7 @@
 
 本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除・作成、権限変更に関する API 仕様です。
 
-ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord の状態を DB に取り込み直す API はありません（Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります）。
+ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります。ただし、下の表の ③（Bot が操作できないロール）は Push の対象外で、Discord で直接付け外しします。会員種別は `POST /members/sync` で Discord から `user_memberships` に取り込みます。
 
 ロールは次の 3 つに分け、区分ごとに正とするデータを 1 つにします（#251）。
 

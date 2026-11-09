@@ -190,7 +190,10 @@ def test_removing_all_multiple_member_roles_revokes(db, monkeypatch):
 
 # --- 同時に持てない種別 ---
 
-@pytest.mark.parametrize(("held", "added"), [(MEMBER, SUB), (SUB, MEMBER), (MEMBER, PRE), (PRE, SUB)])
+@pytest.mark.parametrize(
+	("held", "added"),
+	[(MEMBER, SUB), (SUB, MEMBER), (MEMBER, PRE), (PRE, MEMBER), (PRE, SUB), (SUB, PRE)],
+)
 def test_exclusive_types_are_rejected(db, held, added):
 	db.assign(held, USER)
 
@@ -199,6 +202,33 @@ def test_exclusive_types_are_rejected(db, held, added):
 
 	assert db.members_of(added) == set()
 	assert db.audit_logs == []
+
+
+@pytest.mark.parametrize(("row_type", "added"), [("sub_user", MEMBER), ("pre_member", MEMBER), ("member", SUB)])
+def test_exclusive_type_held_only_by_row_is_rejected(db, row_type, added):
+	# 行だけあり割当がない人にも、同時に持てない種別は付けられない
+	db.add_membership(USER, row_type)
+
+	with pytest.raises(MembershipAssignmentError):
+		_patch({added: [USER]})
+
+	assert db.members_of(added) == set()
+
+
+def test_memberships_are_locked_per_user_in_order(db):
+	_patch({MEMBER: ["300", "200"], OBOG: ["100"], "role-game": ["400"]})
+
+	assert db.advisory_locks == ["membership:100", "membership:200", "membership:300"]
+
+
+def test_unrelated_type_change_on_partial_holder_is_allowed(db, monkeypatch):
+	# 既存データで member ロールの一部だけを持つ人でも、member 以外の種別の変更はできる
+	monkeypatch.setenv("MEMBER_ROLE_IDS", f"{MEMBER},role-member-2")
+	db.assign(MEMBER, USER)
+
+	_patch({OBOG: [USER]})
+
+	assert db.membership_types_of(USER) == {"obog"}
 
 
 def test_removing_sub_role_from_legacy_holder_only_removes_sub_user(db):
