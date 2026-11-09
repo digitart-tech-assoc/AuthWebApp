@@ -74,6 +74,32 @@ function formatPushResultMessage({ updated, created, deleted, reordered, skipped
   return summary;
 }
 
+/** マニフェストの保存に失敗したときの文言。Backend の文言は使わず、detail.code で出し分ける（#251） */
+function saveErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case "membership_assignment_invalid":
+      return "会員種別のロールの組み合わせが正しくないため、保存できませんでした。member と sub垢、pre-member と member・sub垢 は同時に付けられません。種別のロールが複数ある場合は、すべて付けるか、すべて外してください。";
+    case "protected_role_assignment":
+      return "Bot が操作できないロール（admin など）の割当が含まれているため、保存できませんでした。これらのロールは Discord で直接変更してください。";
+    case "discord_unavailable":
+      return "Discord からロールの情報を取得できなかったため、保存できませんでした。時間をおいて再度お試しください。";
+    default:
+      return "保存に失敗しました。再度お試しください。";
+  }
+}
+
+/** エラーレスポンスから detail.code を取り出す（取り出せなければ undefined） */
+async function readErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await res.json();
+    const detail = (body as { detail?: unknown } | null)?.detail;
+    const code = (detail as { code?: unknown } | null)?.code;
+    return typeof code === "string" ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ===== Component =====
 
 /**
@@ -264,7 +290,8 @@ function AdminRoleAccordion({ categories: initCategories, roles: initRoles, push
 
       if (!res.ok) {
         setSaveState("error");
-        showStatus({ kind: "error", msg: "保存に失敗しました。再度お試しください。" });
+        // Backend の文言は表示せず、detail.code で固定文言を出し分ける（docs/logging-and-errors.md §3.3）
+        showStatus({ kind: "error", msg: saveErrorMessage(await readErrorCode(res)) });
         setPendingRoles(null);
         setPendingCats(null);
         return;

@@ -560,6 +560,27 @@ def _manageable_role_ids(roles: list[dict], bot_member: dict | None) -> set[str]
 	}
 
 
+async def fetch_protected_role_ids() -> frozenset[str]:
+	"""Discord で直接付け外しするロール（Bot が操作できないロール）の ID を返す（#251）。
+
+	Bot より上のロール（admin・Bot に付けるロール）、managed ロール、@everyone が対象。
+	Bot の最上位ロールを特定できない場合は、Discord の全ロールを対象にする（fail-closed）。
+	Discord にないロール（仮 ID の新規ロールなど）は含めない（push で割当を反映しないため）。
+	"""
+	token = _get_token()
+	if not token:
+		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
+	roles_result, bot_member_result = await asyncio.gather(
+		fetch_guild_roles(DISCORD_GUILD_ID, token),
+		fetch_bot_guild_member(DISCORD_GUILD_ID, token),
+		return_exceptions=True,
+	)
+	discord_roles = _unwrap_discord_fetch(roles_result, "fetch roles")
+	bot_member = _unwrap_discord_fetch(bot_member_result, "fetch bot member")
+	manageable = _manageable_role_ids(discord_roles, bot_member)
+	return frozenset(role["role_id"] for role in discord_roles if role["role_id"] not in manageable)
+
+
 @router.post("/push")
 async def push_roles_to_discord(
 	_principal: dict = Depends(require_admin),

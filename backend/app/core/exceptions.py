@@ -35,3 +35,18 @@ class MembershipAssignmentError(ValueError):
 		if self.reason == self.PARTIAL:
 			return f"{self.discord_id}: 会員種別 {names} のロールは、すべて付けるか、すべて外してください"
 		return f"{self.discord_id}: 会員種別 {names} のロールを同時に付けることはできません"
+
+
+class ProtectedRoleAssignmentError(Exception):
+	"""Discord で直接付け外しするロール（Bot より上のロール・managed ロール）の割当を変更しようとした（#251）
+
+	レスポンスの detail には response_detail（固定文言にロール ID を埋めたもの）を使う。
+	"""
+
+	def __init__(self, role_id: str) -> None:
+		self.role_id = role_id
+		super().__init__(self.response_detail)
+
+	@property
+	def response_detail(self) -> str:
+		return f"ロール {self.role_id} は Discord で直接付け外しするロールのため、割当を変更できません"
