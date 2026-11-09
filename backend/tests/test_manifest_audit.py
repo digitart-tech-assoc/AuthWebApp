@@ -251,7 +251,7 @@ def client():
 
 def test_patch_endpoint_passes_audit_context(client, monkeypatch):
 	calls = []
-	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args: calls.append(args))
+	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args, **kwargs: calls.append(args))
 
 	res = client.patch("/api/v1/manifest", json={"upsert_roles": [_role("r1")]})
 
@@ -261,7 +261,7 @@ def test_patch_endpoint_passes_audit_context(client, monkeypatch):
 
 def test_put_endpoint_passes_audit_context(client, monkeypatch):
 	calls = []
-	monkeypatch.setattr(manifest_api, "replace_manifest", lambda *args: calls.append(args))
+	monkeypatch.setattr(manifest_api, "replace_manifest", lambda *args, **kwargs: calls.append(args))
 
 	res = client.put("/api/v1/manifest", json={"roles": [_role("r1")]})
 

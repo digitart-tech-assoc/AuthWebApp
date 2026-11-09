@@ -19,7 +19,12 @@ export type Role = {
   color: string;
   category_id: string | null;
   is_our_bot?: boolean;
+  /** 会員種別のロールなら種別名（GET /api/v1/manifest でだけ返る。保存では使わない） */
+  membership_type?: string | null;
 };
+
+/** 割当を保存すると会員権限（user_memberships）も変わる種別（#251）。admin は Discord で直接付け外しする */
+export const SAVE_MANAGED_MEMBERSHIP_TYPES = ["member", "sub_user", "obog", "pre_member"] as const;
 
 export type ManifestCategory = Category;
 export type ManifestRole = Omit<Role, "is_our_bot">;
@@ -49,7 +54,7 @@ export type PermissionTarget = {
 
 export type RoleDiffData = {
   roleAdded: { role: Role; memberCount: number }[];
-  memberAssigned: { roleId: string; roleName: string; added: string[]; removed: string[] }[];
+  memberAssigned: { roleId: string; roleName: string; added: string[]; removed: string[]; changesMembership: boolean }[];
   permissionEdited: { roleId: string; roleName: string; oldPermissions: string; newPermissions: string }[];
   orderChanged: { roleId: string; roleName: string; oldPosition: number; newPosition: number }[];
   roleDeleted: Role[];

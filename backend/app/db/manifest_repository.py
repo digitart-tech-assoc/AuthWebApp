@@ -19,6 +19,7 @@ from app.db.audit_repository import (
 	diff_fields,
 	insert_audit_logs,
 )
+from app.core.exceptions import ProtectedRoleAssignmentError
 from app.db.connection import _connect
 from app.db.guild_repository import replace_role_assignments
 from app.db.membership_assignment_repository import apply_membership_changes
@@ -199,6 +200,17 @@ def _assignment_audit_logs(changes: dict[str, tuple[list[str], list[str]]]) -> l
 	return logs
 
 
+def _reject_protected_assignment_changes(
+	changes: dict[str, tuple[list[str], list[str]]],
+	protected_role_ids: frozenset[str],
+) -> None:
+	"""Discord で直接付け外しするロールの割当が実際に変わる場合は ProtectedRoleAssignmentError を送出する（#251）。"""
+	for role_id in sorted(protected_role_ids & set(changes)):
+		added, removed = changes[role_id]
+		if added or removed:
+			raise ProtectedRoleAssignmentError(role_id)
+
+
 def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]]) -> None:
 	with _connect() as conn:
 		with conn.cursor() as cur:
@@ -211,11 +223,13 @@ def replace_manifest(
 	roles: list[dict[str, Any]],
 	role_assignments: dict[str, list[str]],
 	audit: AuditContext | None = None,
+	protected_role_ids: frozenset[str] = frozenset(),
 ) -> None:
 	"""PUT /api/v1/manifest の保存。マニフェストと割り当てを1つのトランザクションで置き換える。
 
 	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
+	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 
 	audit を渡すと、変更前の全行と比べて実際に追加・更新・削除された行だけを同じトランザクションで記録する。
 	"""
@@ -226,6 +240,7 @@ def replace_manifest(
 				before_roles = _snapshot_roles(cur, None, lock=True)
 			_replace_manifest_rows(cur, categories, roles)
 			changes = replace_role_assignments(cur, role_assignments)
+			_reject_protected_assignment_changes(changes, protected_role_ids)
 			# 会員種別のロールの割当が変わった人の user_memberships を同じトランザクションで更新する（#251）
 			apply_membership_changes(cur, changes, audit)
 			if audit is not None:
@@ -262,11 +277,13 @@ def patch_manifest_db(
 	delete_role_ids: list[str],
 	upsert_role_assignments: dict[str, list[str]],
 	audit: AuditContext | None = None,
+	protected_role_ids: frozenset[str] = frozenset(),
 ) -> None:
 	"""差分更新（PATCH）を使ってマニフェストを更新する
 
 	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
+	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 
 	audit を渡すと、変更のあった行だけを同じトランザクションで記録する。記録に失敗したら変更も失敗させる。
 	"""
@@ -293,6 +310,7 @@ def patch_manifest_db(
 
 			# 4. メンバー割り当ての適用（指定された role_id のみ。差分だけを更新する）
 			changes = replace_role_assignments(cur, upsert_role_assignments)
+			_reject_protected_assignment_changes(changes, protected_role_ids)
 			# 会員種別のロールの割当が変わった人の user_memberships を同じトランザクションで更新する（#251）
 			apply_membership_changes(cur, changes, audit)
 

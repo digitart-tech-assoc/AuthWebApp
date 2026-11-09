@@ -19,7 +19,7 @@ from app.api.v1 import members as members_api
 from app.core import auth
 from app.core.errors import describe_exception, log_exception_without_message
 from app.services.discord_client import DiscordAPIError
-from tests.request_factory import make_request
+from tests.request_factory import TEST_AUDIT, make_request
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
 # レスポンスを組み立てる API 層
@@ -157,7 +157,7 @@ async def test_join_request_send_failure_does_not_return_brevo_body(monkeypatch)
 async def test_add_member_failure_does_not_log_exception_message(monkeypatch, caplog, error, status_code, level):
 	note = "applicant" + "@example.com"
 
-	def _raise(discord_id, assigned_by, note_value):
+	def _raise(discord_id, assigned_by, note_value, audit):
 		raise error(f"Key (note)=({note_value}) violates constraint")
 
 	monkeypatch.setattr(members_api, "add_to_member_list", _raise)
@@ -167,6 +167,7 @@ async def test_add_member_failure_does_not_log_exception_message(monkeypatch, ca
 			await members_api.add_member(
 				members_api.AddMemberRequest(discord_id="123", note=note),
 				_principal={"sub": "user_1"},
+				audit=TEST_AUDIT,
 			)
 
 	assert exc_info.value.status_code == status_code
