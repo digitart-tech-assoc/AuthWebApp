@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.core.config import MEMBERSHIP_PRIORITY_SQL, MembershipType
+from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import AuditContext, insert_audit_logs
 from app.db.connection import _connect, _log_db_access
 from app.db.guild_repository import member_roles_audit_logs
@@ -540,18 +541,29 @@ def add_to_member_list(
 	discord_id: str,
 	assigned_by: str,
 	note: str | None = None,
+	audit: AuditContext | None = None,
 ) -> dict[str, Any]:
 	"""pre_member を member に昇格（user_memberships で管理）。
 	同時に paid_invitations にも登録する。
+
+	同じトランザクションで、ロールの割当も種別に合わせる（#251）。
+	sub_user の行または sub垢 の割当がある人は、member と sub垢 の両方を持つことになるため ValueError を送出する。
+	member ロール（MEMBER_ROLE_IDS）の割当を追加し、pre-member ロール（PRE_MEMBER_ROLE_ID）の割当を外す。
+	audit を渡すと、実際に変えた割当を監査ログに記録する。Discord への反映は次の push で行う。
 	
 	Args:
 		discord_id: Discord user ID
 		assigned_by: admin's discord_id or user_id
 		note: Optional note for paid_invitations
+		audit: 割当の変更を記録する監査ログの文脈
 		
 	Returns:
 		{"discord_id": "...", "added_to_member_list": True/False}
 	"""
+	configured = membership_role_ids()
+	member_role_ids = configured[MembershipType.MEMBER]
+	pre_member_role_ids = configured[MembershipType.PRE_MEMBER]
+	sub_user_role_ids = configured[MembershipType.SUB_USER]
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			# Check if already member in user_memberships
@@ -561,6 +573,21 @@ def add_to_member_list(
 			)
 			if cur.fetchone() is not None:
 				return {"discord_id": discord_id, "added_to_member_list": False, "message": "Already member"}
+
+			# sub垢 の人を member にすると、member と sub垢 の両方を持つ状態になるため拒否する（#251）
+			cur.execute(
+				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'sub_user'",
+				(discord_id,),
+			)
+			is_sub_user = cur.fetchone() is not None
+			if not is_sub_user and sub_user_role_ids:
+				cur.execute(
+					"SELECT 1 FROM role_member_assignments WHERE user_id = %s AND role_id = ANY(%s)",
+					(discord_id, list(sub_user_role_ids)),
+				)
+				is_sub_user = cur.fetchone() is not None
+			if is_sub_user:
+				raise ValueError("sub_user cannot be added as member")
 			
 			# Add to user_memberships as member
 			cur.execute(
@@ -593,7 +620,27 @@ def add_to_member_list(
 				"DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'",
 				(discord_id,)
 			)
-			
+
+			# 割当を種別に合わせる。行だけを作ると、push のたびに Discord の member ロールが外され、
+			# reconcile で付け直される（#251）
+			added_role_ids: list[str] = []
+			for role_id in member_role_ids:
+				cur.execute(
+					"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+					(role_id, discord_id),
+				)
+				if cur.rowcount > 0:
+					added_role_ids.append(role_id)
+			removed_role_ids: list[str] = []
+			for role_id in pre_member_role_ids:
+				cur.execute(
+					"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
+					(role_id, discord_id),
+				)
+				if cur.rowcount > 0:
+					removed_role_ids.append(role_id)
+			insert_audit_logs(cur, audit, member_roles_audit_logs(discord_id, added_role_ids, removed_role_ids))
+
 			conn.commit()
 			
 			return {

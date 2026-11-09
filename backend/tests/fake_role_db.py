@@ -31,6 +31,7 @@ class FakeRoleDB:
 		self.assignments: set[tuple[str, str]] = set()
 		# (discord_id, membership_type) -> assigned_by
 		self.memberships: dict[tuple[str, str], str | None] = {}
+		self.paid_invitations: set[str] = set()
 		self.audit_logs: list[dict[str, Any]] = []
 		self.advisory_locks: list[str] = []
 		self.executed: list[str] = []
@@ -74,11 +75,13 @@ class FakeRoleDB:
 	def _state(self):
 		return (
 			copy.deepcopy(self.categories), copy.deepcopy(self.roles), set(self.assignments),
-			dict(self.memberships), list(self.audit_logs),
+			dict(self.memberships), set(self.paid_invitations), list(self.audit_logs),
 		)
 
 	def _restore(self, state) -> None:
-		self.categories, self.roles, self.assignments, self.memberships, self.audit_logs = state
+		(
+			self.categories, self.roles, self.assignments, self.memberships, self.paid_invitations, self.audit_logs,
+		) = state
 
 
 class FakeConnection:
@@ -205,9 +208,31 @@ class FakeCursor:
 		elif q.startswith("SELECT assigned_at, created_at FROM user_memberships"):
 			# register_pre_member: 未登録のメンバーとして扱う
 			pass
+		elif q == "SELECT role_id, user_id FROM role_member_assignments":
+			self._rows = sorted(db.assignments)
+		elif q == "SELECT discord_id, membership_type FROM user_memberships":
+			self._rows = sorted(db.memberships)
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member'"):
+			self._rows = [(1,)] if (params[0], "member") in db.memberships else []
+		elif q.startswith(("LOCK TABLE", "SET LOCAL lock_timeout")):
+			pass
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'sub_user'"):
+			self._rows = [(1,)] if (params[0], "sub_user") in db.memberships else []
+		elif q.startswith("SELECT 1 FROM role_member_assignments WHERE user_id = %s AND role_id = ANY(%s)"):
+			self._rows = [(1,)] if any((r, params[0]) in db.assignments for r in params[1]) else []
+		elif q.startswith("SELECT discord_id FROM paid_invitations WHERE discord_id = %s"):
+			self._rows = [(params[0],)] if params[0] in db.paid_invitations else []
+		elif q.startswith("INSERT INTO paid_invitations"):
+			db.paid_invitations.add(params[0])
+			self.rowcount = 1
+		elif q.startswith("DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'"):
+			if (params[0], "pre_member") in db.memberships:
+				del db.memberships[(params[0], "pre_member")]
+				self.rowcount = 1
 		elif q.startswith("INSERT INTO user_memberships"):
-			if "VALUES (%s, 'pre_member', %s," in q:
-				key, assigned_by = (params[0], "pre_member"), params[1]
+			literal = next((t for t in ("pre_member", "member") if f"VALUES (%s, '{t}', %s," in q), None)
+			if literal is not None:
+				key, assigned_by = (params[0], literal), params[1]
 			else:
 				key, assigned_by = (params[0], params[1]), params[2]
 			if key not in db.memberships:

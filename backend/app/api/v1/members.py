@@ -14,7 +14,13 @@ logger = logging.getLogger(__name__)
 from app.core.auth import require_admin
 from app.core.errors import log_exception_without_message
 from app.core.shared_secret import verify_internal_authorization
-from app.db.audit_repository import OP_PRE_MEMBER_REGISTER, internal_audit_context
+from app.db.audit_repository import (
+	OP_MEMBER_ADD,
+	OP_PRE_MEMBER_REGISTER,
+	AuditContext,
+	get_audit_context,
+	internal_audit_context,
+)
 from app.db.repository import (
 	register_pre_member,
 	get_pre_member_list_with_users,
@@ -172,10 +178,12 @@ async def get_pre_member_list(
 async def add_member(
 	payload: AddMemberRequest,
 	_principal: dict = Depends(require_admin),
+	audit: AuditContext = Depends(get_audit_context),
 ) -> dict:
 	"""Pre-member を member_list に追加（admin のみ）。
 	
 	同時に paid_invitations にも登録する場合必要があれば。
+	ロールの割当（member ロールの追加・pre-member ロールの削除）も同じトランザクションで変える（#251）。
 	"""
 	try:
 		assigned_by = _principal.get("discord_id") or _principal.get("sub", "unknown")
@@ -184,6 +192,7 @@ async def add_member(
 			payload.discord_id,
 			assigned_by,
 			payload.note,
+			audit.with_operation(OP_MEMBER_ADD),
 		)
 		return {"ok": True, "data": result}
 	except ValueError as e:
