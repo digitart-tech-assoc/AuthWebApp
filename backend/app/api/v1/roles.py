@@ -33,6 +33,7 @@ from app.db.audit_repository import (
 	record_discord_audit_safely,
 )
 from app.core.errors import describe_exception
+from app.core.bot_url import get_bot_sync_endpoint
 from app.core.config import (
 	DISCORD_API_TIMEOUT,
 	MEMBER_RESTRICTED_CATEGORY_NAMES,
@@ -88,7 +89,6 @@ from app.services.discord_client import (
 router = APIRouter(prefix="/api/v1/roles", tags=["roles"])
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
 DISCORD_GUILD_ID = os.getenv("DISCORD_GUILD_ID")
-DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://discord-bot:8000")
 # 監査ログに記録する Discord のロール定義のフィールド（fetch_guild_roles の戻り値の形式）
 DISCORD_ROLE_AUDIT_FIELDS = ("name", "color", "hoist", "mentionable", "permissions", "position")
 SHARED_SECRET = os.getenv("SHARED_SECRET", "")
@@ -107,7 +107,7 @@ async def _notify_bot_to_reconcile() -> bool:
 	try:
 		async with httpx.AsyncClient(timeout=10.0) as client:
 			resp = await client.post(
-				f"{DISCORD_BOT_URL}/internal/sync",
+				get_bot_sync_endpoint(),
 				json={"action": "sync_roles"},
 				headers={"Authorization": f"Bearer {SHARED_SECRET}"},
 			)

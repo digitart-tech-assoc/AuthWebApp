@@ -55,7 +55,7 @@ FastAPI (Python 3.11+) を採用した、本システムのコアビジネスロ
 | `PRE_MEMBER_ROLE_ID` | ○ | pre-member ロールの Discord ロール ID |
 | `OBOG_ROLE_IDS` | - | OBOG ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で obog を同期しない |
 | `SUB_USER_ROLE_IDS` | - | sub垢 ロールの Discord ロール ID（カンマ区切りで複数指定可）。未設定の場合、`/members/sync` で sub_user を同期しない |
-| `DISCORD_BOT_URL` | - | Discord Bot サーバーの内部 URL（デフォルト: `http://discord-bot:8000`） |
+| `BOT_INTERNAL_URL` | - | Discord Bot サーバーの内部 URL（`http://host:8000` でも、`/internal/sync` までを含む URL でもよい。デフォルト: `http://discord-bot:8000`）。旧名の `DISCORD_BOT_URL` は、`BOT_INTERNAL_URL` が未設定のときだけ読む |
 | `BREVO_API_KEY` | ○ | Brevo メール送信 API キー |
 | `BREVO_SENDER_EMAIL` | ○ | 送信元メールアドレス |
 | `BREVO_SENDER_NAME` | ○ | 送信元表示名 |

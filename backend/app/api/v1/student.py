@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.auth import get_current_principal, has_member_privilege
+from app.core.bot_url import get_bot_sync_endpoint
 from app.core.config import (
 	OTP_EXPIRY_MINUTES,
 	OTP_EXPIRY_SECONDS,
@@ -200,11 +201,8 @@ async def _notify_discord_bot_sync(discord_id: str) -> bool:
 		同期成功時 True、失敗時 False
 	"""
 	try:
-		discord_bot_url = os.getenv("BOT_INTERNAL_URL") or os.getenv("DISCORD_BOT_URL") or "http://discord-bot:8000"
 		shared_secret = os.getenv("SHARED_SECRET", "")
-		
-		endpoint = discord_bot_url if discord_bot_url.rstrip("/").endswith("/internal/sync") \
-				   else f"{discord_bot_url.rstrip('/')}/internal/sync"
+		endpoint = get_bot_sync_endpoint()
 		
 		logger.info("Calling Discord bot sync endpoint: %s", endpoint)
 		
