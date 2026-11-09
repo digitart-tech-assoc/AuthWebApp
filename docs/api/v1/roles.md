@@ -110,6 +110,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
   - 同一ロールが `roles_to_add` と `roles_to_remove` の両方に指定されている場合
   - Discord ID が特定できない場合
 - `403 Forbidden`（ホワイトリスト方式。判定は DB のマニフェストを正とする）:
+  - 会員種別のロール（`MEMBER_ROLE_IDS` / `SUB_USER_ROLE_IDS` / `OBOG_ROLE_IDS` / `PRE_MEMBER_ROLE_ID` / `ADMIN_ROLE_IDS` で指定したロール）が含まれる場合。カテゴリや `permissions` の設定によらず拒否します（#251）。Discord には問い合わせません
   - カテゴリ未設定（`category_id: null`）のロールが含まれる場合
   - 付与・解除できるカテゴリ（マニフェストに存在し、`is_restricted: false` かつ予約カテゴリ以外）に属さないロールが含まれる場合
   - マニフェスト上の `permissions` が `0` 以外（Discord 権限付き）のロールが含まれる場合
