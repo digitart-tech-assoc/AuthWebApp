@@ -5,6 +5,8 @@
 - 1 種別に複数ロールがある場合の一部だけの付け外し、member と sub垢 の両方などは拒否してロールバックする
 """
 
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -272,11 +274,12 @@ def client():
 	main.app.dependency_overrides.clear()
 
 
-def _raise(*_args):
+def _raise(*_args, **_kwargs):
 	raise MembershipAssignmentError(MembershipAssignmentError.EXCLUSIVE, USER, ("member", "sub_user"))
 
 
 def test_patch_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
+	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset()))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise)
 
 	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {SUB: [USER]}})
@@ -286,6 +289,7 @@ def test_patch_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
 
 
 def test_put_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
+	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset()))
 	monkeypatch.setattr(manifest_api, "replace_manifest", _raise)
 
 	res = client.put("/api/v1/manifest", json={"role_assignments": {SUB: [USER]}})
