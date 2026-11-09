@@ -6,8 +6,9 @@ from fastapi import HTTPException
 from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.core.exceptions import OTPTooManyAttemptsError
+from app.db import guild_repository, membership_repository
 from app.db.student_repository import OTPVerificationResult
-from tests.request_factory import TEST_AUDIT, make_request
+from tests.request_factory import make_request
 
 
 @pytest.fixture
@@ -17,33 +18,30 @@ def eligible_student(monkeypatch):
 	monkeypatch.setattr(student_api, "_is_paid_invitation", lambda discord_id: True)
 
 
+def _forbid_db(*args, **kwargs):
+	pytest.fail("verify_otp must not change role assignments or memberships")
+
+
 @pytest.mark.asyncio
-async def test_verified_student_otp_does_not_repeat_role_updates(monkeypatch, eligible_student):
-	monkeypatch.setattr(
-		student_api.student_repository,
-		"verify_otp_transactional",
-		lambda discord_id, code: OTPVerificationResult.ALREADY_VERIFIED,
-	)
+@pytest.mark.parametrize(
+	("result", "message"),
+	[(OTPVerificationResult.VERIFIED, "OTP 認証完了"), (OTPVerificationResult.ALREADY_VERIFIED, "OTP already verified")],
+)
+async def test_student_otp_verification_does_not_change_role_assignments(monkeypatch, eligible_student, result, message):
+	# 割当は本会員化（プロフィール送信）と同じトランザクションで変える。OTP 検証の時点では pre_member のまま（#251）
+	monkeypatch.setattr(student_api.student_repository, "verify_otp_transactional", lambda discord_id, code: result)
 	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
 	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "pre-member-role")
-	monkeypatch.setattr(
-		student_api,
-		"add_user_to_role",
-		lambda *args: pytest.fail("already verified OTP must not add roles"),
-	)
-	monkeypatch.setattr(
-		student_api,
-		"remove_user_from_role",
-		lambda *args: pytest.fail("already verified OTP must not remove roles"),
-	)
+	monkeypatch.setattr(guild_repository, "_connect", _forbid_db)
+	monkeypatch.setattr(membership_repository, "_connect", _forbid_db)
 
 	response = await student_api.verify_otp(
 		student_api.VerifyOTPRequest(code="000000"),
 		principal={"discord_id": "test-discord-id"},
-		audit=TEST_AUDIT,
 	)
 
-	assert response.message == "OTP already verified"
+	assert response.verified is True
+	assert response.message == message
 
 
 @pytest.mark.asyncio
@@ -61,7 +59,6 @@ async def test_student_otp_limit_uses_typed_exception_for_429(monkeypatch, eligi
 		await student_api.verify_otp(
 			student_api.VerifyOTPRequest(code="000000"),
 			principal={"discord_id": "test-discord-id"},
-			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 429

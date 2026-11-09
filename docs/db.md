@@ -84,7 +84,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | | `push` | `POST /api/v1/roles/push` |
 | | `self_batch` | `POST /api/v1/roles/self-batch` |
 | | `self_create` | `POST /api/v1/roles/self-create` |
-| | `join_otp_verify` | `POST /api/v1/student/otp/verify` |
+| | `join_otp_verify` | `POST /api/v1/student/otp/verify`（#251 以前の記録のみ。現在は OTP 検証でロールの割当を変えないため記録しない） |
 | | `student_profile` | `POST /api/v1/student/profile` |
 | | `pre_member_register` | `POST /api/v1/members/pre_member/register`（Bot からの内部呼び出し） |
 | `system` | `db` | DB への変更 |
@@ -92,7 +92,7 @@ CREATE INDEX idx_role_audit_logs_occurred_at ON role_audit_logs (occurred_at DES
 | `target_type` | `category` | `target_id` = カテゴリ ID |
 | | `role` | `target_id` = ロール ID（ロール定義の変更） |
 | | `role_assignment` | `target_id` = ロール ID（ロール単位で見た割り当ての変更。マニフェスト保存で使う） |
-| | `member_roles` | `target_id` = Discord ユーザー ID（メンバー単位で見たロールの付け外し。push・self-batch・入会・pre-member 登録で使う） |
+| | `member_roles` | `target_id` = Discord ユーザー ID（メンバー単位で見たロールの付け外し。push・self-batch・入会（プロフィール送信）・pre-member 登録で使う） |
 | `action` | `create` / `update` / `delete` | 作成・更新・削除 |
 | | `rename_id` | 仮 ID（`draft-…`）を正式な ID に置き換え |
 | | `reorder` | 並び順の変更 |

@@ -14,6 +14,7 @@ from app.api.v1 import student as student_api
 from app.core import shared_secret
 from app.db import audit_repository, guild_repository, membership_repository
 from app.db.audit_repository import AuditContext
+from app.db.student_repository import PromotionResult
 from tests.fake_role_db import AuditInsertError, FakeRoleDB
 
 AUDIT = AuditContext(request_id="req-1", actor_sub="sub-1", actor_discord_id="500", operation="self_batch")
@@ -160,36 +161,8 @@ async def test_self_batch_failed_discord_update_is_not_recorded(db):
 	assert db.audit_logs == []
 
 
-# --- 入会（OTP 検証）・プロフィール ---
-
-@pytest.mark.asyncio
-async def test_verify_otp_passes_audit_and_keeps_success_when_recording_fails(monkeypatch):
-	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
-	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "pre-role")
-	monkeypatch.setattr(student_api, "_ensure_registration_eligible", AsyncMock())
-	monkeypatch.setattr(
-		student_api.student_repository, "verify_otp_transactional",
-		lambda discord_id, code: student_api.student_repository.OTPVerificationResult.VERIFIED,
-	)
-	calls = []
-
-	def _add(user_id, role_id, audit):
-		calls.append(audit)
-		raise AuditInsertError("audit insert failed")
-
-	monkeypatch.setattr(student_api, "add_user_to_role", _add)
-	monkeypatch.setattr(student_api, "remove_user_from_role", lambda *args: None)
-
-	response = await student_api.verify_otp(
-		student_api.VerifyOTPRequest(code="000000"),
-		principal={"sub": "sub-1", "discord_id": "500"},
-		audit=AuditContext("req-1", "sub-1", "500"),
-	)
-
-	# 記録に失敗した場合も、OTP 検証は成功として返す（従来どおり）
-	assert response.verified is True
-	assert calls == [AuditContext("req-1", "sub-1", "500", "join_otp_verify")]
-
+# --- 入会（プロフィール）---
+# OTP 検証ではロールの割当を変えないため、記録もしない（#251。tests/test_otp_api.py を参照）
 
 @pytest.mark.asyncio
 async def test_create_profile_records_each_discord_role_assignment(db, monkeypatch):
@@ -199,7 +172,7 @@ async def test_create_profile_records_each_discord_role_assignment(db, monkeypat
 	promote_calls = []
 	monkeypatch.setattr(
 		student_api.student_repository, "upsert_student_profile_and_promote",
-		lambda **kwargs: promote_calls.append(kwargs) or "prof_test",
+		lambda **kwargs: promote_calls.append(kwargs) or PromotionResult("prof_test", True),
 	)
 	add_role = AsyncMock(side_effect=[None, RuntimeError("discord down")])
 	monkeypatch.setattr(student_api, "add_role_to_member", add_role)

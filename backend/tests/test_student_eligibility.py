@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.api.v1 import student as student_api
 from app.core.exceptions import RegistrationNotEligibleError
+from app.db.student_repository import PromotionResult
 from tests.request_factory import TEST_AUDIT
 
 INELIGIBLE_CASES = [
@@ -63,13 +64,11 @@ async def test_verify_otp_rejects_ineligible_user(monkeypatch, is_pre_member, is
 		"verify_otp_transactional",
 		_forbid("verify_otp_transactional"),
 	)
-	monkeypatch.setattr(student_api, "add_user_to_role", _forbid("add_user_to_role"))
 
 	with pytest.raises(HTTPException) as error:
 		await student_api.verify_otp(
 			student_api.VerifyOTPRequest(code="000000"),
 			principal=PRINCIPAL,
-			audit=TEST_AUDIT,
 		)
 
 	assert error.value.status_code == 403
@@ -124,6 +123,8 @@ async def test_create_profile_requires_verified_otp_for_eligible_user(monkeypatc
 @pytest.mark.asyncio
 async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	_set_eligibility(monkeypatch, True, True)
+	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
+	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "pre-member-role")
 	monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 	monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 	monkeypatch.setattr(
@@ -135,7 +136,7 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"upsert_student_profile_and_promote",
-		lambda **kwargs: promote_calls.append(kwargs) or "prof_test",
+		lambda **kwargs: promote_calls.append(kwargs) or PromotionResult("prof_test", True),
 	)
 
 	response = await student_api.create_student_profile(
@@ -147,6 +148,9 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	assert response.profile_id == "prof_test"
 	# 本会員化と同一トランザクションで資格を再検証させる
 	assert promote_calls[0]["require_eligibility"] is True
+	# 割当の更新も本会員化と同じトランザクションで行わせる（#251）
+	assert promote_calls[0]["member_role_ids"] == ["member-role"]
+	assert promote_calls[0]["pre_member_role_id"] == "pre-member-role"
 
 
 @pytest.mark.asyncio
@@ -160,14 +164,17 @@ async def test_create_profile_allows_registered_user_update(monkeypatch, app_rol
 		"get_latest_verified_otp",
 		_forbid("get_latest_verified_otp"),
 	)
-	monkeypatch.delenv("DISCORD_TOKEN", raising=False)
-	monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+	monkeypatch.setenv("DISCORD_TOKEN", "dummy-token")
+	monkeypatch.setenv("DISCORD_GUILD_ID", "dummy-guild")
+	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
 	promote_calls = []
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"upsert_student_profile_and_promote",
-		lambda **kwargs: promote_calls.append(kwargs) or "prof_test",
+		lambda **kwargs: promote_calls.append(kwargs) or PromotionResult("prof_test", False),
 	)
+	# 本会員化しないプロフィール更新では、Discord の member ロールも付けない（sub_user・obog に付けない, #251）
+	monkeypatch.setattr(student_api, "add_role_to_member", _forbid("add_role_to_member"))
 
 	response = await student_api.create_student_profile(
 		_profile_request(),

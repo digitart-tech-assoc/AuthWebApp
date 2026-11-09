@@ -29,7 +29,6 @@ OP_MANIFEST_PUT = "manifest_put"
 OP_PUSH = "push"
 OP_SELF_BATCH = "self_batch"
 OP_SELF_CREATE = "self_create"
-OP_JOIN_OTP_VERIFY = "join_otp_verify"
 OP_STUDENT_PROFILE = "student_profile"
 OP_PRE_MEMBER_REGISTER = "pre_member_register"
 

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.api.v1 import join as join_api
 from app.api.v1 import student as student_api
 from app.api.v1 import survey as survey_api
-from app.db.student_repository import OTPVerificationResult
+from app.db.student_repository import OTPVerificationResult, PromotionResult
 from tests.request_factory import TEST_AUDIT, make_request
 
 PRINCIPAL = {"discord_id": "test-discord-id"}
@@ -156,25 +156,21 @@ async def test_student_send_otp_offloads_otp_record_creation(monkeypatch, record
 
 
 @pytest.mark.asyncio
-async def test_student_verify_otp_offloads_role_updates(monkeypatch, recorder, eligible_student):
-	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
-	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "pre-member-role")
+async def test_student_verify_otp_offloads_verification(monkeypatch, recorder, eligible_student):
+	# OTP 検証ではロールの割当を変えない（#251）。DB アクセスは OTP の検証だけ
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"verify_otp_transactional",
-		lambda discord_id, code: OTPVerificationResult.VERIFIED,
+		recorder.fake("verify_otp_transactional", OTPVerificationResult.VERIFIED),
 	)
-	monkeypatch.setattr(student_api, "add_user_to_role", recorder.fake("add_user_to_role"))
-	monkeypatch.setattr(student_api, "remove_user_from_role", recorder.fake("remove_user_from_role"))
 
 	response = await student_api.verify_otp(
 		student_api.VerifyOTPRequest(code="000000"),
 		principal=PRINCIPAL,
-		audit=TEST_AUDIT,
 	)
 
 	assert response.verified is True
-	recorder.assert_offloaded(threading.get_ident(), ["add_user_to_role", "remove_user_from_role"])
+	recorder.assert_offloaded(threading.get_ident(), ["verify_otp_transactional"])
 
 
 @pytest.mark.asyncio
@@ -189,7 +185,7 @@ async def test_student_create_profile_offloads_db_access(monkeypatch, recorder, 
 	monkeypatch.setattr(
 		student_api.student_repository,
 		"upsert_student_profile_and_promote",
-		recorder.fake("upsert_student_profile_and_promote", "prof_test"),
+		recorder.fake("upsert_student_profile_and_promote", PromotionResult("prof_test", True)),
 	)
 
 	response = await student_api.create_student_profile(
