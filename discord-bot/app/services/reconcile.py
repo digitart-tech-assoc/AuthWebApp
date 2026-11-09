@@ -4,6 +4,9 @@
 Discord 側のロール付与/剥奪を行います。
 
 user_memberships（DB）を正とし、各リストのユーザーに対応するロールを付与する。
+- member_list: member ロール（MEMBER_ROLE_IDS）
+- sub_user_list: sub垢 ロール（SUB_USER_ROLE_IDS）。member ロールは付けない（#251）
+- pre_member_list（member・sub_user を除く）: pre-member ロール
 剥奪は、メンバー・sub_user になったユーザーの pre-member ロールだけを行う。
 リストにいないユーザーのロールは外さない。DB の割り当て（role_member_assignments）に
 合わせて外すのは POST /api/v1/roles/push の役割。
@@ -75,11 +78,9 @@ async def run_reconcile() -> dict:
 		data = payload.get("data") if isinstance(payload, dict) and payload.get("data") is not None else payload
 		lists = data or {}
 
-		# Keep members and sub-users as separate lists, but treat both as targets
-		# for member-role assignment so sub-accounts receive the same permissions.
 		member_list = [str(x.get("discord_id")) for x in lists.get("member_list", [])]
 		sub_user_list = [str(x.get("discord_id")) for x in lists.get("sub_user_list", [])]
-		# Combined target set used for role reconciliation (avoid duplicate work)
+		# pre-member ロールを外す対象（member と sub_user）。member ロールを付けるのは member_list だけ（#251）
 		combined_member_targets = set(member_list) | set(sub_user_list)
 		pre_member_list = [str(x.get("discord_id")) for x in lists.get("pre_member_list", [])]
 
@@ -98,8 +99,9 @@ async def run_reconcile() -> dict:
 					if status not in (404,):
 						errors.append(f"remove pre-role {PRE_MEMBER_ROLE_ID} from {uid} failed: {status} {body}")
 
-		# 2-B) Ensure members and sub-users have member roles
-		for uid in combined_member_targets:
+		# 2-B) Ensure members have member roles（sub_user には付けない。member と sub垢 の両方を持つ状態は正常ではないため, #251）
+		# member と sub_user の両方の行がある人（既存データ）も sub_user として扱う
+		for uid in set(member_list) - set(sub_user_list):
 			for role_id in member_role_ids:
 				ok, status, body = await _add_role(client, uid, role_id)
 				if ok:

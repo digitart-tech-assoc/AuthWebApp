@@ -292,7 +292,7 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 任意の種別の ID が未設定の場合、その種別は変更せず、警告ログを出します。
 
-`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（サブアカウントは Bot の reconcile で member ロールも付与されるため）。
+`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（#187）。Bot の reconcile は sub_user に member ロールを付けなくなりましたが（#251）、既存のデータで両方のロールを持つ人の整理が終わるまで、この扱いを残します。
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 
