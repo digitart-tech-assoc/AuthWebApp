@@ -16,7 +16,9 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import roles as roles_api
+from app.core.config import MembershipType
 from app.db import membership_repository
+from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES
 
 OLD_ASSIGNED_AT = datetime(2025, 4, 1, tzinfo=timezone.utc)
 
@@ -225,6 +227,19 @@ class TestSyncMemberListsResult:
 		assert set(result) == {"member_list", "sub_user_list", "admin_list", "pre_member_list", "obog_list", "diff"}
 		assert set(result["diff"]) == set(DIFF_ONLY_TYPES)
 		assert all(isinstance(row["assigned_at"], str) for row in result["member_list"])
+
+	def test_every_type_is_either_written_or_diffed(self, run_sync):
+		# 全種別が、書き込む（Discord を正とする）か差分だけを返す（SAVE_MANAGED_TYPES）かの、ちょうど一方で扱われる
+		members = _all_role_members(**{role_id: _members(f"user-{role_id}") for role_id in (
+			"role-member", "role-sub", "role-obog", "role-admin", "role-pre",
+		)})
+
+		result, table, _ = run_sync({}, members=members)
+
+		written_types = {m_type for _, m_type in table}
+		assert set(SAVE_MANAGED_TYPES) <= set(MembershipType.ALL)
+		assert set(result["diff"]) == set(SAVE_MANAGED_TYPES)
+		assert written_types == set(MembershipType.ALL) - set(SAVE_MANAGED_TYPES)
 
 	def test_aborts_when_members_data_is_missing(self, run_sync):
 		with pytest.raises(ValueError):

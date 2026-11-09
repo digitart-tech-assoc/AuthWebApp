@@ -13,6 +13,7 @@ from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import AuditContext, insert_audit_logs
 from app.db.connection import _connect, _log_db_access
 from app.db.guild_repository import member_roles_audit_logs
+from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,6 @@ def is_prospective_form_open() -> bool:
 		return False
 
 
-# sync で Discord から書き込む種別。admin ロールは Bot が操作できないため Discord を正とし、sync で取り込む（#251）
-SYNC_WRITE_TYPES: tuple[str, ...] = (MembershipType.ADMIN,)
-
-
 def sync_member_lists(
 	member_role_ids: list[str],
 	obog_role_ids: list[str],
@@ -58,6 +55,8 @@ def sync_member_lists(
 
 	member / sub_user / obog / pre_member は user_memberships を正とし、管理画面の割当の保存を変更の入口とする（#251）。
 	sync で書き込むと、push が失敗して Discord にロールが残っているときに、失効した行が復活するため、書き込まない。
+	書き込まない種別は、保存で更新する種別（SAVE_MANAGED_TYPES）と同じものとし、それ以外（admin）を書き込む。
+	定義を 1 か所にして、どちらにも入らない種別や、両方に入る種別ができないようにする。
 
 	admin は、Discord でその種別のロールを持つメンバーの集合と DB の行を比べ、
 	Discord にいなくなった行だけを削除し、新しく現れたメンバーだけを追加する。
@@ -123,12 +122,12 @@ def sync_member_lists(
 						"sync_member_lists: no Discord role matched for membership_type='%s'; left unchanged",
 						m_type,
 					)
-					if m_type not in SYNC_WRITE_TYPES:
+					if m_type in SAVE_MANAGED_TYPES:
 						diff[m_type] = None
-				elif m_type in SYNC_WRITE_TYPES:
-					_sync_membership_type(cur, m_type, _role_member_ids(role_ids, members))
-				else:
+				elif m_type in SAVE_MANAGED_TYPES:
 					diff[m_type] = _membership_diff(cur, m_type, _role_member_ids(role_ids, members))
+				else:
+					_sync_membership_type(cur, m_type, _role_member_ids(role_ids, members))
 				result[list_key] = _fetch_membership_rows(cur, m_type)
 			result['diff'] = diff
 
