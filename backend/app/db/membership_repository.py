@@ -92,8 +92,9 @@ def sync_member_lists(
 		logger.error(error_msg)
 		raise ValueError(error_msg)
 
-	# サブアカウントは Bot の reconcile で member ロールも付与されるため、
-	# sub垢 ロールを持つユーザーは member から除外し、sub_user としてのみ同期する（#187）
+	# sub垢 ロールを持つユーザーは member から除外し、sub_user としてのみ同期する（#187）。
+	# Bot の reconcile は sub_user に member ロールを付けなくなったが（#251）、
+	# 既存のデータで両方のロールを持つ人の整理が終わるまで、この扱いを残す
 	sub_user_ids = _role_member_ids(sub_user_role_ids or [], members)
 
 	sync_targets = [

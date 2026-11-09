@@ -21,10 +21,12 @@ PRE_ROLE = "role-pre"
 SUB_ROLE = "role-sub"
 
 LISTS = {
-	"member_list": [{"discord_id": "user-member"}],
-	"sub_user_list": [{"discord_id": "user-sub"}],
-	"pre_member_list": [{"discord_id": "user-pre"}],
+	"member_list": [{"discord_id": "user-member"}, {"discord_id": "user-both"}],
+	"sub_user_list": [{"discord_id": "user-sub"}, {"discord_id": "user-both"}],
+	# user-sub-pre は sub_user と pre_member の両方の行を持つ（pre-member ロールは付けない）
+	"pre_member_list": [{"discord_id": "user-pre"}, {"discord_id": "user-sub-pre"}],
 }
+LISTS["sub_user_list"].append({"discord_id": "user-sub-pre"})
 
 
 def _run(sub_user_role_ids: str) -> tuple[dict, list[tuple[str, str, str]]]:
@@ -70,7 +72,7 @@ class RunReconcileSubUserRoleTest(unittest.TestCase):
 		_, operations = _run(SUB_ROLE)
 
 		sub_role_targets = {user for method, user, role in operations if role == SUB_ROLE}
-		self.assertEqual(sub_role_targets, {"user-sub"})
+		self.assertEqual(sub_role_targets, {"user-sub", "user-both", "user-sub-pre"})
 
 	def test_skips_sub_user_role_when_not_configured(self):
 		_, operations = _run("")
@@ -82,8 +84,8 @@ class RunReconcileSubUserRoleTest(unittest.TestCase):
 		_, operations = _run(SUB_ROLE)
 
 		member_role_targets = {user for method, user, role in operations if role == MEMBER_ROLE}
+		# member と sub_user の両方の行がある人（user-both）にも付けない
 		self.assertEqual(member_role_targets, {"user-member"})
-		self.assertNotIn(("PUT", "user-sub", MEMBER_ROLE), operations)
 
 	def test_does_not_add_pre_member_role_to_members_or_sub_users(self):
 		_, operations = _run(SUB_ROLE)
@@ -95,7 +97,7 @@ class RunReconcileSubUserRoleTest(unittest.TestCase):
 		_, operations = _run(SUB_ROLE)
 
 		removed = {(user, role) for method, user, role in operations if method == "DELETE"}
-		self.assertEqual(removed, {("user-member", PRE_ROLE), ("user-sub", PRE_ROLE)})
+		self.assertEqual(removed, {(u, PRE_ROLE) for u in ("user-member", "user-sub", "user-both", "user-sub-pre")})
 
 
 if __name__ == "__main__":

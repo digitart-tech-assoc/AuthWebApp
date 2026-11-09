@@ -100,7 +100,8 @@ async def run_reconcile() -> dict:
 						errors.append(f"remove pre-role {PRE_MEMBER_ROLE_ID} from {uid} failed: {status} {body}")
 
 		# 2-B) Ensure members have member roles（sub_user には付けない。member と sub垢 の両方を持つ状態は正常ではないため, #251）
-		for uid in set(member_list):
+		# member と sub_user の両方の行がある人（既存データ）も sub_user として扱う
+		for uid in set(member_list) - set(sub_user_list):
 			for role_id in member_role_ids:
 				ok, status, body = await _add_role(client, uid, role_id)
 				if ok:
