@@ -2,7 +2,7 @@
 
 本ドキュメントは、Discord ロールの取得、Discord への同期（Push）、セルフロール付与・解除・作成、権限変更に関する API 仕様です。
 
-ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります。ただし、下の表の ③（Bot が操作できないロール）は Push の対象外で、Discord で直接付け外しします。会員種別は `POST /members/sync` で Discord から `user_memberships` に取り込みます。
+ロール定義とロール割り当ては DB（`role_manifests` / `role_member_assignments`）を Desired State とし、Discord への反映は Push で行います。Discord 側で直接変更した内容は、次回の Push で DB の状態に戻ります。ただし、下の表の ③（Bot が操作できないロール）は Push の対象外で、Discord で直接付け外しします。`POST /members/sync` で Discord から `user_memberships` に取り込むのは admin だけです。ほかの会員種別（①）は取り込まず、Discord との差分を返すだけです（#251）。
 
 ロールは次の 3 つに分け、区分ごとに正とするデータを 1 つにします（#251）。
 
@@ -277,11 +277,13 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 
 ## POST `/api/v1/roles/members/sync`
 
-特定ロールに所属するメンバーの割当を、Discord の実態から DB へ同期します。
+Discord のギルドメンバーを取り込み、admin の会員種別を Discord から同期します。ほかの会員種別（member / sub_user / obog / pre_member）は書き込まず、Discord との差分を返します（#251）。
 
 同期時に Discord のギルドメンバーを全件取得し、同期対象のロールを持たないメンバー（Bot を含む）も含めた全員の名前・アイコンを `guild_members` に保存します。
 
-`user_memberships` は種別（`member` / `sub_user` / `obog` / `admin` / `pre_member`）ごとに差分で同期します。Discord で対応するロールを持たなくなったユーザーの行だけを削除し、新しくロールを持ったユーザーの行だけを追加します。既存の行の `assigned_by` / `assigned_at` は変更しません。
+`user_memberships` の `admin` の行は、差分で同期します。Discord で admin ロールを持たなくなったユーザーの行だけを削除し、新しくロールを持ったユーザーの行だけを追加します。既存の行の `assigned_by` / `assigned_at` は変更しません。
+
+`member` / `sub_user` / `obog` / `pre_member` の行は変更しません。これらは `user_memberships` を正とし、管理画面の割当の保存（[マニフェスト API](manifest.md) の「会員種別のロールの割当」）で変更します。sync で書き込むと、push が失敗して Discord にロールが残っているときに、失効した行が復活するためです。代わりに、種別ごとの差分をレスポンスの `diff` で返します。
 
 種別の判定には、環境変数で設定したロール ID を使います（ロール名では判定しません。ロールをリネームしても判定は変わらず、予約名と同じ名前のロールがあっても種別は付与されません）。
 
@@ -293,9 +295,9 @@ Discord REST API のメンバーロール更新（`PATCH /guilds/{guild_id}/memb
 | `obog` | `OBOG_ROLE_IDS` | - |
 | `sub_user` | `SUB_USER_ROLE_IDS` | - |
 
-任意の種別の ID が未設定の場合、その種別は変更せず、警告ログを出します。
+任意の種別の ID が未設定の場合、その種別は差分を計算せず（`diff` の値は `null`）、警告ログを出します。
 
-`sub垢` ロールを持つユーザーは、member ロールも持っていても `member` には含めず、`sub_user` としてのみ同期します（#187）。Bot の reconcile は sub_user に member ロールを付けなくなりましたが（#251）、既存のデータで両方のロールを持つ人の整理が終わるまで、この扱いを残します。
+`sub垢` と member の両方のロールを Discord で持つユーザーは、`member` の差分（`discord_only`）に含まれます。sync で書き込まなくなったため、#187 の「member から除外する」扱いはなくなりました。
 
 Discord から取得したギルドメンバーが 0 件の場合は、取得に失敗したものとみなして同期を中止し、`502` を返します（`guild_members` / `user_memberships` は変更しません）。
 
@@ -305,8 +307,14 @@ Discord から取得したギルドメンバーが 0 件の場合は、取得に
 
 レスポンスの各一覧（`member_list` / `sub_user_list` / `admin_list` / `pre_member_list` / `obog_list`）には、同期後のその種別の全行が入ります。
 
+`diff` には、`member` / `sub_user` / `obog` / `pre_member` ごとに次の Discord ID の一覧（昇順）が入ります。
+- `discord_only`: Discord でその種別のロールを持つが、`user_memberships` に行がない
+- `db_only`: `user_memberships` に行があるが、Discord でその種別のロールを持たない
+
+差分を直すときは、管理画面でロールの割当を変更して保存し、push で Discord に反映します。
+
 * **認可レベル**: `Admin`
-* **リクエストボディ**: `{"role_id": "123456789012345678"}`
+* **リクエストボディ**: なし（同期の対象は環境変数で設定した会員種別のロールで、リクエストでは指定しません）
 
 ### レスポンス (200 OK)
 ```json
@@ -325,7 +333,13 @@ Discord から取得したギルドメンバーが 0 件の場合は、取得に
   "sub_user_list": [],
   "admin_list": [],
   "pre_member_list": [],
-  "obog_list": []
+  "obog_list": [],
+  "diff": {
+    "member": { "discord_only": [], "db_only": [] },
+    "sub_user": { "discord_only": [], "db_only": [] },
+    "obog": null,
+    "pre_member": { "discord_only": ["234567890123456789"], "db_only": [] }
+  }
 }
 ```
 

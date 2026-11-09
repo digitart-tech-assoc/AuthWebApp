@@ -1,11 +1,10 @@
-"""sync_member_lists の差分同期のテスト（#182）
+"""sync_member_lists のテスト（#182・#251）
 
-- user_memberships を全件削除せず、種別ごとに Discord にいなくなった行だけを削除し、新しく現れたメンバーだけを追加する
-- 既存の行の assigned_by / assigned_at は保たれる
-- sub_user（sub垢）も同期する
-- 対応するロールが Discord に見つからない種別は変更しない
-- members/sync は sub垢 ロールを sub_user として sync_member_lists に渡し、sub_user_list を返す
-- sub垢 ロールを持つユーザーは member から除外する（#187）
+- admin は、user_memberships を全件削除せず、Discord にいなくなった行だけを削除し、新しく現れたメンバーだけを追加する
+- 既存の admin の行の assigned_by / assigned_at は保たれる
+- member / sub_user / obog / pre_member は書き込まず、Discord との差分だけを返す（#251）
+- 対応するロールが Discord に見つからない種別は、書き込みも差分の計算もしない
+- members/sync は sub垢 ロールを sub_user として sync_member_lists に渡し、sub_user_list と diff を返す
 - ギルドメンバーが 0 件で返った場合は同期を中止する
 """
 from __future__ import annotations
@@ -17,7 +16,9 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1 import roles as roles_api
+from app.core.config import MembershipType
 from app.db import membership_repository
+from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES
 
 OLD_ASSIGNED_AT = datetime(2025, 4, 1, tzinfo=timezone.utc)
 
@@ -117,7 +118,12 @@ def _all_role_members(**overrides) -> dict:
 	return members
 
 
-class TestSyncMemberListsDiff:
+DIFF_ONLY_TYPES = ("member", "sub_user", "obog", "pre_member")
+
+
+class TestSyncMemberListsAdmin:
+	"""admin は Discord から差分同期する（Discord を正とする）"""
+
 	def test_does_not_delete_all_rows(self, run_sync):
 		_, _, conn = run_sync({}, members=_all_role_members())
 
@@ -125,102 +131,119 @@ class TestSyncMemberListsDiff:
 		assert all("WHERE membership_type" in sql for sql in conn.executed if sql.startswith("DELETE"))
 		assert conn.committed is True
 
-	def test_removes_only_members_no_longer_in_discord(self, run_sync):
-		table = {("user-stay", "member"): _row(), ("user-left", "member"): _row()}
+	def test_removes_only_admins_no_longer_in_discord(self, run_sync):
+		table = {("user-stay", "admin"): _row(), ("user-left", "admin"): _row()}
 
-		_, table, _ = run_sync(table, members=_all_role_members(**{"role-member": _members("user-stay")}))
+		_, table, _ = run_sync(table, members=_all_role_members(**{"role-admin": _members("user-stay")}))
 
-		assert set(table) == {("user-stay", "member")}
+		assert set(table) == {("user-stay", "admin")}
 
-	def test_adds_new_members(self, run_sync):
-		table = {("user-stay", "member"): _row()}
+	def test_adds_new_admins(self, run_sync):
+		table = {("user-stay", "admin"): _row()}
 
-		_, table, _ = run_sync(table, members=_all_role_members(**{"role-member": _members("user-stay", "user-new")}))
+		_, table, _ = run_sync(table, members=_all_role_members(**{"role-admin": _members("user-stay", "user-new")}))
 
-		assert set(table) == {("user-stay", "member"), ("user-new", "member")}
+		assert set(table) == {("user-stay", "admin"), ("user-new", "admin")}
 
 	def test_keeps_assigned_by_and_assigned_at_of_existing_rows(self, run_sync):
-		table = {("user-pre", "pre_member"): _row(assigned_by="P")}
+		table = {("user-admin", "admin"): _row(assigned_by="P")}
 
-		_, table, _ = run_sync(table, members=_all_role_members(**{"role-pre": _members("user-pre")}))
+		_, table, _ = run_sync(table, members=_all_role_members(**{"role-admin": _members("user-admin")}))
 
-		assert table[("user-pre", "pre_member")]["assigned_by"] == "P"
-		assert table[("user-pre", "pre_member")]["assigned_at"] == OLD_ASSIGNED_AT
+		assert table[("user-admin", "admin")]["assigned_by"] == "P"
+		assert table[("user-admin", "admin")]["assigned_at"] == OLD_ASSIGNED_AT
 
-	def test_syncs_sub_user(self, run_sync):
-		table = {("user-sub-left", "sub_user"): _row()}
+	def test_admin_is_not_in_diff(self, run_sync):
+		result, _, _ = run_sync({}, members=_all_role_members(**{"role-admin": _members("user-admin")}))
 
-		result, table, _ = run_sync(table, members=_all_role_members(**{"role-sub": _members("user-sub")}))
+		assert "admin" not in result["diff"]
+
+
+class TestSyncMemberListsDoesNotWriteSaveManagedTypes:
+	"""member / sub_user / obog / pre_member は書き込まず、差分だけを返す（#251）"""
+
+	@pytest.mark.parametrize(("role_id", "m_type"), [
+		("role-member", "member"), ("role-sub", "sub_user"), ("role-obog", "obog"), ("role-pre", "pre_member"),
+	])
+	def test_does_not_add_or_remove_rows(self, run_sync, role_id, m_type):
+		table = {("user-row-only", m_type): _row(assigned_by="admin")}
+
+		result, table, conn = run_sync(table, members=_all_role_members(**{role_id: _members("user-role-only")}))
+
+		assert set(table) == {("user-row-only", m_type)}
+		assert table[("user-row-only", m_type)]["assigned_by"] == "admin"
+		assert not [sql for sql in conn.executed if sql.startswith(("INSERT", "DELETE"))]
+		assert result["diff"][m_type] == {"discord_only": ["user-role-only"], "db_only": ["user-row-only"]}
+
+	def test_diff_is_empty_when_rows_match_discord(self, run_sync):
+		table = {("user-a", "member"): _row(), ("user-pre", "pre_member"): _row()}
+
+		result, _, _ = run_sync(table, members=_all_role_members(**{
+			"role-member": _members("user-a"), "role-pre": _members("user-pre"),
+		}))
+
+		assert result["diff"] == {m_type: {"discord_only": [], "db_only": []} for m_type in DIFF_ONLY_TYPES}
+
+	def test_diff_ids_are_sorted(self, run_sync):
+		result, _, _ = run_sync({}, members=_all_role_members(**{"role-member": _members("user-c", "user-a", "user-b")}))
+
+		assert result["diff"]["member"]["discord_only"] == ["user-a", "user-b", "user-c"]
+
+	def test_sub_account_with_member_role_is_shown_in_member_diff(self, run_sync):
+		# sub垢 と member の両方のロールを Discord で持つ人は、member の行を作らず、差分として示す
+		# （#187 の member からの除外は、sync で書き込まなくなったため不要）
+		table = {("user-sub", "sub_user"): _row()}
+		members = _all_role_members(**{"role-member": _members("user-sub"), "role-sub": _members("user-sub")})
+
+		result, table, _ = run_sync(table, members=members)
 
 		assert set(table) == {("user-sub", "sub_user")}
-		assert [row["discord_id"] for row in result["sub_user_list"]] == ["user-sub"]
+		assert result["diff"]["member"] == {"discord_only": ["user-sub"], "db_only": []}
+		assert result["diff"]["sub_user"] == {"discord_only": [], "db_only": []}
 
-	def test_leaves_types_without_matched_role_unchanged(self, run_sync):
+	def test_types_without_matched_role_are_unchanged_and_diff_is_none(self, run_sync):
 		table = {("user-sub", "sub_user"): _row(assigned_by="admin"), ("user-obog", "obog"): _row()}
 
-		_, table, _ = run_sync(
+		result, table, _ = run_sync(
 			table,
 			sub_user_role_ids=(),
 			obog_role_ids=(),
 			members={"role-member": [], "role-admin": [], "role-pre": []},
 		)
 
-		assert ("user-sub", "sub_user") in table
-		assert table[("user-sub", "sub_user")]["assigned_by"] == "admin"
-		assert ("user-obog", "obog") in table
+		assert set(table) == {("user-sub", "sub_user"), ("user-obog", "obog")}
+		assert result["diff"]["sub_user"] is None
+		assert result["diff"]["obog"] is None
 
-	def test_returns_all_rows_after_sync_per_type(self, run_sync):
+
+class TestSyncMemberListsResult:
+	def test_returns_all_rows_per_type_and_diff(self, run_sync):
 		table = {("user-a", "member"): _row(), ("user-x", "admin"): _row()}
 
 		result, _, _ = run_sync(table, members=_all_role_members(**{"role-member": _members("user-a", "user-b")}))
 
-		assert {row["discord_id"] for row in result["member_list"]} == {"user-a", "user-b"}
+		assert {row["discord_id"] for row in result["member_list"]} == {"user-a"}
 		assert result["admin_list"] == []
-		assert set(result) == {"member_list", "sub_user_list", "admin_list", "pre_member_list", "obog_list"}
+		assert set(result) == {"member_list", "sub_user_list", "admin_list", "pre_member_list", "obog_list", "diff"}
+		assert set(result["diff"]) == set(DIFF_ONLY_TYPES)
 		assert all(isinstance(row["assigned_at"], str) for row in result["member_list"])
+
+	def test_every_type_is_either_written_or_diffed(self, run_sync):
+		# 全種別が、書き込む（Discord を正とする）か差分だけを返す（SAVE_MANAGED_TYPES）かの、ちょうど一方で扱われる
+		members = _all_role_members(**{role_id: _members(f"user-{role_id}") for role_id in (
+			"role-member", "role-sub", "role-obog", "role-admin", "role-pre",
+		)})
+
+		result, table, _ = run_sync({}, members=members)
+
+		written_types = {m_type for _, m_type in table}
+		assert set(SAVE_MANAGED_TYPES) <= set(MembershipType.ALL)
+		assert set(result["diff"]) == set(SAVE_MANAGED_TYPES)
+		assert written_types == set(MembershipType.ALL) - set(SAVE_MANAGED_TYPES)
 
 	def test_aborts_when_members_data_is_missing(self, run_sync):
 		with pytest.raises(ValueError):
 			run_sync({}, members={"role-member": []})
-
-
-class TestSyncMemberListsExcludesSubUserFromMember:
-	"""sub垢 ロールを持つユーザーは member から除外し、sub_user としてのみ同期する（#187）"""
-
-	def test_sub_account_with_member_role_is_synced_only_as_sub_user(self, run_sync):
-		members = _all_role_members(**{
-			"role-member": _members("user-main", "user-sub"),
-			"role-sub": _members("user-sub"),
-		})
-
-		result, table, _ = run_sync({}, members=members)
-
-		assert set(table) == {("user-main", "member"), ("user-sub", "sub_user")}
-		assert [row["discord_id"] for row in result["member_list"]] == ["user-main"]
-		assert [row["discord_id"] for row in result["sub_user_list"]] == ["user-sub"]
-
-	def test_removes_existing_member_row_of_sub_account(self, run_sync):
-		table = {("user-sub", "member"): _row(), ("user-sub", "sub_user"): _row(assigned_by="admin")}
-		members = _all_role_members(**{"role-member": _members("user-sub"), "role-sub": _members("user-sub")})
-
-		_, table, _ = run_sync(table, members=members)
-
-		assert set(table) == {("user-sub", "sub_user")}
-		assert table[("user-sub", "sub_user")]["assigned_by"] == "admin"
-
-	def test_does_not_exclude_from_member_when_sub_user_role_is_not_found(self, run_sync):
-		members = {"role-member": _members("user-main"), "role-obog": [], "role-admin": [], "role-pre": []}
-
-		_, table, _ = run_sync({}, sub_user_role_ids=(), members=members)
-
-		assert set(table) == {("user-main", "member")}
-
-	def test_does_not_exclude_sub_account_from_other_types(self, run_sync):
-		members = _all_role_members(**{"role-admin": _members("user-sub"), "role-sub": _members("user-sub")})
-
-		_, table, _ = run_sync({}, members=members)
-
-		assert set(table) == {("user-sub", "admin"), ("user-sub", "sub_user")}
 
 
 def _configure_membership_roles(monkeypatch) -> list[dict]:
@@ -251,6 +274,7 @@ class TestMembersSyncPassesSubUser:
 			"admin_list": [],
 			"pre_member_list": [],
 			"obog_list": [],
+			"diff": {"member": {"discord_only": [], "db_only": []}},
 		}
 		with patch.object(roles_api, "_get_token", return_value="token"), \
 			patch.object(roles_api, "fetch_guild_roles", new_callable=AsyncMock, return_value=discord_roles), \
@@ -263,6 +287,7 @@ class TestMembersSyncPassesSubUser:
 		assert args[5] == ["role-sub"]
 		assert [m["user_id"] for m in args[4]["role-sub"]] == ["user-sub"]
 		assert result["sub_user_list"] == [{"discord_id": "user-sub"}]
+		assert result["diff"] == {"member": {"discord_only": [], "db_only": []}}
 
 
 class TestMembersSyncAbortsOnEmptyGuild:

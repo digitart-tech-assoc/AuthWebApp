@@ -3,7 +3,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { syncMembers, getMembers, type MemberListsData, type MemberItem } from "@/actions/members";
+import {
+	syncMembers,
+	getMembers,
+	type DiffOnlyMembershipType,
+	type MemberListResponse,
+	type MemberListsData,
+	type MemberItem,
+} from "@/actions/members";
 import { btnPrimary } from "./roleStyles";
 
 /** メンバーリストの表示順と見出し（user_memberships の種別ごと） */
@@ -15,11 +22,68 @@ const MEMBER_LIST_SECTIONS: { key: keyof MemberListsData; label: string; emptyTe
 	{ key: "pre_member_list", label: "入会予定メンバー", emptyText: "入会予定メンバーなし" },
 ];
 
+/** 同期で書き込まない種別の、差分の表示順と見出し（#251） */
+const DIFF_SECTIONS: { type: DiffOnlyMembershipType; label: string }[] = [
+	{ type: "member", label: "メンバー" },
+	{ type: "sub_user", label: "サブアカウント（sub垢）" },
+	{ type: "obog", label: "OB/OG" },
+	{ type: "pre_member", label: "入会予定メンバー" },
+];
+
+/** Discord ID の一覧（差分の 1 方向分） */
+function DiffIdList({ title, ids }: { title: string; ids: string[] }) {
+	if (ids.length === 0) return null;
+	return (
+		<div className="mt-1">
+			<p className="m-0 text-xs text-slate-600">
+				{title}（{ids.length}）
+			</p>
+			<ul className="m-0 max-h-32 list-disc overflow-y-auto pl-5 text-xs text-slate-700">
+				{ids.map((id) => (
+					<li key={id}>{id}</li>
+				))}
+			</ul>
+		</div>
+	);
+}
+
+/** 同期の結果に含まれる、Discord のロールと会員種別の差分 */
+function MembershipDiffSummary({ diff }: { diff: MemberListResponse["diff"] }) {
+	const sections = DIFF_SECTIONS.map(({ type, label }) => ({ type, label, value: diff[type] }));
+	const hasDiff = sections.some(
+		({ value }) => value != null && (value.discord_only.length > 0 || value.db_only.length > 0),
+	);
+
+	return (
+		<div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+			<h3 className="mt-0 mb-1 text-sm font-semibold text-slate-900">Discord のロールとの差分</h3>
+			<p className="m-0 mb-2 text-xs text-slate-600">
+				管理者以外の会員種別は、同期では変更しません。差分を直すときは、ロールの割当を変更して保存し、「変更を確定」で Discord に反映してください。
+			</p>
+			{!hasDiff ? (
+				<p className="m-0 text-xs text-slate-500">差分はありません。</p>
+			) : (
+				sections.map(({ type, label, value }) => {
+					if (value == null || (value.discord_only.length === 0 && value.db_only.length === 0)) return null;
+					return (
+						<div key={type} className="mb-2 last:mb-0">
+							<p className="m-0 text-xs font-semibold text-slate-900">{label}</p>
+							<DiffIdList title="Discord ではロールがあるが、会員種別がない" ids={value.discord_only} />
+							<DiffIdList title="会員種別はあるが、Discord ではロールがない" ids={value.db_only} />
+						</div>
+					);
+				})
+			)}
+		</div>
+	);
+}
+
 export default function MembersPanel() {
 	const [loading, setLoading] = useState(false);
 	const [syncing, setSyncing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [members, setMembers] = useState<MemberListsData | null>(null);
+	const [diff, setDiff] = useState<MemberListResponse["diff"] | null>(null);
 
 	// 初期ロード
 	useEffect(() => {
@@ -46,6 +110,7 @@ export default function MembersPanel() {
 			setError(null);
 			const result = await syncMembers();
 			if (result.ok) {
+				setDiff(result.diff ?? null);
 				// 再読込
 				const updated = await getMembers();
 				setMembers(updated);
@@ -80,6 +145,8 @@ export default function MembersPanel() {
 			>
 				{syncing ? "同期中..." : "Discord から同期"}
 			</button>
+
+			{diff && <MembershipDiffSummary diff={diff} />}
 
 			{members && (
 				<div>

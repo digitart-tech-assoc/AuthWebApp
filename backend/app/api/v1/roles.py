@@ -727,7 +727,10 @@ def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 
 @router.post("/members/sync")
 async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -> dict:
-	"""Discord ギルドメンバーから member / sub_user / obog / admin / pre_member の user_memberships を差分同期する."""
+	"""Discord ギルドメンバーを guild_members に保存し、admin の user_memberships を差分同期する。
+
+	member / sub_user / obog / pre_member は書き込まず、Discord との差分（diff）を返すだけにする（#251）。
+	"""
 	token = _get_token()
 	if not token:
 		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
@@ -800,6 +803,7 @@ async def sync_members_from_discord(_principal: dict = Depends(require_admin)) -
 			"admin_list": result["admin_list"],
 			"pre_member_list": result["pre_member_list"],
 			"obog_list": result["obog_list"],
+			"diff": result["diff"],
 		}
 	except HTTPException:
 		raise

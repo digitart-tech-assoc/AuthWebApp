@@ -49,6 +49,7 @@ EMPTY_RESULT = {
 	"admin_list": [],
 	"pre_member_list": [],
 	"obog_list": [],
+	"diff": {},
 }
 
 
