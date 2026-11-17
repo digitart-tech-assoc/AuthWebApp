@@ -288,7 +288,26 @@ def test_patch_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
 	assert res.json()["detail"] == {
 		"code": "membership_assignment_invalid",
 		"message": "100: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません",
+		"discord_id": USER,
+		"membership_types": ["member", "sub_user"],
+		"reason": "exclusive",
 	}
+
+
+def test_patch_endpoint_returns_cause_of_partial_membership(client, monkeypatch):
+	"""種別のロールの一部だけを付け外しした場合も、原因の Discord ID・種別・理由を返す（#263）。"""
+	def _raise_partial(*_args, **_kwargs):
+		raise MembershipAssignmentError(MembershipAssignmentError.PARTIAL, USER, ("member",))
+
+	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset()))
+	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise_partial)
+
+	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {SUB: [USER]}})
+
+	assert res.status_code == 400
+	detail = res.json()["detail"]
+	assert detail["code"] == "membership_assignment_invalid"
+	assert (detail["discord_id"], detail["membership_types"], detail["reason"]) == (USER, ["member"], "partial")
 
 
 def test_put_endpoint_returns_400_on_invalid_membership(client, monkeypatch):

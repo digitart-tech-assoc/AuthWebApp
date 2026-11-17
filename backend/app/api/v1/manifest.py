@@ -66,8 +66,12 @@ ERROR_PROTECTED_ROLE_ASSIGNMENT = "protected_role_assignment"
 ERROR_DISCORD_UNAVAILABLE = "discord_unavailable"
 
 
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-	return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+def _error(status_code: int, code: str, message: str, **cause: object) -> HTTPException:
+	"""cause には、原因の Discord ID・ロール ID・種別名だけを渡す（画面が名前を引いて表示する。#263）。
+
+	氏名・ユーザー名などの個人情報は渡さない（docs/logging-and-errors.md §3.2）。
+	"""
+	return HTTPException(status_code=status_code, detail={"code": code, "message": message, **cause})
 
 
 async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozenset[str]:
@@ -89,10 +93,13 @@ async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
 		await asyncio.to_thread(func, *args, protected_role_ids=protected_role_ids)
 	except ProtectedRoleAssignmentError as exc:
 		# 固定文言にロール ID だけを埋めたもの（app/core/exceptions.py）
-		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail) from exc
+		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail, role_id=exc.role_id) from exc
 	except MembershipAssignmentError as exc:
 		# 固定文言に Discord ID と種別名だけを埋めたもの（app/core/exceptions.py）
-		raise _error(400, ERROR_MEMBERSHIP_ASSIGNMENT_INVALID, exc.response_detail) from exc
+		raise _error(
+			400, ERROR_MEMBERSHIP_ASSIGNMENT_INVALID, exc.response_detail,
+			discord_id=exc.discord_id, membership_types=list(exc.membership_types), reason=exc.reason,
+		) from exc
 
 
 @router.get("/manifest", response_model=Manifest)
