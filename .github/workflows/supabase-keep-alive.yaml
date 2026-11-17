@@ -43,7 +43,7 @@ jobs:
 
           if [ "$CURL_EXIT" -ne 0 ]; then
             echo "Failed to reach ${{ matrix.environment }} Supabase instance (curl exit code: $CURL_EXIT)."
-            echo "See https://curl.se/libcurl/c/libcurl-errors.html (e.g. 6: Couldn't resolve host, 28: Timeout)."
+            echo "See https://curl.se/docs/manpage.html#EXIT (e.g. 6: Couldn't resolve host, 28: Timeout)."
             rm -f "$BODY_FILE"
             exit 1
           fi
