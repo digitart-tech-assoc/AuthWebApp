@@ -7,6 +7,7 @@
 - 差分の対象外のロール（DB 未登録・managed・Bot より上）は現在の状態のまま残る
 - 404 はスキップする。403 とその他の失敗は errors に記録して次のメンバーを処理する（403 の記録には Discord ID を含めない）
 - 再試行しても 429 のままなら、残りのメンバーへは送らずに打ち切り、errors に記録する（Discord ID を含めない）
+- バケットの残りが 0 のときの待機は、後に別のメンバーへの反映が続く場合だけ有効にする（#179）
 """
 from __future__ import annotations
 
@@ -73,7 +74,7 @@ def run_diffs():
 		latest = {m["user_id"]: m for m in current_members}
 		latest.update(latest_members or {})
 
-		async def _fetch_member(_guild_id, user_id, _token, client=None):
+		async def _fetch_member(_guild_id, user_id, _token, client=None, wait_for_bucket_reset=False):
 			return latest.get(user_id)
 
 		db_assignments = desired_assignments if latest_assignments is None else latest_assignments
@@ -135,6 +136,29 @@ class TestApplyRoleAssignmentDiffs:
 		run.add.assert_not_awaited()
 		run.remove.assert_not_awaited()
 		assert run.result == (2, 1, 0, [])
+
+	@pytest.mark.asyncio
+	async def test_waits_for_bucket_reset_except_after_last_member(self, run_diffs):
+		"""最後のメンバーの後には同じバケットへのリクエストが続かないので、待機を有効にしない。"""
+		ctx = await run_diffs(
+			{"role-a": ["u1", "u2", "u3", "u4"], "role-b": ["u2", "u4"], "role-c": []},
+			[
+				_member("u1", []),
+				_member("u2", []),
+				_member("u3", ["role-a", "role-c"]),
+				_member("u4", []),
+			],
+		)
+
+		# u1: PUT、u2: GET + PATCH、u3: DELETE、u4（最後）: GET + PATCH
+		assert [call.kwargs["wait_for_bucket_reset"] for call in ctx.add.await_args_list] == [True]
+		assert [call.kwargs["wait_for_bucket_reset"] for call in ctx.remove.await_args_list] == [True]
+		assert [(call.args[1], call.kwargs["wait_for_bucket_reset"]) for call in ctx.fetch.await_args_list] == [
+			("u2", True), ("u4", False),
+		]
+		assert [(call.args[1], call.kwargs["wait_for_bucket_reset"]) for call in ctx.set.await_args_list] == [
+			("u2", True), ("u4", False),
+		]
 
 	@pytest.mark.asyncio
 	async def test_single_add_uses_put_without_refetch(self, run_diffs):

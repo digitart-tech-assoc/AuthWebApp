@@ -235,7 +235,7 @@ def test_moved_role_ids_is_deterministic():
 # --- メンバーのロール ---
 
 async def _member_diff(current_roles, db_roles, latest_roles=None):
-	async def _fetch_member(_guild_id, user_id, _token, client=None):
+	async def _fetch_member(_guild_id, user_id, _token, client=None, wait_for_bucket_reset=False):
 		return {"user_id": user_id, "role_ids": list(latest_roles if latest_roles is not None else current_roles)}
 
 	with patch.object(roles_api, "DISCORD_GUILD_ID", GUILD_ID), \

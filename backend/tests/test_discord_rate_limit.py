@@ -2,6 +2,7 @@
 
 - 429 を受けたら retry_after（ボディ）または Retry-After（ヘッダー）の秒数だけ待って再試行する
 - 再試行回数・待ち時間の上限を超える場合や待ち秒数が分からない場合は、待たずに失敗とする
+- バケットの残りが 0 のときにリセットまで待つのは、wait_for_bucket_reset=True を渡した呼び出しだけ（#179）
 """
 from __future__ import annotations
 
@@ -134,7 +135,7 @@ class TestProactiveThrottle:
 	@pytest.mark.asyncio
 	async def test_waits_for_bucket_reset_when_remaining_is_zero(self, mock_sleep):
 		with _patch_put([_ok_with_bucket("0", "1.25")]) as mock_put:
-			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token", wait_for_bucket_reset=True)
 
 		assert mock_put.await_count == 1
 		mock_sleep.assert_awaited_once_with(1.25)
@@ -142,23 +143,48 @@ class TestProactiveThrottle:
 	@pytest.mark.asyncio
 	async def test_does_not_wait_while_bucket_has_remaining(self, mock_sleep):
 		with _patch_put([_ok_with_bucket("3", "1.25")]):
-			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token", wait_for_bucket_reset=True)
 
 		mock_sleep.assert_not_awaited()
 
 	@pytest.mark.asyncio
 	async def test_does_not_wait_when_reset_after_exceeds_max_wait(self, mock_sleep):
 		with _patch_put([_ok_with_bucket("0", str(DISCORD_RATE_LIMIT_MAX_WAIT + 1))]):
-			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token", wait_for_bucket_reset=True)
 
 		mock_sleep.assert_not_awaited()
 
 	@pytest.mark.asyncio
 	async def test_does_not_wait_when_reset_after_is_invalid(self, mock_sleep):
 		with _patch_put([_ok_with_bucket("0", "invalid")]):
-			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token", wait_for_bucket_reset=True)
 
 		mock_sleep.assert_not_awaited()
+
+	@pytest.mark.asyncio
+	async def test_does_not_wait_by_default_when_remaining_is_zero(self, mock_sleep):
+		"""1 回だけ呼ぶ処理（self-batch・本会員登録など）は、後に同じバケットへのリクエストが続かないので待たない。"""
+		member_body = {"user": {"id": USER_ID, "username": "name"}, "roles": []}
+		exhausted = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset-After": "1.25"}
+		with _patch_put([_ok_with_bucket("0", "1.25")]), 			patch("httpx.AsyncClient.delete", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")), 			patch("httpx.AsyncClient.patch", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")), 			patch(
+				"httpx.AsyncClient.get", new_callable=AsyncMock,
+				return_value=httpx.Response(200, headers=exhausted, json=member_body, request=REQUEST),
+			):
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.remove_role_from_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+			await discord_client.set_member_roles(GUILD_ID, USER_ID, [ROLE_ID], "token")
+			await discord_client.fetch_guild_member(GUILD_ID, USER_ID, "token")
+
+		mock_sleep.assert_not_awaited()
+
+	@pytest.mark.asyncio
+	async def test_rate_limited_response_is_retried_without_opting_in(self, mock_sleep):
+		"""429 の再試行は wait_for_bucket_reset に関係なく行う。"""
+		with _patch_put([_rate_limited(retry_after=1.5), _ok_with_bucket("0", "1.25")]) as mock_put:
+			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
+
+		assert mock_put.await_count == 2
+		mock_sleep.assert_awaited_once_with(1.5)
 
 
 class TestClientReuse:

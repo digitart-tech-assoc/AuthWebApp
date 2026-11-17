@@ -102,22 +102,32 @@ def _loggable_url(url: str) -> str:
 	return redact_snowflakes(url.removeprefix(DISCORD_API_BASE))
 
 
-async def _request(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> httpx.Response:
+async def _request(
+	client: httpx.AsyncClient,
+	method: str,
+	url: str,
+	*,
+	wait_for_bucket_reset: bool = False,
+	**kwargs,
+) -> httpx.Response:
 	"""Discord API にリクエストを送り、429 を受けたら retry_after だけ待って再試行する。
 
 	待ち秒数が取れない・上限（DISCORD_RATE_LIMIT_MAX_WAIT）を超える・再試行回数（DISCORD_RATE_LIMIT_MAX_RETRIES）を
 	使い切った場合は、最後の 429 応答をそのまま返す。エラーとしての扱いは呼び出し側に任せる。
 	X-RateLimit-Scope が global / shared の場合も、待ち方は retry_after に従う。
 
-	429 以外の応答でも、X-RateLimit-Remaining が 0 ならバケットのリセット（X-RateLimit-Reset-After）まで待ってから返す。
+	wait_for_bucket_reset=True のときは、429 以外の応答でも X-RateLimit-Remaining が 0 なら、
+	バケットのリセット（X-RateLimit-Reset-After）まで待ってから返す。
 	push のように同じバケットへ続けて送る処理で、429 を受ける前に送信ペースを落とすため。
+	後に同じバケットへのリクエストが続かない呼び出し（1 回だけ呼ぶ処理や、連続した処理の最後）では
+	待っても意味がなく応答が遅れるだけなので、既定では待たない。
 	"""
 	send = getattr(client, method.lower())
 	retries = 0
 	while True:
 		response = await send(url, **kwargs)
 		if response.status_code != 429:
-			reset_after = _bucket_reset_after_seconds(response)
+			reset_after = _bucket_reset_after_seconds(response) if wait_for_bucket_reset else None
 			if reset_after is not None and 0 < reset_after <= DISCORD_RATE_LIMIT_MAX_WAIT:
 				logger.debug(
 					"Discord rate limit bucket exhausted: %s %s; waiting %.2fs",
@@ -226,10 +236,17 @@ def _headers(token: str) -> dict[str, str]:
 	}
 
 
-async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict, client: httpx.AsyncClient | None = None) -> None:
+async def edit_guild_role(
+	guild_id: str,
+	role_id: str,
+	token: str,
+	payload: dict,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		response = await _request(client, "PATCH", url, headers=_headers(token), json=payload)
+		response = await _request(client, "PATCH", url, headers=_headers(token), json=payload, wait_for_bucket_reset=wait_for_bucket_reset)
 
 	if response.status_code != 200:
 		error_msg = f"Failed to update role {role_id}: HTTP {response.status_code}"
@@ -251,10 +268,16 @@ async def edit_guild_role(guild_id: str, role_id: str, token: str, payload: dict
 	response.raise_for_status()
 
 
-async def create_guild_role(guild_id: str, token: str, payload: dict, client: httpx.AsyncClient | None = None) -> dict:
+async def create_guild_role(
+	guild_id: str,
+	token: str,
+	payload: dict,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> dict:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles"
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		response = await _request(client, "POST", url, headers=_headers(token), json=payload)
+		response = await _request(client, "POST", url, headers=_headers(token), json=payload, wait_for_bucket_reset=wait_for_bucket_reset)
 
 	if response.status_code != 200 and response.status_code != 201:
 		error_msg = f"Failed to create role: HTTP {response.status_code}"
@@ -285,10 +308,16 @@ async def create_guild_role(guild_id: str, token: str, payload: dict, client: ht
 	}
 
 
-async def delete_guild_role(guild_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
+async def delete_guild_role(
+	guild_id: str,
+	role_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> None:
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/roles/{role_id}"
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		response = await _request(client, "DELETE", url, headers=_headers(token))
+		response = await _request(client, "DELETE", url, headers=_headers(token), wait_for_bucket_reset=wait_for_bucket_reset)
 
 	if response.status_code != 204:
 		error_msg = f"Failed to delete role {role_id}: HTTP {response.status_code}"
@@ -384,19 +413,33 @@ async def fetch_all_guild_members(guild_id: str, token: str, client: httpx.Async
 	return members
 
 
-async def add_role_to_member(guild_id: str, user_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
+async def add_role_to_member(
+	guild_id: str,
+	user_id: str,
+	role_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> None:
 	"""メンバーにロールを付与する。"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		resp = await _request(client, "PUT", url, headers=_headers(token))
+		resp = await _request(client, "PUT", url, headers=_headers(token), wait_for_bucket_reset=wait_for_bucket_reset)
 	resp.raise_for_status()
 
 
-async def remove_role_from_member(guild_id: str, user_id: str, role_id: str, token: str, client: httpx.AsyncClient | None = None) -> None:
+async def remove_role_from_member(
+	guild_id: str,
+	user_id: str,
+	role_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> None:
 	"""メンバーからロールを剥奪する。"""
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}"
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		resp = await _request(client, "DELETE", url, headers=_headers(token))
+		resp = await _request(client, "DELETE", url, headers=_headers(token), wait_for_bucket_reset=wait_for_bucket_reset)
 	resp.raise_for_status()
 
 
@@ -406,6 +449,7 @@ async def set_member_roles(
 	role_ids: list[str],
 	token: str,
 	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
 ) -> None:
 	"""メンバーのロール一覧を一括設定する（PATCH /guilds/{guild_id}/members/{user_id}）。
 
@@ -418,6 +462,7 @@ async def set_member_roles(
 		role_ids: 設定するロール ID の完全リスト（現在のロールは上書きされる）
 		token:    Bot トークン
 		client:   使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
+		wait_for_bucket_reset: バケットの残りが 0 のときにリセットまで待つか（_request を参照）
 
 	Raises:
 		DiscordAPIError: Discord が 200 / 204 以外を返した場合（status_code に HTTP ステータスを持つ）
@@ -425,7 +470,7 @@ async def set_member_roles(
 	url = f"{DISCORD_API_BASE}/guilds/{guild_id}/members/{user_id}"
 	payload = {"roles": role_ids}
 	async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-		resp = await _request(client, "PATCH", url, headers=_headers(token), json=payload)
+		resp = await _request(client, "PATCH", url, headers=_headers(token), json=payload, wait_for_bucket_reset=wait_for_bucket_reset)
 
 	if resp.status_code not in (200, 204):
 		error_msg = f"Failed to set roles for member {user_id}: HTTP {resp.status_code}"
@@ -496,7 +541,13 @@ async def fetch_guild_members_with_role(guild_id: str, role_id: str, token: str,
 	return members
 
 
-async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: httpx.AsyncClient | None = None) -> dict | None:
+async def fetch_guild_member(
+	guild_id: str,
+	user_id: str,
+	token: str,
+	client: httpx.AsyncClient | None = None,
+	wait_for_bucket_reset: bool = False,
+) -> dict | None:
 	"""ギルド内の特定メンバーの情報を取得。
 
 	Args:
@@ -504,6 +555,7 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: ht
 		user_id: User ID (Discord ID)
 		token: Bot token
 		client: 使い回す httpx.AsyncClient（省略時はこの呼び出しの間だけ生成する）
+		wait_for_bucket_reset: バケットの残りが 0 のときにリセットまで待つか（_request を参照）
 
 	Returns:
 		{"user_id": "...", "username": "...", "display_name": "...", ...} or None if not found
@@ -513,7 +565,7 @@ async def fetch_guild_member(guild_id: str, user_id: str, token: str, client: ht
 
 	try:
 		async with _client_scope(client, DISCORD_API_TIMEOUT) as client:
-			response = await _request(client, "GET", url, headers=headers)
+			response = await _request(client, "GET", url, headers=headers, wait_for_bucket_reset=wait_for_bucket_reset)
 			if response.status_code == 404:
 				return None
 			response.raise_for_status()
