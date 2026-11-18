@@ -143,6 +143,7 @@ def test_patch_endpoint_returns_403_for_protected_role(client, monkeypatch):
 	assert res.json()["detail"] == {
 		"code": "protected_role_assignment",
 		"message": f"ロール {ADMIN_ROLE} は Discord で直接付け外しするロールのため、割当を変更できません",
+		"role_id": ADMIN_ROLE,
 	}
 
 

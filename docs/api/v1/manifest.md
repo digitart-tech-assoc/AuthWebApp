@@ -107,13 +107,13 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 - `500 Internal Server Error`: 割当を保存するときに `DISCORD_TOKEN` が設定されていない場合
 - `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません。`code` は `discord_unavailable`）
 
-`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
+`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。`code` によっては、原因の ID を示す項目が加わります（下の表。#263）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
 
-| `code` | ステータス | 意味 |
-|---|---|---|
-| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 |
-| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 |
-| `discord_unavailable` | 502 | Discord からロールの情報を取得できない |
+| `code` | ステータス | 意味 | 追加の項目 |
+|---|---|---|---|
+| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 | `discord_id`（原因のメンバー）、`membership_types`（原因の種別の配列）、`reason`（`partial` / `exclusive`） |
+| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 | `role_id`（原因のロール） |
+| `discord_unavailable` | 502 | Discord からロールの情報を取得できない | なし |
 
 ---
 
@@ -173,13 +173,13 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 - `500 Internal Server Error`: 割当を保存するときに `DISCORD_TOKEN` が設定されていない場合
 - `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません。`code` は `discord_unavailable`）
 
-`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
+`400` / `403` / `502` の `detail` は `{"code": "<種類>", "message": "<説明>"}` の形です（#251）。画面は `code` で文言を出し分けます（`message` は表示しません）。`code` によっては、原因の ID を示す項目が加わります（下の表。#263）。同じステータスを返す認可エラー（admin でない場合の `403` など）の `detail` は文字列のままです。
 
-| `code` | ステータス | 意味 |
-|---|---|---|
-| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 |
-| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 |
-| `discord_unavailable` | 502 | Discord からロールの情報を取得できない |
+| `code` | ステータス | 意味 | 追加の項目 |
+|---|---|---|---|
+| `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 | `discord_id`（原因のメンバー）、`membership_types`（原因の種別の配列）、`reason`（`partial` / `exclusive`） |
+| `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 | `role_id`（原因のロール） |
+| `discord_unavailable` | 502 | Discord からロールの情報を取得できない | なし |
 
 ---
 
@@ -198,6 +198,18 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 |---|---|
 | 1 つの種別に複数のロールを設定している場合（例: `MEMBER_ROLE_IDS` に 2 つ）に、その一部だけを持つ状態にする | `"<Discord ID>: 会員種別 'member' のロールは、すべて付けるか、すべて外してください"` |
 | `member` と `sub_user`、`pre_member` と `member`、`pre_member` と `sub_user` のロールを同時に持つ状態にする | `"<Discord ID>: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません"` |
+
+`detail` には、原因の ID を示す項目も入ります（#263）。原因が複数ある場合は、最初に見つかった 1 件だけを返します。
+
+| 項目 | 内容 |
+|---|---|
+| `discord_id` | 原因のメンバーの Discord ID |
+| `membership_types` | 原因の種別の配列（`reason` が `partial` なら 1 件、`exclusive` なら 2 件） |
+| `reason` | `partial`（種別のロールの一部だけを持つ状態になる）/ `exclusive`（同時に持てない種別を持つ状態になる） |
+
+`detail` の例: `{"code": "membership_assignment_invalid", "message": "<Discord ID>: 会員種別 'member' と 'sub_user' のロールを同時に付けることはできません", "discord_id": "<Discord ID>", "membership_types": ["member", "sub_user"], "reason": "exclusive"}`
+
+画面は、これらの ID から読み込み済みのメンバー一覧・ロール一覧で名前を引き、Frontend の固定文言に埋めて表示します（一覧にない場合は ID を表示します）。氏名・ユーザー名はレスポンスに含めません（[logging-and-errors.md](../../logging-and-errors.md) §3.2）。
 
 既存のデータで、すでに両方を持っている人については、どちらかを外す保存はできます。
 
@@ -218,4 +230,6 @@ Bot が操作できないロール（Bot の最上位ロール以上のロール
 - 割当を含む保存のときだけ Discord に問い合わせます（`role_assignments` / `upsert_role_assignments` が空なら問い合わせません）。
 - Discord にないロール（仮 ID `draft-…` の新規ロールなど）は対象にしません。
 
-`detail` の例: `{"code": "protected_role_assignment", "message": "ロール <role_id> は Discord で直接付け外しするロールのため、割当を変更できません"}`
+`detail` の例: `{"code": "protected_role_assignment", "message": "ロール <role_id> は Discord で直接付け外しするロールのため、割当を変更できません", "role_id": "<role_id>"}`
+
+`role_id` は原因のロールの ID です（#263）。原因が複数ある場合は、最初に見つかった 1 件だけを返します。
