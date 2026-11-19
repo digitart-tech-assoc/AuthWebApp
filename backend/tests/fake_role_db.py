@@ -245,6 +245,9 @@ class FakeCursor:
 					self._rows = [(assigned_by,)]
 		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member' FOR UPDATE"):
 			self._rows = [(1,)] if (params[0], "pre_member") in db.memberships else []
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type IN ('member', 'sub_user')"):
+			held = db.membership_types_of(params[0]) & {"member", "sub_user"}
+			self._rows = [(1,)] if held else []
 		elif q.startswith("SELECT 1 FROM paid_invitations WHERE discord_id = %s"):
 			self._rows = [(1,)] if params[0] in db.paid_invitations else []
 		elif q.startswith("SELECT id FROM student_profiles WHERE discord_id = %s"):

@@ -17,6 +17,11 @@ from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
 
+# 入会資格がない理由（RegistrationNotEligibleError の固定文言。403 の detail になる）
+NOT_ELIGIBLE_NOT_PRE_MEMBER = "入会予定者リストに登録されていません"
+NOT_ELIGIBLE_NOT_PAID = "入会費の支払いが確認できません"
+NOT_ELIGIBLE_ALREADY_MEMBER = "すでに会員として登録されているため、入会登録はできません"
+
 
 class PromotionResult(NamedTuple):
 	"""upsert_student_profile_and_promote の結果。promoted は pre_member から member に変わったか。"""
@@ -118,6 +123,27 @@ def get_latest_verified_otp(discord_id: str) -> dict[str, Any] | None:
 			}
 
 
+def _is_member_or_sub_user(cur: Any, discord_id: str, sub_user_role_ids: list[str]) -> bool:
+	"""member / sub_user の行、または sub垢 ロールの割当があるか（呼び出し元のトランザクションで読む）。"""
+	cur.execute(
+		"""
+		SELECT 1 FROM user_memberships
+		WHERE discord_id = %s AND membership_type IN ('member', 'sub_user')
+		LIMIT 1
+		""",
+		(discord_id,),
+	)
+	if cur.fetchone() is not None:
+		return True
+	if not sub_user_role_ids:
+		return False
+	cur.execute(
+		"SELECT 1 FROM role_member_assignments WHERE user_id = %s AND role_id = ANY(%s)",
+		(discord_id, list(sub_user_role_ids)),
+	)
+	return cur.fetchone() is not None
+
+
 @retry_on_deadlock
 def upsert_student_profile_and_promote(
 	profile_id: str,
@@ -133,12 +159,14 @@ def upsert_student_profile_and_promote(
 	require_eligibility: bool = True,
 	audit: AuditContext | None = None,
 	pre_member_role_id: str | None = None,
+	sub_user_role_ids: list[str] | None = None,
 ) -> PromotionResult:
 	"""学生プロフィールを保存し、pre_memberからmemberへ昇格する。
 
 	require_eligibility が True の場合、同一トランザクション内で入会資格
-	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
+	（pre_member かつ有効な paid_invitations、かつ member / sub垢 ではない）を確認し、
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
+	sub垢 は、sub_user の行または sub_user_role_ids の割当で判断する（/members/member/add と同じ。#264）。
 	確認の前に lock_memberships を取り、種別を変えるほかの経路（管理画面の保存など）と直列化する。
 
 	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
@@ -163,7 +191,7 @@ def upsert_student_profile_and_promote(
 					(discord_id,),
 				)
 				if cur.fetchone() is None:
-					raise RegistrationNotEligibleError("入会予定者リストに登録されていません")
+					raise RegistrationNotEligibleError(NOT_ELIGIBLE_NOT_PRE_MEMBER)
 
 				cur.execute(
 					"""
@@ -174,7 +202,12 @@ def upsert_student_profile_and_promote(
 					(discord_id,),
 				)
 				if cur.fetchone() is None:
-					raise RegistrationNotEligibleError("入会費の支払いが確認できません")
+					raise RegistrationNotEligibleError(NOT_ELIGIBLE_NOT_PAID)
+
+				# 新規入会かどうかはトランザクションの外（認証時の app_role）で判断しているため、
+				# member / sub垢 の人がこの経路に入っても、member と sub垢 の両方を持つ状態にしない（#264）
+				if _is_member_or_sub_user(cur, discord_id, sub_user_role_ids or []):
+					raise RegistrationNotEligibleError(NOT_ELIGIBLE_ALREADY_MEMBER)
 
 			# 既存プロフィールを確認
 			cur.execute(

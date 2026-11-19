@@ -125,6 +125,7 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	_set_eligibility(monkeypatch, True, True)
 	monkeypatch.setenv("MEMBER_ROLE_IDS", "member-role")
 	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", "pre-member-role")
+	monkeypatch.setenv("SUB_USER_ROLE_IDS", "sub-role")
 	monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 	monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 	monkeypatch.setattr(
@@ -151,6 +152,8 @@ async def test_create_profile_promotes_eligible_verified_user(monkeypatch):
 	# 割当の更新も本会員化と同じトランザクションで行わせる（#251）
 	assert promote_calls[0]["member_role_ids"] == ["member-role"]
 	assert promote_calls[0]["pre_member_role_id"] == "pre-member-role"
+	# sub垢 の割当がある人を本会員化しないよう、同じトランザクションで確認させる（#264）
+	assert promote_calls[0]["sub_user_role_ids"] == ["sub-role"]
 
 
 @pytest.mark.asyncio

@@ -34,8 +34,11 @@ class _FakeCursor:
 		self._conn.params.append(params)
 		if normalized.startswith("DELETE FROM user_memberships"):
 			self._result = ("S",) if self._conn.is_pre_member else None
-		elif "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
+		elif "FROM user_memberships" in normalized and "membership_type = 'pre_member'" in normalized:
 			self._result = (1,) if self._conn.is_pre_member else None
+		elif "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
+			# member / sub_user の行の確認（#264）。このファイルでは常にないものとして扱う
+			self._result = None
 		elif "FROM paid_invitations" in normalized:
 			self._result = (1,) if self._conn.is_paid else None
 		else:

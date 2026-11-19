@@ -2,6 +2,7 @@
 
 - 保存（PUT / PATCH）・/members/member/add・本会員化は、トランザクションの最初の文として共通のロックを取る
 - デッドロック（DeadlockDetected）で失敗したら、関数全体を 1 回だけ呼び直す
+- 本会員化で、member / sub_user の行または sub垢 の割当がある人は 403 にし、何も変えない
 
 実 DB での並行実行のテストは、今のテスト基盤にないため対象外とする。
 """
@@ -9,8 +10,11 @@
 import logging
 
 import pytest
+from fastapi import HTTPException
 from psycopg2 import errors as pg_errors
 
+from app.api.v1 import student as student_api
+from app.core.exceptions import RegistrationNotEligibleError
 from app.db import guild_repository, manifest_repository, membership_repository, student_repository
 from app.db.audit_repository import AuditContext
 from app.db.connection import retry_on_deadlock
@@ -62,6 +66,7 @@ def _promote(require_eligibility=True, audit=AUDIT):
 		require_eligibility=require_eligibility,
 		audit=audit,
 		pre_member_role_id=PRE,
+		sub_user_role_ids=[SUB],
 	)
 
 
@@ -250,3 +255,69 @@ def test_deadlock_twice_raises_and_changes_nothing(db, eligible, run):
 	assert db.rollbacks == 2
 	assert _state(db) == before
 
+
+# --- 本会員化の入会資格（member / sub垢 の人は 403） ---
+
+@pytest.mark.parametrize("setup", ["sub_user-row", "sub-assignment", "member-row"])
+def test_promotion_rejects_member_or_sub_user(db, setup):
+	_eligible(db)
+	if setup == "sub_user-row":
+		db.add_membership(USER, "sub_user")
+	elif setup == "sub-assignment":
+		db.assign(SUB, USER)
+	else:
+		db.add_membership(USER, "member")
+	before = _state(db)
+
+	with pytest.raises(RegistrationNotEligibleError) as error:
+		_promote()
+
+	assert str(error.value) == student_repository.NOT_ELIGIBLE_ALREADY_MEMBER
+	assert _state(db) == before
+	assert db.rollbacks == 1
+	assert db.writes() == []
+
+
+def test_promotion_allows_obog_row(db):
+	# obog は member / sub垢 と同時に持てない種別ではないため、入会資格の判定には含めない
+	_eligible(db)
+	db.add_membership(USER, "obog")
+
+	assert _promote() == ("prof_test", True)
+
+	assert db.membership_types_of(USER) == {"member", "obog"}
+
+
+@pytest.mark.asyncio
+async def test_create_profile_returns_403_for_sub_user_in_registration_path(db, monkeypatch):
+	# 認証時の app_role が pre_member でも（JWT の claim が古い場合など）、
+	# sub_user の行がある人は本会員化せず、プロフィールも保存しない
+	_eligible(db)
+	db.add_membership(USER, "sub_user")
+	before = _state(db)
+	monkeypatch.setenv("DISCORD_TOKEN", "dummy-token")
+	monkeypatch.setenv("DISCORD_GUILD_ID", "dummy-guild")
+	monkeypatch.setattr(student_api, "_is_pre_member", lambda discord_id: True)
+	monkeypatch.setattr(student_api, "_is_paid_invitation", lambda discord_id: True)
+	monkeypatch.setattr(
+		student_api.student_repository, "get_latest_verified_otp", lambda discord_id: {"verified": True},
+	)
+
+	async def _forbid_discord(*args, **kwargs):
+		pytest.fail("add_role_to_member must not be called")
+
+	monkeypatch.setattr(student_api, "add_role_to_member", _forbid_discord)
+
+	with pytest.raises(HTTPException) as error:
+		await student_api.create_student_profile(
+			student_api.StudentProfileRequest(
+				student_number="1A234567", name="テスト 太郎", furigana="テスト タロウ",
+				department="テスト学部", gender=None, phone="09000000000",
+			),
+			principal={"discord_id": USER, "app_role": "pre_member"},
+			audit=AUDIT,
+		)
+
+	assert error.value.status_code == 403
+	assert error.value.detail == student_repository.NOT_ELIGIBLE_ALREADY_MEMBER
+	assert _state(db) == before
