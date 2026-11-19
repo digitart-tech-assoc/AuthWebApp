@@ -9,9 +9,14 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.roles import fetch_protected_role_ids
 from app.core.auth import require_admin, require_member
-from app.core.exceptions import MembershipAssignmentError, ProtectedRoleAssignmentError
+from app.core.exceptions import (
+	MembershipAssignmentError,
+	ProtectedRoleAssignmentError,
+	RoleAssignmentChangeConflictError,
+)
 from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import OP_MANIFEST_PATCH, OP_MANIFEST_PUT, AuditContext, get_audit_context
+from app.db.guild_repository import validate_role_assignment_changes
 from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest
 
 
@@ -47,12 +52,17 @@ class Manifest(BaseModel):
 	role_assignments: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class RoleAssignmentChange(BaseModel):
+	added: list[str] = Field(default_factory=list)
+	removed: list[str] = Field(default_factory=list)
+
+
 class ManifestPatch(BaseModel):
 	upsert_categories: list[Category] = Field(default_factory=list)
 	delete_category_ids: list[str] = Field(default_factory=list)
 	upsert_roles: list[Role] = Field(default_factory=list)
 	delete_role_ids: list[str] = Field(default_factory=list)
-	upsert_role_assignments: dict[str, list[str]] = Field(default_factory=dict)
+	role_assignment_changes: dict[str, RoleAssignmentChange] = Field(default_factory=dict)
 
 
 def _role_membership_types() -> dict[str, str]:
@@ -63,6 +73,7 @@ def _role_membership_types() -> dict[str, str]:
 # 保存の失敗の種類。画面は detail.code で文言を出し分ける（同じステータスを返す認可エラーなどと区別するため）
 ERROR_MEMBERSHIP_ASSIGNMENT_INVALID = "membership_assignment_invalid"
 ERROR_PROTECTED_ROLE_ASSIGNMENT = "protected_role_assignment"
+ERROR_ROLE_ASSIGNMENT_CHANGE_CONFLICT = "role_assignment_change_conflict"
 ERROR_DISCORD_UNAVAILABLE = "discord_unavailable"
 
 
@@ -74,9 +85,9 @@ def _error(status_code: int, code: str, message: str, **cause: object) -> HTTPEx
 	return HTTPException(status_code=status_code, detail={"code": code, "message": message, **cause})
 
 
-async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozenset[str]:
+async def _protected_role_ids_for(has_assignments: bool) -> frozenset[str]:
 	"""割当を保存するときだけ、Discord で直接付け外しするロールを Discord から取得する。"""
-	if not assignments:
+	if not has_assignments:
 		return frozenset()
 	try:
 		return await fetch_protected_role_ids()
@@ -88,9 +99,14 @@ async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozense
 
 
 async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
-	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251）。"""
+	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251, #228）。"""
 	try:
 		await asyncio.to_thread(func, *args, protected_role_ids=protected_role_ids)
+	except RoleAssignmentChangeConflictError as exc:
+		raise _error(
+			400, ERROR_ROLE_ASSIGNMENT_CHANGE_CONFLICT, exc.response_detail,
+			role_id=exc.role_id, discord_id=exc.discord_id,
+		) from exc
 	except ProtectedRoleAssignmentError as exc:
 		# 固定文言にロール ID だけを埋めたもの（app/core/exceptions.py）
 		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail, role_id=exc.role_id) from exc
@@ -129,7 +145,7 @@ async def put_manifest(
 		[r.model_dump() for r in payload.roles],
 		payload.role_assignments,
 		audit.with_operation(OP_MANIFEST_PUT),
-		protected_role_ids=await _protected_role_ids_for(payload.role_assignments),
+		protected_role_ids=await _protected_role_ids_for(bool(payload.role_assignments)),
 	)
 	return payload
 
@@ -142,17 +158,34 @@ async def patch_manifest(
 ) -> dict:
 	"""マニフェスト差分保存。admin のみ許可。
 
+	割り当ては added / removed の差分のみを適用し、送られていないメンバーの割り当てには触れない（#228）。
+	同じロールの同じメンバーが added と removed の両方にある場合は 400 を返す。
 	会員種別のロールの割当を変えると、user_memberships も更新する。種別として成り立たない割当は 400 を返す。
 	Discord で直接付け外しするロールの割当を変えようとした場合は 403 を返す（#251）。
 	"""
+	assignment_changes = {
+		role_id: change.model_dump()
+		for role_id, change in payload.role_assignment_changes.items()
+	}
+	try:
+		validate_role_assignment_changes(assignment_changes)
+	except RoleAssignmentChangeConflictError as exc:
+		raise _error(
+			400, ERROR_ROLE_ASSIGNMENT_CHANGE_CONFLICT, exc.response_detail,
+			role_id=exc.role_id, discord_id=exc.discord_id,
+		) from exc
+
+	has_assignment_changes = any(
+		change.added or change.removed for change in payload.role_assignment_changes.values()
+	)
 	await _save(
 		patch_manifest_db,
 		[c.model_dump() for c in payload.upsert_categories],
 		payload.delete_category_ids,
 		[r.model_dump() for r in payload.upsert_roles],
 		payload.delete_role_ids,
-		payload.upsert_role_assignments,
+		assignment_changes,
 		audit.with_operation(OP_MANIFEST_PATCH),
-		protected_role_ids=await _protected_role_ids_for(payload.upsert_role_assignments),
+		protected_role_ids=await _protected_role_ids_for(has_assignment_changes),
 	)
 	return {"ok": True}

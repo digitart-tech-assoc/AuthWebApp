@@ -50,7 +50,12 @@ def test_patch_rejects_change_of_protected_role_and_rolls_back(db):
 
 	with pytest.raises(ProtectedRoleAssignmentError):
 		manifest_repository.patch_manifest_db(
-			[], [], [_role("r1", name="after")], [], {ADMIN_ROLE: [], "role-game": ["200"]}, AUDIT,
+			[], [], [_role("r1", name="after")], [],
+			{
+				ADMIN_ROLE: {"added": [], "removed": ["100"]},
+				"role-game": {"added": ["200"], "removed": []},
+			},
+			AUDIT,
 			protected_role_ids=frozenset({ADMIN_ROLE}),
 		)
 
@@ -64,7 +69,12 @@ def test_patch_allows_protected_role_without_actual_change(db):
 	db.assign(ADMIN_ROLE, "100")
 
 	manifest_repository.patch_manifest_db(
-		[], [], [], [], {ADMIN_ROLE: ["100"], "role-game": ["200"]}, AUDIT,
+		[], [], [], [],
+		{
+			ADMIN_ROLE: {"added": ["100"], "removed": []},
+			"role-game": {"added": ["200"], "removed": []},
+		},
+		AUDIT,
 		protected_role_ids=frozenset({ADMIN_ROLE}),
 	)
 
@@ -137,7 +147,10 @@ def test_patch_endpoint_returns_403_for_protected_role(client, monkeypatch):
 	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset({ADMIN_ROLE})))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise_protected)
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {ADMIN_ROLE: []}})
+	res = client.patch(
+		"/api/v1/manifest",
+		json={"role_assignment_changes": {ADMIN_ROLE: {"added": [], "removed": ["100"]}}},
+	)
 
 	assert res.status_code == 403
 	assert res.json()["detail"] == {
@@ -161,7 +174,10 @@ def test_patch_endpoint_passes_protected_role_ids(client, monkeypatch):
 	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset({ADMIN_ROLE})))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args, **kwargs: calls.append(kwargs))
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {"role-game": ["100"]}})
+	res = client.patch(
+		"/api/v1/manifest",
+		json={"role_assignment_changes": {"role-game": {"added": ["100"], "removed": []}}},
+	)
 
 	assert res.status_code == 200
 	assert calls == [{"protected_role_ids": frozenset({ADMIN_ROLE})}]
@@ -185,7 +201,10 @@ def test_patch_endpoint_returns_502_when_discord_fetch_fails(client, monkeypatch
 	monkeypatch.setattr(roles_api, "fetch_bot_guild_member", AsyncMock(return_value=None))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args, **kwargs: saved.append(args))
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {"role-game": ["100"]}})
+	res = client.patch(
+		"/api/v1/manifest",
+		json={"role_assignment_changes": {"role-game": {"added": ["100"], "removed": []}}},
+	)
 
 	assert res.status_code == 502
 	assert res.json()["detail"]["code"] == "discord_unavailable"
@@ -198,7 +217,10 @@ def test_patch_endpoint_returns_502_when_bot_member_fetch_fails(client, monkeypa
 	monkeypatch.setattr(roles_api, "fetch_bot_guild_member", AsyncMock(side_effect=RuntimeError("boom")))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", lambda *args, **kwargs: pytest.fail("must not save"))
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {"role-game": ["100"]}})
+	res = client.patch(
+		"/api/v1/manifest",
+		json={"role_assignment_changes": {"role-game": {"added": ["100"], "removed": []}}},
+	)
 
 	assert res.status_code == 502
 	assert res.json()["detail"]["code"] == "discord_unavailable"
@@ -212,7 +234,12 @@ def test_protected_role_is_rejected_before_membership_update(db, monkeypatch):
 
 	with pytest.raises(ProtectedRoleAssignmentError):
 		manifest_repository.patch_manifest_db(
-			[], [], [], [], {"role-member": [], ADMIN_ROLE: ["100"]}, AUDIT,
+			[], [], [], [],
+			{
+				"role-member": {"added": [], "removed": ["100"]},
+				ADMIN_ROLE: {"added": ["100"], "removed": []},
+			},
+			AUDIT,
 			protected_role_ids=frozenset({ADMIN_ROLE}),
 		)
 

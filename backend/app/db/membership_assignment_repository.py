@@ -61,7 +61,7 @@ def apply_membership_changes(
 	changes: dict[str, tuple[list[str], list[str]]],
 	audit: AuditContext | None = None,
 ) -> dict[str, tuple[list[str], list[str]]]:
-	"""割当の変更（replace_role_assignments の戻り値）に合わせて、呼び出し元のトランザクションで user_memberships を更新する。
+	"""割当の変更（replace_role_assignments / apply_role_assignment_changes の戻り値）に合わせて、呼び出し元のトランザクションで user_memberships を更新する。
 
 	種別として成り立たない状態になる場合は MembershipAssignmentError を送出する（呼び出し元でロールバックする）。
 	Discord ID -> (追加した種別, 削除した種別) を返す（実際に変わったものだけ）。

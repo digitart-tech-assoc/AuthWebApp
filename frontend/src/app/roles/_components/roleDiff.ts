@@ -1,5 +1,5 @@
 import { SAVE_MANAGED_MEMBERSHIP_TYPES } from "@/types/roles";
-import type { Role, Category, RoleDiffData, ManifestPatchPayload } from "@/types/roles";
+import type { Role, Category, RoleDiffData, RoleAssignmentChange, ManifestPatchPayload } from "@/types/roles";
 export type { ManifestPatchPayload };
 
 /**
@@ -131,12 +131,18 @@ export function buildManifestPatchPayload(
   });
   const deleteRoleIds = baseRoles.filter((r) => !pendingRoles.find((n) => n.role_id === r.role_id)).map((r) => r.role_id);
 
-  const upsertRoleAssignments: Record<string, string[]> = {};
-  for (const roleId of Object.keys(membersByRole)) {
-    const curr = [...(membersByRole[roleId] || [])].sort();
-    const init = [...(initialAssignments[roleId] || [])].sort();
-    if (JSON.stringify(curr) !== JSON.stringify(init)) {
-      upsertRoleAssignments[roleId] = membersByRole[roleId];
+  const roleAssignmentChanges: Record<string, RoleAssignmentChange> = {};
+  const assignmentRoleIds = new Set([
+    ...Object.keys(initialAssignments),
+    ...Object.keys(membersByRole),
+  ]);
+  for (const roleId of assignmentRoleIds) {
+    const initSet = new Set(initialAssignments[roleId] || []);
+    const currSet = new Set(membersByRole[roleId] || []);
+    const added = [...currSet].filter((id) => !initSet.has(id)).sort();
+    const removed = [...initSet].filter((id) => !currSet.has(id)).sort();
+    if (added.length > 0 || removed.length > 0) {
+      roleAssignmentChanges[roleId] = { added, removed };
     }
   }
 
@@ -145,7 +151,7 @@ export function buildManifestPatchPayload(
     delete_category_ids: deleteCatIds,
     upsert_roles: upsertRoles,
     delete_role_ids: deleteRoleIds,
-    upsert_role_assignments: upsertRoleAssignments,
+    role_assignment_changes: roleAssignmentChanges,
   };
 
   const hasDiff =
@@ -153,7 +159,7 @@ export function buildManifestPatchPayload(
     deleteCatIds.length > 0 ||
     upsertRoles.length > 0 ||
     deleteRoleIds.length > 0 ||
-    Object.keys(upsertRoleAssignments).length > 0;
+    Object.keys(roleAssignmentChanges).length > 0;
 
   return { payload, hasDiff };
 }

@@ -7,6 +7,7 @@ from typing import Any
 
 from psycopg2.extras import execute_values
 
+from app.core.exceptions import RoleAssignmentChangeConflictError
 from app.db.audit_repository import (
 	ACTION_UPDATE,
 	SYSTEM_DB,
@@ -78,6 +79,58 @@ def replace_role_assignments(cur: Any, assignments: dict[str, list[str]]) -> dic
 			if cur.rowcount > 0:
 				removed.append(user_id)
 		for user_id in sorted(desired - current):
+			cur.execute(
+				"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+				(role_id, user_id),
+			)
+			if cur.rowcount > 0:
+				added.append(user_id)
+		changes[role_id] = (added, removed)
+	return changes
+
+
+def validate_role_assignment_changes(
+	assignment_changes: dict[str, dict[str, list[str]]],
+) -> dict[str, tuple[list[str], list[str]]]:
+	"""割当の差分指定（added / removed）を正規化し、矛盾があれば RoleAssignmentChangeConflictError を送出する。
+
+	role_id -> (重複排除・ソート済みの added, 重複排除・ソート済みの removed) を返す。
+	"""
+	normalized: dict[str, tuple[list[str], list[str]]] = {}
+	for role_id in sorted(assignment_changes):
+		change = assignment_changes[role_id]
+		added_set = set(change.get("added", []))
+		removed_set = set(change.get("removed", []))
+		overlap = sorted(added_set & removed_set)
+		if overlap:
+			raise RoleAssignmentChangeConflictError(role_id, overlap[0])
+		normalized[role_id] = (sorted(added_set), sorted(removed_set))
+	return normalized
+
+
+def apply_role_assignment_changes(
+	cur: Any,
+	assignment_changes: dict[str, dict[str, list[str]]],
+) -> dict[str, tuple[list[str], list[str]]]:
+	"""呼び出し元のトランザクションで、指定されたロールの割り当てを差分（added / removed）だけ更新する。
+
+	送られていないメンバーの割り当てには触れない。
+	同じロールの同じメンバーが added と removed の両方にある場合は RoleAssignmentChangeConflictError を送出する。
+	role_id -> (実際に追加したメンバー, 実際に削除したメンバー) を返す（rowcount > 0 のものだけ）。
+	"""
+	normalized = validate_role_assignment_changes(assignment_changes)
+	changes: dict[str, tuple[list[str], list[str]]] = {}
+	for role_id, (to_add, to_remove) in normalized.items():
+		added: list[str] = []
+		removed: list[str] = []
+		for user_id in to_remove:
+			cur.execute(
+				"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
+				(role_id, user_id),
+			)
+			if cur.rowcount > 0:
+				removed.append(user_id)
+		for user_id in to_add:
 			cur.execute(
 				"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 				(role_id, user_id),

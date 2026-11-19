@@ -62,12 +62,17 @@ export type RoleDiffData = {
   categoriesDeleted: Category[];
 };
 
+export type RoleAssignmentChange = {
+  added: string[];
+  removed: string[];
+};
+
 export interface ManifestPatchPayload {
   upsert_categories: Category[];
   delete_category_ids: string[];
   upsert_roles: Role[];
   delete_role_ids: string[];
-  upsert_role_assignments: Record<string, string[]>;
+  role_assignment_changes: Record<string, RoleAssignmentChange>;
 }
 
 
