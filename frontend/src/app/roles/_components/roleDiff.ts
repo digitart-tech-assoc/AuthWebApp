@@ -1,6 +1,19 @@
 import { SAVE_MANAGED_MEMBERSHIP_TYPES } from "@/types/roles";
-import type { Role, Category, RoleDiffData, ManifestPatchPayload } from "@/types/roles";
+import type { Role, Category, RoleDiffData, ManifestPatchPayload, RoleAssignmentChange } from "@/types/roles";
 export type { ManifestPatchPayload };
+
+/**
+ * 1 ロール分の割当の差分を求める（画面を開いた時点の一覧 base と、手元で変更した一覧 next の差）。
+ * 重複した ID は 1 件にまとめる
+ */
+export function diffAssignments(base: readonly string[], next: readonly string[]): RoleAssignmentChange {
+  const baseSet = new Set(base);
+  const nextSet = new Set(next);
+  return {
+    added: [...nextSet].filter((m) => !baseSet.has(m)),
+    removed: [...baseSet].filter((m) => !nextSet.has(m)),
+  };
+}
 
 /**
  * 初期状態（ベース）と現在の変更状態を比較し、モーダル表示用の差分オブジェクトを生成する
@@ -69,14 +82,10 @@ export function calculateDifferences(
   const managedTypes: readonly string[] = SAVE_MANAGED_MEMBERSHIP_TYPES;
 
   for (const roleId of baseRoleIds) {
-    const baseMemberIds = baseMembersByRole[roleId] || [];
-    const nextMemberIds = membersByRole[roleId] || [];
-
-    const baseMemberSet = new Set(baseMemberIds);
-    const nextMemberSet = new Set(nextMemberIds);
-
-    const addedMembers = nextMemberIds.filter((m) => !baseMemberSet.has(m));
-    const removedMembers = baseMemberIds.filter((m) => !nextMemberSet.has(m));
+    const { added: addedMembers, removed: removedMembers } = diffAssignments(
+      baseMembersByRole[roleId] || [],
+      membersByRole[roleId] || []
+    );
 
     if (addedMembers.length > 0 || removedMembers.length > 0) {
       const baseRole = baseRoleMap.get(roleId);
@@ -131,12 +140,13 @@ export function buildManifestPatchPayload(
   });
   const deleteRoleIds = baseRoles.filter((r) => !pendingRoles.find((n) => n.role_id === r.role_id)).map((r) => r.role_id);
 
-  const upsertRoleAssignments: Record<string, string[]> = {};
+  // 追加・削除したメンバーだけを送る（#228）。全員分を送ると、画面を開いた後に
+  // ほかの操作（self-batch・ほかの管理者の保存など）で付いた割当を外してしまうため
+  const roleAssignmentChanges: Record<string, RoleAssignmentChange> = {};
   for (const roleId of Object.keys(membersByRole)) {
-    const curr = [...(membersByRole[roleId] || [])].sort();
-    const init = [...(initialAssignments[roleId] || [])].sort();
-    if (JSON.stringify(curr) !== JSON.stringify(init)) {
-      upsertRoleAssignments[roleId] = membersByRole[roleId];
+    const change = diffAssignments(initialAssignments[roleId] || [], membersByRole[roleId] || []);
+    if (change.added.length > 0 || change.removed.length > 0) {
+      roleAssignmentChanges[roleId] = change;
     }
   }
 
@@ -145,7 +155,7 @@ export function buildManifestPatchPayload(
     delete_category_ids: deleteCatIds,
     upsert_roles: upsertRoles,
     delete_role_ids: deleteRoleIds,
-    upsert_role_assignments: upsertRoleAssignments,
+    role_assignment_changes: roleAssignmentChanges,
   };
 
   const hasDiff =
@@ -153,7 +163,7 @@ export function buildManifestPatchPayload(
     deleteCatIds.length > 0 ||
     upsertRoles.length > 0 ||
     deleteRoleIds.length > 0 ||
-    Object.keys(upsertRoleAssignments).length > 0;
+    Object.keys(roleAssignmentChanges).length > 0;
 
   return { payload, hasDiff };
 }

@@ -2,8 +2,12 @@
 
 import pytest
 
+from app.core.exceptions import RoleAssignmentChangeConflictError
 from app.db import guild_repository, manifest_repository
+from app.db.audit_repository import AuditContext
 from tests.fake_role_db import FakeRoleDB
+
+AUDIT = AuditContext(request_id="req-1", actor_sub="sub-1", actor_discord_id="111", operation="manifest_patch")
 
 
 @pytest.fixture
@@ -33,39 +37,124 @@ def _assignment_writes(db):
 	return [sql for sql in db.writes() if "role_member_assignments" in sql]
 
 
+def _change(added=(), removed=()):
+	return {"added": list(added), "removed": list(removed)}
+
+
 def test_patch_assignments_only_touches_added_and_removed_members(db):
 	db.add_role("r1")
 	db.assign("r1", "100", "200", "300")
 
-	manifest_repository.patch_manifest_db([], [], [], [], {"r1": ["200", "300", "400"]})
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["400"], removed=["100"])})
 
 	assert db.members_of("r1") == {"200", "300", "400"}
 	writes = _assignment_writes(db)
-	# 一覧に残ったメンバー（200, 300）は DELETE・INSERT しない
+	# 送っていないメンバー（200, 300）は DELETE・INSERT しない
 	assert len(writes) == 2
 	assert writes[0].startswith("DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s")
 	assert writes[1].startswith("INSERT INTO role_member_assignments")
 	assert not any(sql == "DELETE FROM role_member_assignments WHERE role_id = %s" for sql in writes)
+	# 割当の一覧を読んで置き換えない
+	assert not any(sql.startswith("SELECT user_id FROM role_member_assignments") for sql in db.executed)
 
 
-def test_patch_assignments_with_same_members_writes_nothing(db):
+def test_patch_keeps_assignment_added_by_other_operation_after_screen_opened(db):
+	"""画面を開いた後に self-batch などで付いた割当が、管理者の保存で外れない（#228）。"""
 	db.add_role("r1")
-	db.assign("r1", "100", "200")
+	db.assign("r1", "100")
+	# 管理者が画面を開いた時点の割当は 100 だけ。その後、200 が self-batch で自分に付けた
+	db.assign("r1", "200")
 
-	manifest_repository.patch_manifest_db([], [], [], [], {"r1": ["200", "100"]})
+	# 管理者は画面上で 300 を追加し、100 を外して保存する（200 は画面に表示されていない）
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["300"], removed=["100"])})
 
-	assert db.members_of("r1") == {"100", "200"}
+	assert db.members_of("r1") == {"200", "300"}
+
+
+def test_patch_two_admins_editing_same_role_do_not_overwrite_each_other(db):
+	"""同じロールを2人の管理者が同時に編集しても、後の保存が先の保存の追加を外さない（#228）。"""
+	db.add_role("r1")
+	db.assign("r1", "100")
+
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["200"])})
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["300"])})
+
+	assert db.members_of("r1") == {"100", "200", "300"}
+
+
+def test_patch_role_with_empty_added_and_removed_changes_nothing(db):
+	db.add_role("r1")
+	db.assign("r1", "100")
+
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(), "r2": {}})
+
+	assert db.members_of("r1") == {"100"}
 	assert _assignment_writes(db) == []
+
+
+def test_patch_already_assigned_or_unassigned_members_write_nothing(db):
+	# 追加済みのメンバーの追加・割り当てのないメンバーの削除は、実際の変更にならない
+	db.add_role("r1")
+	db.assign("r1", "100")
+
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["100"], removed=["999"])}, AUDIT)
+
+	assert db.members_of("r1") == {"100"}
+	assert db.audit_logs == []
+
+
+def test_patch_duplicated_ids_are_applied_once(db):
+	db.add_role("r1")
+	db.assign("r1", "100")
+
+	manifest_repository.patch_manifest_db(
+		[], [], [], [], {"r1": _change(added=["200", "200"], removed=["100", "100"])}, AUDIT,
+	)
+
+	assert db.members_of("r1") == {"200"}
+	assert db.audit_logs[0]["after"] == {"added": ["200"], "removed": ["100"]}
+
+
+def test_patch_rejects_same_member_in_added_and_removed_and_rolls_back(db):
+	db.add_role("r1", permissions=8)
+	db.assign("r2", "100")
+
+	with pytest.raises(RoleAssignmentChangeConflictError) as exc_info:
+		manifest_repository.patch_manifest_db(
+			[], [], [_role("r1", permissions=0)], [],
+			{"r1": _change(added=["300"]), "r2": _change(added=["200", "100"], removed=["100", "200"])},
+			AUDIT,
+		)
+
+	# 最初に見つかった 1 件（ロール ID・Discord ID の順）を返す
+	assert (exc_info.value.role_id, exc_info.value.discord_id) == ("r2", "100")
+	assert db.roles["r1"]["permissions"] == 8
+	assert db.members_of("r1") == set()
+	assert db.members_of("r2") == {"100"}
+	assert db.audit_logs == []
 
 
 def test_patch_assignments_leave_other_roles_untouched(db):
 	db.assign("r1", "100")
 	db.assign("r2", "100")
 
-	manifest_repository.patch_manifest_db([], [], [], [], {"r1": []})
+	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(removed=["100"])})
 
 	assert db.members_of("r1") == set()
 	assert db.members_of("r2") == {"100"}
+
+
+def test_patch_assignments_for_new_draft_role(db):
+	# 同じ保存で作成したロール（仮 ID）にメンバーを割り当てられる
+	manifest_repository.patch_manifest_db(
+		[], [], [_role("draft-abc")], [], {"draft-abc": _change(added=["100"])}, AUDIT,
+	)
+
+	assert db.members_of("draft-abc") == {"100"}
+	assignment_logs = [log for log in db.audit_logs if log["target_type"] == "role_assignment"]
+	assert [(log["target_id"], log["after"]) for log in assignment_logs] == [
+		("draft-abc", {"added": ["100"], "removed": []}),
+	]
 
 
 def test_replace_role_assignments_returns_actual_changes(db):

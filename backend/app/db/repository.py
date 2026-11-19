@@ -45,6 +45,7 @@ from app.db.guild_repository import (
 	remove_user_from_role,
 	save_guild_members,
 	save_role_assignments,
+	validate_role_assignment_changes,
 )
 
 # 5. メンバーシップ関連
@@ -105,6 +106,7 @@ __all__ = [
 	"replace_manifest",
 	"save_guild_members",
 	"save_role_assignments",
+	"validate_role_assignment_changes",
 	"add_user_to_role",
 	"batch_update_user_roles",
 	"remove_user_from_role",
