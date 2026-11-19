@@ -10,7 +10,7 @@ from typing import Any, NamedTuple
 from app.core.config import OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
 from app.db.audit_repository import AuditContext, insert_audit_logs
-from app.db.connection import _connect, _log_db_access, limit_lock_wait
+from app.db.connection import _connect, _log_db_access, limit_lock_wait, retry_on_deadlock
 from app.db.guild_repository import member_roles_audit_logs
 from app.db.membership_assignment_repository import lock_memberships
 from app.utils.otp import verify_otp_code
@@ -118,6 +118,7 @@ def get_latest_verified_otp(discord_id: str) -> dict[str, Any] | None:
 			}
 
 
+@retry_on_deadlock
 def upsert_student_profile_and_promote(
 	profile_id: str,
 	discord_id: str,
@@ -143,6 +144,8 @@ def upsert_student_profile_and_promote(
 	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
 	同じトランザクションでロールの割当を変える（#251）。member ロールの割当を追加し、pre-member ロールの割当を外す。
 	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えず、ロックも取らない。
+
+	デッドロックで失敗した場合は、1 回だけ呼び直す（retry_on_deadlock。#264）。
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:

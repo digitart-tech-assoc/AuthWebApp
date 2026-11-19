@@ -20,7 +20,7 @@ from app.db.audit_repository import (
 	insert_audit_logs,
 )
 from app.core.exceptions import ProtectedRoleAssignmentError
-from app.db.connection import _connect
+from app.db.connection import _connect, retry_on_deadlock
 from app.db.guild_repository import replace_role_assignments
 from app.db.membership_assignment_repository import (
 	apply_membership_changes,
@@ -222,6 +222,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 		conn.commit()
 
 
+@retry_on_deadlock
 def replace_manifest(
 	categories: list[dict[str, Any]],
 	roles: list[dict[str, Any]],
@@ -235,6 +236,7 @@ def replace_manifest(
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
 	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 	会員種別のロールの割当を送るときは、トランザクションの最初に lock_memberships を取る。
+	デッドロックで失敗した場合は、1 回だけ呼び直す（retry_on_deadlock。#264）。
 
 	audit を渡すと、変更前の全行と比べて実際に追加・更新・削除された行だけを同じトランザクションで記録する。
 	"""
@@ -278,6 +280,7 @@ def update_role_id(old_id: str, new_id: str, audit: AuditContext | None = None) 
 		conn.commit()
 
 
+@retry_on_deadlock
 def patch_manifest_db(
 	upsert_categories: list[dict[str, Any]],
 	delete_category_ids: list[str],
@@ -293,6 +296,7 @@ def patch_manifest_db(
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
 	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 	会員種別のロールの割当を送るときは、トランザクションの最初に lock_memberships を取る。
+	デッドロックで失敗した場合は、1 回だけ呼び直す（retry_on_deadlock。#264）。
 
 	audit を渡すと、変更のあった行だけを同じトランザクションで記録する。記録に失敗したら変更も失敗させる。
 	"""

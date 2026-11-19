@@ -2,6 +2,7 @@
 インメモリの代替。リポジトリ関数が発行する SQL だけを解釈する。
 user_memberships の既存行の確認（register_pre_member の SELECT）は、未登録として扱う。
 本会員化（upsert_student_profile_and_promote）のため、paid_invitations と student_profiles も最小限だけ扱う。
+deadlock_on に SQL の先頭を入れると、その文を実行したとき deadlocks 回まで DeadlockDetected を送出する（#264）。
 
 _connect() の代わりに使い、with を抜けるときに _PooledConnection と同じく、正常終了なら commit、例外なら rollback する。
 """
@@ -12,6 +13,8 @@ import copy
 import json
 from datetime import datetime, timezone
 from typing import Any
+
+from psycopg2 import errors as pg_errors
 
 CATEGORY_COLUMNS = ("id", "name", "display_order", "is_collapsed", "permissions", "is_restricted")
 ROLE_COLUMNS = ("role_id", "name", "color", "hoist", "mentionable", "permissions", "position", "category_id", "is_our_bot")
@@ -39,6 +42,8 @@ class FakeRoleDB:
 		self.advisory_locks: list[str] = []
 		self.executed: list[str] = []
 		self.fail_audit_insert = False
+		self.deadlock_on: str | None = None
+		self.deadlocks = 0
 		self.commits = 0
 		self.rollbacks = 0
 
@@ -143,6 +148,9 @@ class FakeCursor:
 		params = params or ()
 		self._rows = []
 		self.rowcount = 0
+		if db.deadlocks > 0 and db.deadlock_on is not None and q.startswith(db.deadlock_on):
+			db.deadlocks -= 1
+			raise pg_errors.DeadlockDetected("deadlock detected")
 
 		if q.startswith("SELECT user_id FROM role_member_assignments WHERE role_id = %s"):
 			self._rows = [(u,) for u in sorted(db.members_of(params[0]))]
