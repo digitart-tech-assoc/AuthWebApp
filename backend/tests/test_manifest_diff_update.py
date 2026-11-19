@@ -135,6 +135,19 @@ def test_patch_rejects_same_member_in_added_and_removed_and_rolls_back(db):
 	assert db.audit_logs == []
 
 
+def test_validate_role_assignment_changes_returns_deduplicated_and_sorted_changes():
+	normalized = guild_repository.validate_role_assignment_changes({
+		"r2": {"added": ["300", "100", "300"], "removed": []},
+		"r1": {"removed": ["200", "200"]},
+	})
+
+	# ロール ID の順に、重複を除いてソートした (added, removed) を返す
+	assert list(normalized.items()) == [
+		("r1", ([], ["200"])),
+		("r2", (["100", "300"], [])),
+	]
+
+
 def test_patch_assignments_leave_other_roles_untouched(db):
 	db.assign("r1", "100")
 	db.assign("r2", "100")

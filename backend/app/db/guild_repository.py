@@ -89,16 +89,25 @@ def replace_role_assignments(cur: Any, assignments: dict[str, list[str]]) -> dic
 	return changes
 
 
-def validate_role_assignment_changes(changes: dict[str, dict[str, list[str]]]) -> None:
-	"""同じメンバーを同じロールの added と removed の両方に指定していれば RoleAssignmentChangeConflictError を送出する（#228）。
+def validate_role_assignment_changes(
+	changes: dict[str, dict[str, list[str]]],
+) -> dict[str, tuple[list[str], list[str]]]:
+	"""割当の差分を検証し、重複を除いてソートした形にする（#228）。
 
+	同じメンバーを同じロールの added と removed の両方に指定していれば RoleAssignmentChangeConflictError を送出する。
 	原因が複数ある場合は、ロール ID・Discord ID の順で最初の 1 件を返す。
+	role_id -> (重複を除いてソートした added, 重複を除いてソートした removed) をロール ID の順で返す。
 	"""
+	normalized: dict[str, tuple[list[str], list[str]]] = {}
 	for role_id in sorted(changes):
 		change = changes[role_id]
-		both = set(change.get("added", [])) & set(change.get("removed", []))
+		added = set(change.get("added", []))
+		removed = set(change.get("removed", []))
+		both = added & removed
 		if both:
 			raise RoleAssignmentChangeConflictError(role_id, min(both))
+		normalized[role_id] = (sorted(added), sorted(removed))
+	return normalized
 
 
 def apply_role_assignment_changes(
@@ -113,21 +122,20 @@ def apply_role_assignment_changes(
 	同じメンバーを added と removed の両方に指定していれば、何も変えずに RoleAssignmentChangeConflictError を送出する。
 	role_id -> (実際に追加したメンバー, 実際に削除したメンバー) を返す（rowcount > 0 のものだけ）。
 	"""
-	validate_role_assignment_changes(changes)
+	normalized = validate_role_assignment_changes(changes)
 	result: dict[str, tuple[list[str], list[str]]] = {}
-	# 並行する保存同士でデッドロックしないよう、ロール ID・Discord ID の順に書き込む
-	for role_id in sorted(changes):
-		change = changes[role_id]
+	# 並行する保存同士でデッドロックしないよう、ロール ID・Discord ID の順に書き込む（normalized はその順に並んでいる）
+	for role_id, (to_add, to_remove) in normalized.items():
 		added: list[str] = []
 		removed: list[str] = []
-		for user_id in sorted(set(change.get("removed", []))):
+		for user_id in to_remove:
 			cur.execute(
 				"DELETE FROM role_member_assignments WHERE role_id = %s AND user_id = %s",
 				(role_id, user_id),
 			)
 			if cur.rowcount > 0:
 				removed.append(user_id)
-		for user_id in sorted(set(change.get("added", []))):
+		for user_id in to_add:
 			cur.execute(
 				"INSERT INTO role_member_assignments (role_id, user_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
 				(role_id, user_id),
