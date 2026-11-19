@@ -88,6 +88,7 @@ def _promote(require_eligibility: bool = True, audit: AuditContext | None = None
 		require_eligibility=require_eligibility,
 		audit=audit,
 		pre_member_role_id="pre-member-role",
+		sub_user_role_ids=[],
 	)
 
 
@@ -190,6 +191,7 @@ def test_promotion_without_pre_member_role_id_keeps_other_assignments(monkeypatc
 		profile_id="prof_test", discord_id="test-discord-id", student_number="1A234567", name="テスト 太郎",
 		furigana="テスト タロウ", department="テスト学部", gender=None, phone="09000000000",
 		email_aoyama="aa234567@aoyama.ac.jp", member_role_ids=["member-role"], pre_member_role_id=None,
+		sub_user_role_ids=[],
 	)
 
 	assert not any(sql.startswith("DELETE FROM role_member_assignments") for sql in conn.executed)
@@ -217,3 +219,15 @@ def test_promotion_without_audit_context_records_nothing(monkeypatch):
 	_promote(require_eligibility=False)
 
 	assert not any("role_audit_logs" in sql for sql in conn.executed)
+
+
+def test_promotion_requires_sub_user_role_ids(monkeypatch):
+	# 渡し忘れで sub垢 の割当の確認が抜けないよう、引数を省くと呼び出しの時点で失敗させる（#264）
+	monkeypatch.setattr(student_repository, "_connect", lambda: pytest.fail("must not connect"))
+
+	with pytest.raises(TypeError):
+		student_repository.upsert_student_profile_and_promote(  # type: ignore[call-arg]
+			profile_id="prof_test", discord_id="test-discord-id", student_number="1A234567", name="テスト 太郎",
+			furigana="テスト タロウ", department="テスト学部", gender=None, phone="09000000000",
+			email_aoyama="aa234567@aoyama.ac.jp", member_role_ids=["member-role"], pre_member_role_id="pre-member-role",
+		)

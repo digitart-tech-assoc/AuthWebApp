@@ -159,7 +159,8 @@ def upsert_student_profile_and_promote(
 	require_eligibility: bool = True,
 	audit: AuditContext | None = None,
 	pre_member_role_id: str | None = None,
-	sub_user_role_ids: list[str] | None = None,
+	*,
+	sub_user_role_ids: list[str],
 ) -> PromotionResult:
 	"""学生プロフィールを保存し、pre_memberからmemberへ昇格する。
 
@@ -167,6 +168,8 @@ def upsert_student_profile_and_promote(
 	（pre_member かつ有効な paid_invitations、かつ member / sub垢 ではない）を確認し、
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
 	sub垢 は、sub_user の行または sub_user_role_ids の割当で判断する（/members/member/add と同じ。#264）。
+	sub_user_role_ids は、渡し忘れでこの確認が抜けないよう、デフォルト値のないキーワード引数にしている
+	（SUB_USER_ROLE_IDS が未設定なら空のリストを渡し、割当の確認を省く）。
 	確認の前に lock_memberships を取り、種別を変えるほかの経路（管理画面の保存など）と直列化する。
 
 	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
@@ -206,7 +209,7 @@ def upsert_student_profile_and_promote(
 
 				# 新規入会かどうかはトランザクションの外（認証時の app_role）で判断しているため、
 				# member / sub垢 の人がこの経路に入っても、member と sub垢 の両方を持つ状態にしない（#264）
-				if _is_member_or_sub_user(cur, discord_id, sub_user_role_ids or []):
+				if _is_member_or_sub_user(cur, discord_id, sub_user_role_ids):
 					raise RegistrationNotEligibleError(NOT_ELIGIBLE_ALREADY_MEMBER)
 
 			# 既存プロフィールを確認
