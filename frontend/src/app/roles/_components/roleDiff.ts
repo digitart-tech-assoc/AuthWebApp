@@ -148,7 +148,8 @@ export function buildManifestPatchPayload(
   for (const roleId of assignmentRoleIds) {
     const change = diffAssignments(initialAssignments[roleId] || [], membersByRole[roleId] || []);
     if (change.added.length > 0 || change.removed.length > 0) {
-      roleAssignmentChanges[roleId] = change;
+      // 送る内容が毎回同じ順になるよう ID 順に並べる（確認モーダルの表示順は変えないため、ここでだけ並べる）
+      roleAssignmentChanges[roleId] = { added: [...change.added].sort(), removed: [...change.removed].sort() };
     }
   }
 
