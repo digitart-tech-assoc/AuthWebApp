@@ -166,10 +166,15 @@ class TestProactiveThrottle:
 		"""1 回だけ呼ぶ処理（self-batch・本会員登録など）は、後に同じバケットへのリクエストが続かないので待たない。"""
 		member_body = {"user": {"id": USER_ID, "username": "name"}, "roles": []}
 		exhausted = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset-After": "1.25"}
-		with _patch_put([_ok_with_bucket("0", "1.25")]), 			patch("httpx.AsyncClient.delete", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")), 			patch("httpx.AsyncClient.patch", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")), 			patch(
+		with (
+			_patch_put([_ok_with_bucket("0", "1.25")]),
+			patch("httpx.AsyncClient.delete", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")),
+			patch("httpx.AsyncClient.patch", new_callable=AsyncMock, return_value=_ok_with_bucket("0", "1.25")),
+			patch(
 				"httpx.AsyncClient.get", new_callable=AsyncMock,
 				return_value=httpx.Response(200, headers=exhausted, json=member_body, request=REQUEST),
-			):
+			),
+		):
 			await discord_client.add_role_to_member(GUILD_ID, USER_ID, ROLE_ID, "token")
 			await discord_client.remove_role_from_member(GUILD_ID, USER_ID, ROLE_ID, "token")
 			await discord_client.set_member_roles(GUILD_ID, USER_ID, [ROLE_ID], "token")
