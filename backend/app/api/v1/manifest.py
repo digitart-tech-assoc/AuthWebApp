@@ -106,10 +106,21 @@ async def _protected_role_ids_for(role_ids: Collection[str]) -> frozenset[str]:
 		raise _error(502, ERROR_DISCORD_UNAVAILABLE, exc.detail) from exc
 
 
+def _assignment_change_conflict_error(exc: RoleAssignmentChangeConflictError) -> HTTPException:
+	# 固定文言にロール ID と Discord ID だけを埋めたもの（app/core/exceptions.py）
+	return _error(
+		400, ERROR_ASSIGNMENT_CHANGE_CONFLICT, exc.response_detail,
+		role_id=exc.role_id, discord_id=exc.discord_id,
+	)
+
+
 async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
-	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251）。"""
+	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251, #228）。"""
 	try:
 		await asyncio.to_thread(func, *args, protected_role_ids=protected_role_ids)
+	except RoleAssignmentChangeConflictError as exc:
+		# 通常は patch_manifest で先に検証して 400 を返すが、リポジトリ側で検出した場合も 500 にしない
+		raise _assignment_change_conflict_error(exc) from exc
 	except ProtectedRoleAssignmentError as exc:
 		# 固定文言にロール ID だけを埋めたもの（app/core/exceptions.py）
 		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail, role_id=exc.role_id) from exc
@@ -171,11 +182,7 @@ async def patch_manifest(
 	try:
 		validate_role_assignment_changes(changes)
 	except RoleAssignmentChangeConflictError as exc:
-		# 固定文言にロール ID と Discord ID だけを埋めたもの（app/core/exceptions.py）
-		raise _error(
-			400, ERROR_ASSIGNMENT_CHANGE_CONFLICT, exc.response_detail,
-			role_id=exc.role_id, discord_id=exc.discord_id,
-		) from exc
+		raise _assignment_change_conflict_error(exc) from exc
 	# added / removed がどちらも空のロールは何も変えないため、Discord への問い合わせの要否に含めない
 	changed_role_ids = [role_id for role_id, c in changes.items() if c["added"] or c["removed"]]
 	await _save(

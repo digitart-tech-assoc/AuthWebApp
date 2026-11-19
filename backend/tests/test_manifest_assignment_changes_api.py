@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.api.v1 import manifest as manifest_api
 from app.core.auth import get_current_principal
+from app.core.exceptions import RoleAssignmentChangeConflictError
 from app.db.audit_repository import AuditContext, get_audit_context
 
 
@@ -70,6 +71,24 @@ def test_patch_rejects_same_member_in_added_and_removed(client, saved, fetch):
 	}
 	assert saved == []
 	fetch.assert_not_awaited()
+
+
+def test_patch_returns_400_when_repository_detects_conflict(client, fetch, monkeypatch):
+	# API の検証をすり抜けてリポジトリ側で矛盾を検出した場合も、500 ではなく 400 にする
+	def _raise(*_args, **_kwargs):
+		raise RoleAssignmentChangeConflictError("r1", "100")
+
+	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise)
+
+	res = client.patch("/api/v1/manifest", json={"role_assignment_changes": {"r1": {"added": ["100"]}}})
+
+	assert res.status_code == 400
+	assert res.json()["detail"] == {
+		"code": "assignment_change_conflict",
+		"message": "ロール r1 で、100 を追加と削除の両方に指定しています",
+		"role_id": "r1",
+		"discord_id": "100",
+	}
 
 
 def test_patch_with_only_empty_changes_does_not_call_discord(client, saved, fetch):
