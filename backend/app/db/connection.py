@@ -11,7 +11,7 @@ import functools
 import logging
 import os
 import sys
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, Callable, Iterator, ParamSpec, TypeVar
 from urllib.parse import urlparse
 from datetime import datetime
 import json
@@ -27,7 +27,8 @@ from sqlalchemy.pool import QueuePool
 
 logger = logging.getLogger(__name__)
 
-_F = TypeVar("_F", bound=Callable[..., Any])
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
 
@@ -185,7 +186,7 @@ def limit_lock_wait(cur, timeout_ms: int, error_type: type[Exception]) -> Iterat
         raise error_type() from e
 
 
-def retry_on_deadlock(func: _F) -> _F:
+def retry_on_deadlock(func: Callable[_P, _R]) -> Callable[_P, _R]:
     """デッドロック（DeadlockDetected）で失敗したとき、関数全体を 1 回だけ呼び直すデコレーター（#264）。
 
     PostgreSQL がデッドロックを検出すると、片方のトランザクションをロールバックする。
@@ -198,14 +199,14 @@ def retry_on_deadlock(func: _F) -> _F:
     """
 
     @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
             return func(*args, **kwargs)
         except pg_errors.DeadlockDetected:
             logger.warning("Deadlock detected; retrying once: %s", func.__name__)
         return func(*args, **kwargs)
 
-    return wrapper  # type: ignore[return-value]
+    return wrapper
 
 
 def _should_log_to_stdout() -> bool:
