@@ -153,7 +153,9 @@ async def _sync_role_definitions(
 		actual = actual_by_id.get(role_id)
 		if actual is None:
 			try:
-				new_role_discord = await create_guild_role(DISCORD_GUILD_ID, token, build_role_create_payload(role))
+				new_role_discord = await create_guild_role(
+					DISCORD_GUILD_ID, token, build_role_create_payload(role), wait_for_bucket_reset=True
+				)
 				created += 1
 				real_id = new_role_discord["role_id"]
 				await record_discord_audit_safely(audit, [AuditLog(
@@ -178,7 +180,7 @@ async def _sync_role_definitions(
 		if not payload:
 			continue
 		try:
-			await edit_guild_role(DISCORD_GUILD_ID, role_id, token, payload)
+			await edit_guild_role(DISCORD_GUILD_ID, role_id, token, payload, wait_for_bucket_reset=True)
 			updated += 1
 			# 記録するのは実際に送ったフィールドだけ。値は送信形式ではなく fetch_guild_roles / fetch_manifest の形式で残す
 			await record_discord_audit_safely(audit, [AuditLog(
@@ -198,7 +200,7 @@ async def _sync_role_definitions(
 		if role.get("managed") or role_id == DISCORD_GUILD_ID:
 			continue
 		try:
-			await delete_guild_role(DISCORD_GUILD_ID, role_id, token)
+			await delete_guild_role(DISCORD_GUILD_ID, role_id, token, wait_for_bucket_reset=True)
 			deleted += 1
 			deleted_role_ids.add(role_id)
 			await record_discord_audit_safely(audit, [AuditLog(
@@ -388,8 +390,10 @@ async def _apply_role_assignment_diffs(
 
 			for index, (user_id, current_roles, adds, removes) in enumerate(pending):
 				try:
+					# 最後のメンバーの後には同じバケットへのリクエストが続かないので、バケットのリセットを待たない
 					added, removed = await _apply_member_role_diff(
-						user_id, current_roles, target_role_ids, token, client, audit
+						user_id, current_roles, target_role_ids, token, client, audit,
+						wait_for_bucket_reset=index < len(pending) - 1,
 					)
 					assigned_adds += added
 					assigned_removes += removed
@@ -448,6 +452,7 @@ async def _apply_member_role_diff(
 	token: str,
 	client: httpx.AsyncClient,
 	audit: AuditContext | None = None,
+	wait_for_bucket_reset: bool = False,
 ) -> tuple[int, int]:
 	"""1 メンバー分のロール差分を Discord に反映し、(追加数, 削除数) を返す。
 
@@ -457,6 +462,8 @@ async def _apply_member_role_diff(
 	- 差分が 1 件だけなら、ほかのロールに触れない PUT / DELETE で反映する（同じ状態への PUT / DELETE は変化しない）
 	- 2 件以上なら、PATCH の直前にメンバーの現在のロールを取り直し、差分を計算し直して反映する
 	いずれも Discord API の呼び出しは、ロールごとに PUT / DELETE する場合の回数以下になる。
+
+	wait_for_bucket_reset は、後に別のメンバーへの反映が続く場合に True を渡す（discord_client._request を参照）。
 	"""
 	latest_assignments = await asyncio.to_thread(fetch_role_assignments_for_user, user_id)
 	desired_roles = {rid for rid in latest_assignments if rid in target_role_ids}
@@ -467,13 +474,21 @@ async def _apply_member_role_diff(
 
 	if len(adds) + len(removes) == 1:
 		if adds:
-			await add_role_to_member(DISCORD_GUILD_ID, user_id, next(iter(adds)), token, client=client)
+			await add_role_to_member(
+				DISCORD_GUILD_ID, user_id, next(iter(adds)), token,
+				client=client, wait_for_bucket_reset=wait_for_bucket_reset,
+			)
 		else:
-			await remove_role_from_member(DISCORD_GUILD_ID, user_id, next(iter(removes)), token, client=client)
+			await remove_role_from_member(
+				DISCORD_GUILD_ID, user_id, next(iter(removes)), token,
+				client=client, wait_for_bucket_reset=wait_for_bucket_reset,
+			)
 		await _record_member_roles(audit, user_id, adds, removes)
 		return len(adds), len(removes)
 
-	member = await fetch_guild_member(DISCORD_GUILD_ID, user_id, token, client=client)
+	member = await fetch_guild_member(
+		DISCORD_GUILD_ID, user_id, token, client=client, wait_for_bucket_reset=wait_for_bucket_reset
+	)
 	if member is None:
 		raise DiscordAPIError("Member not found", 404)
 	latest_roles = set(member.get("role_ids", []))
@@ -482,7 +497,10 @@ async def _apply_member_role_diff(
 	if not latest_adds and not latest_removes:
 		return 0, 0
 	new_roles = (latest_roles - latest_removes) | latest_adds
-	await set_member_roles(DISCORD_GUILD_ID, user_id, sorted(new_roles), token, client=client)
+	await set_member_roles(
+		DISCORD_GUILD_ID, user_id, sorted(new_roles), token,
+		client=client, wait_for_bucket_reset=wait_for_bucket_reset,
+	)
 	await _record_member_roles(audit, user_id, latest_adds, latest_removes)
 	return len(latest_adds), len(latest_removes)
 
