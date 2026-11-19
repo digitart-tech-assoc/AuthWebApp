@@ -143,7 +143,9 @@ export function buildManifestPatchPayload(
   // 追加・削除したメンバーだけを送る（#228）。全員分を送ると、画面を開いた後に
   // ほかの操作（self-batch・ほかの管理者の保存など）で付いた割当を外してしまうため
   const roleAssignmentChanges: Record<string, RoleAssignmentChange> = {};
-  for (const roleId of Object.keys(membersByRole)) {
+  // 手元の一覧からロールのキーが消えた場合も、画面を開いた時点のメンバーを removed として送れるよう、両方のキーを見る
+  const assignmentRoleIds = new Set([...Object.keys(initialAssignments), ...Object.keys(membersByRole)]);
+  for (const roleId of assignmentRoleIds) {
     const change = diffAssignments(initialAssignments[roleId] || [], membersByRole[roleId] || []);
     if (change.added.length > 0 || change.removed.length > 0) {
       roleAssignmentChanges[roleId] = change;
