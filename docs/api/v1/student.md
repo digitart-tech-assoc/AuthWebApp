@@ -139,7 +139,7 @@ Discord アカウントが連携されていない場合（`"Discord account not
 ※前提として、入会資格（仮入会ロール所持かつ入会費支払い済み）を満たし、事前の OTP 検証が完了している必要があります。
 ※既に `member` / `sub_user` / `obog` / `admin` のユーザーはプロフィール更新として扱い、入会資格・OTP の検証を省略します。
 
-新規入会のときは、本会員化（`user_memberships` の `pre_member` の行を消し、同じ `assigned_by` で `member` の行を作る。`member` の行がすでにあれば作らない）と同じトランザクションで、ロールの割当を次のように変更します（#251）。
+新規入会のときは、本会員化（`user_memberships` の `pre_member` の行を消し、同じ `assigned_by` で `member` の行を作る）と同じトランザクションで、ロールの割当を次のように変更します（#251）。
 * `MEMBER_ROLE_IDS` のロールの割当を追加し、`PRE_MEMBER_ROLE_ID` のロールの割当を外す。
 * 変更は監査ログ（`role_audit_logs`、`target_type = 'member_roles'`）に記録する。
 * コミット後、Discord で `MEMBER_ROLE_IDS` のロールを付与する（pre-member ロールはここでは外さない。次の push で、割当に合わせて外れる）。
@@ -164,4 +164,6 @@ Discord アカウントが連携されていない場合（`"Discord account not
 
 ### エラーレスポンス
 * `403 Forbidden`: 入会資格を満たさない（`detail` は上記 OTP 送信 API と同じ）。入会資格は本会員化と同一トランザクション内でも行ロック付きで再検証するため、事前確認後に支払情報の失効・削除や仮入会ロールの削除があった場合も 403 となり、プロフィール保存・会員ロール付与は行われない。
+  * 本会員化のトランザクションでは、`member` / `sub_user` の行、または sub垢 ロール（`SUB_USER_ROLE_IDS`）の割当がないことも確認する。ある場合は `"すでに会員として登録されているため、入会登録はできません"` の 403 となり、何も変更しない（新規入会かどうかを認証時の `app_role` で判断しているため、JWT の claim が古い場合などに member と sub垢 の両方を持つ状態にしないため。#264）。
+  * 確認の前に、会員種別を変える全経路で共通のアドバイザリーロックを取る（[db.md](../../db.md) の `user_memberships`）。
 * `400 Bad Request`: OTP 検証が完了していない（`"OTP verification required"`）。

@@ -182,6 +182,14 @@ CREATE TABLE users (
 ユーザーに付与されたメンバーシップ権限を管理するテーブル（1ユーザーが複数の種別を持つことも可能）。
 会員種別（`member` / `sub_user` / `obog` / `pre_member`）はこのテーブルを正とします。管理画面で種別のロールの割当を保存すると、同じトランザクションでこのテーブルも更新します（[マニフェスト API](api/v1/manifest.md) の「会員種別のロールの割当」）。`admin` の行は保存では変更せず、`POST /api/v1/roles/members/sync` で Discord から取り込みます。
 
+会員種別を変える次の経路は、トランザクションの最初の文として共通のアドバイザリーロック（`pg_advisory_xact_lock(hashtext('membership'))`）を取り、互いに直列化します（#264）。同時に持てない種別（member と sub垢、pre-member と member / sub垢）の判定を、並行するほかの経路の変更が見えないまま通らないようにするためです。どの経路も「共通のロック → 割当・種別の行」の順にロックを取るため、経路の間でロックの順序が逆になりません。
+- 管理画面の割当の保存（`PUT` / `PATCH /api/v1/manifest`）: 会員種別のロールの割当を送るときだけ
+- `POST /api/v1/members/member/add`
+- 本会員化（`POST /api/v1/student/profile` の新規入会）
+
+これらの経路は、デッドロック（`DeadlockDetected`）で失敗した場合にトランザクション全体を 1 回だけやり直します（`retry_on_deadlock`。WARNING ログには関数名だけを出します）。2 回目も失敗した場合は 500 になります。
+`POST /api/v1/roles/members/sync` はこのロックを取りません。会員種別のロールを含まない割当の保存（`PUT` / `PATCH`）同士が並行した場合のデッドロック（`replace_role_assignments` がロールを送られた順に行ロックするため）は、この対応の範囲外です（起きた場合も 1 回だけやり直します）。
+
 ```sql
 CREATE TABLE user_memberships (
   discord_id TEXT NOT NULL,

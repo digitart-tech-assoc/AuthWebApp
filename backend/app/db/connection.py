@@ -7,9 +7,11 @@ _connect() はクライアント側コネクションプールから接続を借
 
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import sys
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, ParamSpec, TypeVar
 from urllib.parse import urlparse
 from datetime import datetime
 import json
@@ -22,6 +24,11 @@ from sqlalchemy import event
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.pool import QueuePool
 
+
+logger = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
 
@@ -177,6 +184,29 @@ def limit_lock_wait(cur, timeout_ms: int, error_type: type[Exception]) -> Iterat
         yield
     except pg_errors.LockNotAvailable as e:
         raise error_type() from e
+
+
+def retry_on_deadlock(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    """デッドロック（DeadlockDetected）で失敗したとき、関数全体を 1 回だけ呼び直すデコレーター（#264）。
+
+    PostgreSQL がデッドロックを検出すると、片方のトランザクションをロールバックする。
+    関数全体（コネクションの取得からコミットまで）を呼び直すため、次の関数にだけ付ける。
+    - 1 つのトランザクションで完結し、トランザクションの外に副作用（Discord への反映など）がない
+    - 監査ログも同じトランザクションで書く（ロールバックで消えるため、呼び直しても二重に残らない）
+
+    呼び直したことは関数名だけを WARNING で記録する（引数には個人情報が含まれうるため出さない）。
+    2 回目も失敗した場合は、その例外をそのまま送出する。
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        try:
+            return func(*args, **kwargs)
+        except pg_errors.DeadlockDetected:
+            logger.warning("Deadlock detected; retrying once: %s", func.__name__)
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 def _should_log_to_stdout() -> bool:
