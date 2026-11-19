@@ -12,6 +12,7 @@ from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyErro
 from app.db.audit_repository import AuditContext, insert_audit_logs
 from app.db.connection import _connect, _log_db_access, limit_lock_wait
 from app.db.guild_repository import member_roles_audit_logs
+from app.db.membership_assignment_repository import lock_memberships
 from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
@@ -137,14 +138,18 @@ def upsert_student_profile_and_promote(
 	require_eligibility が True の場合、同一トランザクション内で入会資格
 	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
+	確認の前に lock_memberships を取り、種別を変えるほかの経路（管理画面の保存など）と直列化する。
 
 	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
 	同じトランザクションでロールの割当を変える（#251）。member ロールの割当を追加し、pre-member ロールの割当を外す。
-	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えない。
+	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えず、ロックも取らない。
 	"""
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			if require_eligibility:
+				# 種別の行・割当に触れる前に、種別を変える全経路で共通のロックを取る（#264）
+				lock_memberships(cur)
+
 				# コミットまで pre_member / 支払情報の削除・変更をブロックする
 				cur.execute(
 					"""

@@ -118,8 +118,11 @@ def test_promotion_locks_eligibility_rows_before_writes(monkeypatch):
 
 	assert _promote() == ("prof_test", True)
 
-	assert "FOR UPDATE" in conn.executed[0] and "membership_type = 'pre_member'" in conn.executed[0]
-	assert "FOR SHARE" in conn.executed[1] and "expires_at > now()" in conn.executed[1]
+	# 種別を変える全経路で共通のロックを、行ロックより前に取る（#264）
+	assert conn.executed[0] == "SELECT pg_advisory_xact_lock(hashtext(%s))"
+	assert conn.params[0] == ("membership",)
+	assert "FOR UPDATE" in conn.executed[1] and "membership_type = 'pre_member'" in conn.executed[1]
+	assert "FOR SHARE" in conn.executed[2] and "expires_at > now()" in conn.executed[2]
 	assert any("DELETE FROM user_memberships" in sql for sql in _writes(conn))
 	assert any("INSERT INTO user_memberships" in sql and "'member'" in sql for sql in _writes(conn))
 	assert conn.committed
@@ -132,6 +135,8 @@ def test_promotion_skips_eligibility_check_for_registered_user(monkeypatch):
 	assert _promote(require_eligibility=False) == ("prof_test", False)
 
 	assert not any("FROM paid_invitations" in sql for sql in conn.executed)
+	# プロフィール更新では種別を変えないため、共通のロックも取らない（#264）
+	assert not any("pg_advisory_xact_lock" in sql for sql in conn.executed)
 	assert conn.committed
 
 
