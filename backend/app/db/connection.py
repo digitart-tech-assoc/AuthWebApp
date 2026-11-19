@@ -7,9 +7,11 @@ _connect() はクライアント側コネクションプールから接続を借
 
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import sys
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, ParamSpec, TypeVar
 from urllib.parse import urlparse
 from datetime import datetime
 import json
@@ -21,6 +23,10 @@ from psycopg2 import errors as pg_errors
 from sqlalchemy import event
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.pool import QueuePool
+
+logger = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/postgres")
@@ -177,6 +183,23 @@ def limit_lock_wait(cur, timeout_ms: int, error_type: type[Exception]) -> Iterat
         yield
     except pg_errors.LockNotAvailable as e:
         raise error_type() from e
+
+
+def retry_on_deadlock(func: Callable[P, R]) -> Callable[P, R]:
+    """PostgreSQL のデッドロック（DeadlockDetected）を検出したとき、関数全体を 1 回だけリトライする（#264）。
+
+    トランザクションの外に副作用を持たないリポジトリ関数に適用する。
+    リトライ時は個人情報を含めないよう関数名だけを WARNING で記録し、2 回目も失敗した場合はそのまま送出する。
+    """
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return func(*args, **kwargs)
+        except pg_errors.DeadlockDetected:
+            logger.warning("Deadlock detected in %s; retrying once", func.__name__)
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 def _should_log_to_stdout() -> bool:

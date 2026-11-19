@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 from enum import Enum, auto
 from typing import Any, NamedTuple
 
-from app.core.config import OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
+from app.core.config import MembershipType, OTP_LOCK_TIMEOUT_MS, OTP_MAX_ATTEMPTS
 from app.core.exceptions import OTPTooManyAttemptsError, OTPVerificationBusyError, RegistrationNotEligibleError
+from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import AuditContext, insert_audit_logs
-from app.db.connection import _connect, _log_db_access, limit_lock_wait
+from app.db.connection import _connect, _log_db_access, limit_lock_wait, retry_on_deadlock
 from app.db.guild_repository import member_roles_audit_logs
+from app.db.membership_assignment_repository import lock_memberships
 from app.utils.otp import verify_otp_code
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,7 @@ def get_latest_verified_otp(discord_id: str) -> dict[str, Any] | None:
 			}
 
 
+@retry_on_deadlock
 def upsert_student_profile_and_promote(
 	profile_id: str,
 	discord_id: str,
@@ -134,17 +137,22 @@ def upsert_student_profile_and_promote(
 ) -> PromotionResult:
 	"""学生プロフィールを保存し、pre_memberからmemberへ昇格する。
 
-	require_eligibility が True の場合、同一トランザクション内で入会資格
-	（pre_member かつ有効な paid_invitations）を行ロック付きで確認し、
+	require_eligibility が True の場合、トランザクションの先頭で共通のアドバイザリーロック（lock_memberships）を取得し、
+	同一トランザクション内で入会資格（pre_member の行があり、member / sub_user の行および sub垢 の割当がなく、
+	有効な paid_invitations があること）を行ロック付きで確認する（#264）。
 	満たさなければ RegistrationNotEligibleError を送出してロールバックする。
 
 	新規入会（require_eligibility が True）で pre_member の行を member に変えたときだけ、
 	同じトランザクションでロールの割当を変える（#251）。member ロールの割当を追加し、pre-member ロールの割当を外す。
 	登録済みの会員（require_eligibility が False）のプロフィール更新では、種別も割当も変えない。
 	"""
+	sub_user_role_ids = membership_role_ids()[MembershipType.SUB_USER]
 	with _connect() as conn:
 		with conn.cursor() as cur:
 			if require_eligibility:
+				# 会員種別を変更する他経路と直列化する（pre_member の FOR UPDATE より先に取る。#264）
+				lock_memberships(cur)
+
 				# コミットまで pre_member / 支払情報の削除・変更をブロックする
 				cur.execute(
 					"""
@@ -156,6 +164,29 @@ def upsert_student_profile_and_promote(
 				)
 				if cur.fetchone() is None:
 					raise RegistrationNotEligibleError("入会予定者リストに登録されていません")
+
+				# member / sub_user の行または sub垢 の割当がある人は、member と sub垢 の両立等を防ぐため新規入会の対象外とする（#264）
+				cur.execute(
+					"""
+					SELECT 1 FROM user_memberships
+					WHERE discord_id = %s AND membership_type IN ('member', 'sub_user')
+					LIMIT 1
+					""",
+					(discord_id,),
+				)
+				has_conflicting_membership = cur.fetchone() is not None
+				if not has_conflicting_membership and sub_user_role_ids:
+					cur.execute(
+						"""
+						SELECT 1 FROM role_member_assignments
+						WHERE user_id = %s AND role_id = ANY(%s)
+						LIMIT 1
+						""",
+						(discord_id, list(sub_user_role_ids)),
+					)
+					has_conflicting_membership = cur.fetchone() is not None
+				if has_conflicting_membership:
+					raise RegistrationNotEligibleError("新規入会の対象外です")
 
 				cur.execute(
 					"""

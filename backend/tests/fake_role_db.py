@@ -32,6 +32,8 @@ class FakeRoleDB:
 		# (discord_id, membership_type) -> assigned_by
 		self.memberships: dict[tuple[str, str], str | None] = {}
 		self.paid_invitations: set[str] = set()
+		# discord_id -> profile row
+		self.student_profiles: dict[str, dict[str, Any]] = {}
 		self.audit_logs: list[dict[str, Any]] = []
 		self.advisory_locks: list[str] = []
 		self.executed: list[str] = []
@@ -75,12 +77,14 @@ class FakeRoleDB:
 	def _state(self):
 		return (
 			copy.deepcopy(self.categories), copy.deepcopy(self.roles), set(self.assignments),
-			dict(self.memberships), set(self.paid_invitations), list(self.audit_logs),
+			dict(self.memberships), set(self.paid_invitations), copy.deepcopy(self.student_profiles),
+			list(self.audit_logs),
 		)
 
 	def _restore(self, state) -> None:
 		(
-			self.categories, self.roles, self.assignments, self.memberships, self.paid_invitations, self.audit_logs,
+			self.categories, self.roles, self.assignments, self.memberships,
+			self.paid_invitations, self.student_profiles, self.audit_logs,
 		) = state
 
 
@@ -214,21 +218,49 @@ class FakeCursor:
 			self._rows = sorted(db.memberships)
 		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member'"):
 			self._rows = [(1,)] if (params[0], "member") in db.memberships else []
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'"):
+			self._rows = [(1,)] if (params[0], "pre_member") in db.memberships else []
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type IN ('member', 'sub_user')"):
+			has_row = (params[0], "member") in db.memberships or (params[0], "sub_user") in db.memberships
+			self._rows = [(1,)] if has_row else []
 		elif q.startswith(("LOCK TABLE", "SET LOCAL lock_timeout")):
 			pass
 		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'sub_user'"):
 			self._rows = [(1,)] if (params[0], "sub_user") in db.memberships else []
 		elif q.startswith("SELECT 1 FROM role_member_assignments WHERE user_id = %s AND role_id = ANY(%s)"):
 			self._rows = [(1,)] if any((r, params[0]) in db.assignments for r in params[1]) else []
+		elif q.startswith("SELECT 1 FROM paid_invitations WHERE discord_id = %s"):
+			self._rows = [(1,)] if params[0] in db.paid_invitations else []
 		elif q.startswith("SELECT discord_id FROM paid_invitations WHERE discord_id = %s"):
 			self._rows = [(params[0],)] if params[0] in db.paid_invitations else []
 		elif q.startswith("INSERT INTO paid_invitations"):
 			db.paid_invitations.add(params[0])
 			self.rowcount = 1
+		elif q.startswith("SELECT id FROM student_profiles WHERE discord_id = %s"):
+			profile = db.student_profiles.get(params[0])
+			self._rows = [(profile["id"],)] if profile is not None else []
+		elif q.startswith("INSERT INTO student_profiles"):
+			db.student_profiles[params[1]] = {
+				"id": params[0], "discord_id": params[1], "student_number": params[2],
+				"name": params[3], "furigana": params[4], "department": params[5],
+				"gender": params[6], "phone": params[7], "email_aoyama": params[8],
+			}
+			self.rowcount = 1
+		elif q.startswith("UPDATE student_profiles"):
+			discord_id = params[7]
+			if discord_id in db.student_profiles:
+				db.student_profiles[discord_id].update({
+					"student_number": params[0], "name": params[1], "furigana": params[2],
+					"department": params[3], "gender": params[4], "phone": params[5],
+					"email_aoyama": params[6],
+				})
+				self.rowcount = 1
 		elif q.startswith("DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'"):
 			if (params[0], "pre_member") in db.memberships:
-				del db.memberships[(params[0], "pre_member")]
+				assigned_by = db.memberships.pop((params[0], "pre_member"))
 				self.rowcount = 1
+				if "RETURNING assigned_by" in q:
+					self._rows = [(assigned_by,)]
 		elif q.startswith("INSERT INTO user_memberships"):
 			literal = next((t for t in ("pre_member", "member") if f"VALUES (%s, '{t}', %s," in q), None)
 			if literal is not None:

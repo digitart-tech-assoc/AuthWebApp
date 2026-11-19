@@ -42,6 +42,20 @@ EXCLUSIVE_TYPE_PAIRS: tuple[tuple[str, str], ...] = (
 )
 
 
+# 会員種別を変更する全経路で共有するアドバイザリーロックのキー（#264）
+MEMBERSHIP_LOCK_KEY = "membership"
+
+
+def lock_memberships(cur: Any) -> None:
+	"""会員種別（user_memberships）と種別ロールの割当を変更する全経路を直列化する（#264）。
+
+	トランザクション単位のアドバイザリーロック（pg_advisory_xact_lock）のため、
+	トランザクション終了時に自動解放され、Supabase Pooler（トランザクションモード）でも使える。
+	デッドロックを防ぐため、各経路でトランザクションの最初の文として呼び出す。
+	"""
+	cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (MEMBERSHIP_LOCK_KEY,))
+
+
 def save_managed_role_types() -> dict[str, str]:
 	"""保存で種別を更新するロールの ID -> 種別 を返す（環境変数を呼び出しのたびに読む）。"""
 	configured = membership_role_ids()
@@ -83,10 +97,10 @@ def apply_membership_changes(
 	result: dict[str, tuple[list[str], list[str]]] = {}
 	logs: list[AuditLog] = []
 	assigned_by = audit.actor_discord_id if audit is not None else None
-	# 同じ人の種別を変える保存同士を直列化する（別のロールの保存が並行すると、互いの変更が見えずに排他の判定を通るため）。
-	# デッドロックを避けるため、Discord ID の順にロックする
-	for discord_id in sorted(changed_types):
-		cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"membership:{discord_id}",))
+	if changed_types:
+		# 呼び出し元（replace_manifest / patch_manifest_db）でトランザクションの先頭に取得済み。
+		# 同じトランザクション内での再取得は待たないため、直接呼び出された場合の保険としてここでも呼ぶ（#264）
+		lock_memberships(cur)
 	for discord_id in sorted(changed_types):
 		types = changed_types[discord_id]
 		cur.execute("SELECT role_id FROM role_member_assignments WHERE user_id = %s", (discord_id,))

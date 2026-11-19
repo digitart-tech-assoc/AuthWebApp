@@ -11,9 +11,9 @@ from zoneinfo import ZoneInfo
 from app.core.config import MEMBERSHIP_PRIORITY_SQL, MembershipType
 from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import AuditContext, insert_audit_logs
-from app.db.connection import _connect, _log_db_access
+from app.db.connection import _connect, _log_db_access, retry_on_deadlock
 from app.db.guild_repository import member_roles_audit_logs
-from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES
+from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES, lock_memberships
 
 logger = logging.getLogger(__name__)
 
@@ -566,6 +566,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 			return results
 
 
+@retry_on_deadlock
 def add_to_member_list(
 	discord_id: str,
 	assigned_by: str,
@@ -576,6 +577,7 @@ def add_to_member_list(
 	同時に paid_invitations にも登録する。
 
 	同じトランザクションで、ロールの割当も種別に合わせる（#251）。
+	他経路と排他判定がすり抜けないよう、トランザクションの先頭で共通のアドバイザリーロックを取る（#264）。
 	sub_user の行または sub垢 の割当がある人は、member と sub垢 の両方を持つことになるため ValueError を送出する。
 	member ロール（MEMBER_ROLE_IDS）の割当を追加し、pre-member ロール（PRE_MEMBER_ROLE_ID）の割当を外す。
 	audit を渡すと、実際に変えた割当を監査ログに記録する。Discord への反映は次の push で行う。
@@ -595,6 +597,9 @@ def add_to_member_list(
 	sub_user_role_ids = configured[MembershipType.SUB_USER]
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			# 会員種別を変更する他経路と直列化する（member / sub_user の確認より先に取る。#264）
+			lock_memberships(cur)
+
 			# Check if already member in user_memberships
 			cur.execute(
 				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member'",

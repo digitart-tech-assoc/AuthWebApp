@@ -20,9 +20,13 @@ from app.db.audit_repository import (
 	insert_audit_logs,
 )
 from app.core.exceptions import ProtectedRoleAssignmentError
-from app.db.connection import _connect
+from app.db.connection import _connect, retry_on_deadlock
 from app.db.guild_repository import replace_role_assignments
-from app.db.membership_assignment_repository import apply_membership_changes
+from app.db.membership_assignment_repository import (
+	apply_membership_changes,
+	lock_memberships,
+	save_managed_role_types,
+)
 
 # 監査ログで比べるフィールド（updated_at・is_managed_by_app は含めない）
 CATEGORY_AUDIT_FIELDS = ("name", "display_order", "is_collapsed", "permissions", "is_restricted")
@@ -218,6 +222,7 @@ def save_manifest(categories: list[dict[str, Any]], roles: list[dict[str, Any]])
 		conn.commit()
 
 
+@retry_on_deadlock
 def replace_manifest(
 	categories: list[dict[str, Any]],
 	roles: list[dict[str, Any]],
@@ -228,13 +233,19 @@ def replace_manifest(
 	"""PUT /api/v1/manifest の保存。マニフェストと割り当てを1つのトランザクションで置き換える。
 
 	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
+	送られた割当に会員種別のロール（save_managed_role_types）が含まれる場合は、他経路とのデッドロックを防ぐため
+	トランザクションの先頭で共通のアドバイザリーロック（lock_memberships）を取る（#264）。
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
 	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 
 	audit を渡すと、変更前の全行と比べて実際に追加・更新・削除された行だけを同じトランザクションで記録する。
 	"""
+	managed_role_ids = save_managed_role_types()
+	needs_membership_lock = any(role_id in managed_role_ids for role_id in role_assignments)
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			if needs_membership_lock:
+				lock_memberships(cur)
 			if audit is not None:
 				before_categories = _snapshot_categories(cur, None, lock=True)
 				before_roles = _snapshot_roles(cur, None, lock=True)
@@ -270,6 +281,7 @@ def update_role_id(old_id: str, new_id: str, audit: AuditContext | None = None) 
 		conn.commit()
 
 
+@retry_on_deadlock
 def patch_manifest_db(
 	upsert_categories: list[dict[str, Any]],
 	delete_category_ids: list[str],
@@ -282,13 +294,19 @@ def patch_manifest_db(
 	"""差分更新（PATCH）を使ってマニフェストを更新する
 
 	会員種別のロールの割当が変わった人の user_memberships も同じトランザクションで更新する（apply_membership_changes）。
+	送られた割当に会員種別のロール（save_managed_role_types）が含まれる場合は、他経路とのデッドロックを防ぐため
+	トランザクションの先頭で共通のアドバイザリーロック（lock_memberships）を取る（#264）。
 	種別として成り立たない割当なら MembershipAssignmentError を送出し、すべてロールバックする。
 	protected_role_ids（Discord で直接付け外しするロール）の割当が実際に変わる場合は ProtectedRoleAssignmentError を送出し、すべてロールバックする。
 
 	audit を渡すと、変更のあった行だけを同じトランザクションで記録する。記録に失敗したら変更も失敗させる。
 	"""
+	managed_role_ids = save_managed_role_types()
+	needs_membership_lock = any(role_id in managed_role_ids for role_id in upsert_role_assignments)
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			if needs_membership_lock:
+				lock_memberships(cur)
 			if audit is not None:
 				# 削除するカテゴリに属するロールは ON DELETE SET NULL で category_id が変わるため、読む範囲に含める
 				category_ids = sorted({c["id"] for c in upsert_categories} | set(delete_category_ids))

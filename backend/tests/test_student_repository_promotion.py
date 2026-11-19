@@ -34,8 +34,12 @@ class _FakeCursor:
 		self._conn.params.append(params)
 		if normalized.startswith("DELETE FROM user_memberships"):
 			self._result = ("S",) if self._conn.is_pre_member else None
-		elif "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
+		elif "FROM user_memberships" in normalized and "membership_type = 'pre_member'" in normalized:
 			self._result = (1,) if self._conn.is_pre_member else None
+		elif "FROM user_memberships" in normalized and "IN ('member', 'sub_user')" in normalized:
+			self._result = (1,) if self._conn.has_conflicting_row else None
+		elif "FROM role_member_assignments" in normalized and normalized.startswith("SELECT"):
+			self._result = (1,) if self._conn.has_sub_assignment else None
 		elif "FROM paid_invitations" in normalized:
 			self._result = (1,) if self._conn.is_paid else None
 		else:
@@ -46,9 +50,18 @@ class _FakeCursor:
 
 
 class _FakeConnection:
-	def __init__(self, is_pre_member: bool, is_paid: bool):
+	def __init__(
+		self,
+		is_pre_member: bool,
+		is_paid: bool,
+		*,
+		has_conflicting_row: bool = False,
+		has_sub_assignment: bool = False,
+	):
 		self.is_pre_member = is_pre_member
 		self.is_paid = is_paid
+		self.has_conflicting_row = has_conflicting_row
+		self.has_sub_assignment = has_sub_assignment
 		self.executed: list[str] = []
 		self.params: list = []
 		self.committed = False
@@ -113,13 +126,17 @@ def test_promotion_rejects_ineligible_user_without_writes(monkeypatch, is_pre_me
 
 
 def test_promotion_locks_eligibility_rows_before_writes(monkeypatch):
+	monkeypatch.delenv("SUB_USER_ROLE_IDS", raising=False)
 	conn = _FakeConnection(is_pre_member=True, is_paid=True)
 	monkeypatch.setattr(student_repository, "_connect", lambda: conn)
 
 	assert _promote() == ("prof_test", True)
 
-	assert "FOR UPDATE" in conn.executed[0] and "membership_type = 'pre_member'" in conn.executed[0]
-	assert "FOR SHARE" in conn.executed[1] and "expires_at > now()" in conn.executed[1]
+	assert conn.executed[0] == "SELECT pg_advisory_xact_lock(hashtext(%s))"
+	assert conn.params[0] == ("membership",)
+	assert "FOR UPDATE" in conn.executed[1] and "membership_type = 'pre_member'" in conn.executed[1]
+	assert "IN ('member', 'sub_user')" in conn.executed[2]
+	assert "FOR SHARE" in conn.executed[3] and "expires_at > now()" in conn.executed[3]
 	assert any("DELETE FROM user_memberships" in sql for sql in _writes(conn))
 	assert any("INSERT INTO user_memberships" in sql and "'member'" in sql for sql in _writes(conn))
 	assert conn.committed
