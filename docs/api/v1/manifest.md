@@ -154,11 +154,19 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
     }
   ],
   "delete_role_ids": [],
-  "upsert_role_assignments": {
-    "role_id_1": ["user_id_1", "user_id_2"]
+  "role_assignment_changes": {
+    "role_id_1": {
+      "added": ["user_id_2"],
+      "removed": ["user_id_1"]
+    }
   }
 }
 ```
+
+- `role_assignment_changes`: ロールごとの追加（`added`）・削除（`removed`）メンバーの Discord ID 配列を指定します（#228）。
+  - 指定されていないメンバーの割当には触れません（画面を開いた後に `POST /api/v1/roles/self-batch` や別管理者の保存などで変更された割当を上書きしません）。
+  - `added` と `removed` が両方空のロールは何も変更しません。
+  - 同じロール内で同じメンバーを `added` と `removed` の両方に指定した場合は `400 Bad Request` を返します。
 
 ### レスポンス (200 OK)
 ```json
@@ -168,7 +176,9 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 ```
 
 ### エラーレスポンス
-- `400 Bad Request`: 会員種別として成り立たない割当を保存しようとした場合（「会員種別のロールの割当」を参照）
+- `400 Bad Request`:
+  - 同じロール内で同じメンバーを `added` と `removed` の両方に指定した場合（`code` は `role_assignment_change_conflict`）
+  - 会員種別として成り立たない割当を保存しようとした場合（「会員種別のロールの割当」を参照）
 - `403 Forbidden`: Discord で直接付け外しするロールの割当を変更しようとした場合（「Discord で直接付け外しするロール」を参照）
 - `500 Internal Server Error`: 割当を保存するときに `DISCORD_TOKEN` が設定されていない場合
 - `502 Bad Gateway`: 割当を保存するときに、Discord からロール一覧・Bot のメンバー情報を取得できなかった場合（何も保存しません。`code` は `discord_unavailable`）
@@ -177,6 +187,7 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 
 | `code` | ステータス | 意味 | 追加の項目 |
 |---|---|---|---|
+| `role_assignment_change_conflict` | 400 | 同じロール内で同じメンバーを `added` と `removed` の両方に指定 | `role_id`（原因のロール）、`discord_id`（原因のメンバー） |
 | `membership_assignment_invalid` | 400 | 会員種別として成り立たない割当 | `discord_id`（原因のメンバー）、`membership_types`（原因の種別の配列）、`reason`（`partial` / `exclusive`） |
 | `protected_role_assignment` | 403 | Discord で直接付け外しするロールの割当の変更 | `role_id`（原因のロール） |
 | `discord_unavailable` | 502 | Discord からロールの情報を取得できない | なし |
@@ -218,16 +229,16 @@ DB に保存されている宣言型ロールマニフェスト（全カテゴ�
 注意点:
 - `SUB_USER_ROLE_IDS` / `OBOG_ROLE_IDS` が未設定の場合、そのロールは一般ロールとして扱い、種別の更新も上の判定も行いません。
 - 既存のデータで member と sub垢 の両方の割当を持つ人の sub垢 だけを外すと、member の割当が残ります。この状態で push すると Discord の member ロールが残るため、先に member の割当を外してください（#251 段階 6 より前は、sync で member の行も作られていました）（既存データの整理は `python -m app.scripts.fix_membership_assignments`。[backend.md](../../backend.md) の「保守用スクリプト」）。
-- 管理画面は、変更したロールについて、画面を開いた時点の一覧に手元の変更を加えた全員分を送ります。画面を開いたあとに別の経路（入会フロー・`/members/member/add` など）で割当が増えた人は、そのロールを保存すると外れ、会員種別も失効します（既知の制約）。
+- 管理画面の保存（`PATCH /api/v1/manifest`）は、画面上で追加・削除したメンバーの差分（`role_assignment_changes`）だけを送ります（#228）。画面を開いたあとに別の経路（self-batch・入会フロー・`/members/member/add` など）で増えた割当は上書きされません。一方、`PUT /api/v1/manifest` の `role_assignments` はロール単位の全件置換のため、含まれないメンバーの割当は外れます。
 
 ---
 
 ## Discord で直接付け外しするロール（PUT / PATCH 共通、#251）
 
-Bot が操作できないロール（Bot の最上位ロール以上のロール、managed ロール、`@everyone`）は Discord で直接付け外しします。admin ロールと、Bot に付けるロールが該当します。これらのロールの割当が**実際に変わる**保存は `403 Forbidden` を返し、何も保存しません（マニフェストの変更も含めてロールバックします）。割当が変わらない場合（送った一覧が保存済みの一覧と同じ場合）は拒否しません。
+Bot が操作できないロール（Bot の最上位ロール以上のロール、managed ロール、`@everyone`）は Discord で直接付け外しします。admin ロールと、Bot に付けるロールが該当します。これらのロールの割当が**実際に変わる**保存は `403 Forbidden` を返し、何も保存しません（マニフェストの変更も含めてロールバックします）。割当が変わらない場合（送った変更で実際の割当が変わらない場合）は拒否しません。
 
 - 判定には、push と同じく Discord のロール一覧と Bot のメンバー情報を使います（`_manageable_role_ids`）。Bot の最上位ロールを特定できない場合は、Discord のすべてのロールを対象にします。
-- 割当を含む保存のときだけ Discord に問い合わせます（`role_assignments` / `upsert_role_assignments` が空なら問い合わせません）。
+- 割当を含む保存のときだけ Discord に問い合わせます（`PUT` で `role_assignments` が空、または `PATCH` で `role_assignment_changes` に追加・削除が 1 件もない場合は問い合わせません）。
 - Discord にないロール（仮 ID `draft-…` の新規ロールなど）は対象にしません。
 
 `detail` の例: `{"code": "protected_role_assignment", "message": "ロール <role_id> は Discord で直接付け外しするロールのため、割当を変更できません", "role_id": "<role_id>"}`
