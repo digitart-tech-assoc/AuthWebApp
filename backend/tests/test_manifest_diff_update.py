@@ -63,7 +63,8 @@ def test_patch_keeps_assignment_added_by_other_operation_after_screen_opened(db)
 	db.add_role("r1")
 	db.assign("r1", "100")
 	# 管理者が画面を開いた時点の割当は 100 だけ。その後、200 が self-batch で自分に付けた
-	db.assign("r1", "200")
+	guild_repository.batch_update_user_roles("200", ["r1"], [])
+	assert db.members_of("r1") == {"100", "200"}
 
 	# 管理者は画面上で 300 を追加し、100 を外して保存する（200 は画面に表示されていない）
 	manifest_repository.patch_manifest_db([], [], [], [], {"r1": _change(added=["300"], removed=["100"])})
