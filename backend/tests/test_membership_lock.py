@@ -13,14 +13,21 @@ import pytest
 from fastapi import HTTPException
 from psycopg2 import errors as pg_errors
 
+from app.api.v1 import members as members_api
 from app.api.v1 import student as student_api
 from app.core.exceptions import RegistrationNotEligibleError
-from app.db import guild_repository, manifest_repository, membership_repository, student_repository
+from app.db import (
+	guild_repository,
+	manifest_repository,
+	membership_assignment_repository,
+	membership_repository,
+	student_repository,
+)
 from app.db.audit_repository import AuditContext
 from app.db.connection import retry_on_deadlock
 from tests.fake_role_db import FakeRoleDB
 
-MEMBER, SUB, OBOG, PRE = "role-member", "role-sub", "role-obog", "role-pre"
+MEMBER, SUB, OBOG, PRE, ADMIN = "role-member", "role-sub", "role-obog", "role-pre", "role-admin"
 GAME = "role-game"
 USER = "100"
 LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext(%s))"
@@ -33,6 +40,7 @@ def role_env(monkeypatch):
 	monkeypatch.setenv("SUB_USER_ROLE_IDS", SUB)
 	monkeypatch.setenv("OBOG_ROLE_IDS", OBOG)
 	monkeypatch.setenv("PRE_MEMBER_ROLE_ID", PRE)
+	monkeypatch.setenv("ADMIN_ROLE_IDS", ADMIN)
 
 
 @pytest.fixture
@@ -103,12 +111,58 @@ def test_put_takes_lock_first(db, audit):
 	assert db.membership_types_of(USER) == {"member"}
 
 
-def test_save_without_membership_roles_takes_no_lock(db):
-	_patch({GAME: [USER]})
-	_put({GAME: [USER, "200"]})
+SAVES = [pytest.param(_patch, id="patch"), pytest.param(_put, id="put")]
+ROW_TYPES = {MEMBER: "member", SUB: "sub_user", OBOG: "obog", PRE: "pre_member"}
+
+
+@pytest.mark.parametrize("save", SAVES)
+@pytest.mark.parametrize("role_id", [MEMBER, SUB, OBOG, PRE])
+def test_save_takes_lock_first_for_each_membership_role(db, save, role_id):
+	save({role_id: [USER]})
+
+	assert db.executed[0] == LOCK_SQL
+	assert set(db.advisory_locks) == {"membership"}
+	assert db.membership_types_of(USER) == {ROW_TYPES[role_id]}
+
+
+@pytest.mark.parametrize("save", SAVES)
+@pytest.mark.parametrize("role_id", [MEMBER, SUB, OBOG, PRE])
+def test_save_clearing_membership_role_takes_lock_first(db, save, role_id):
+	# 空のリスト（全員を外す保存）でも、会員種別のロールを送るため最初に取る
+	db.assign(role_id, USER)
+	db.add_membership(USER, ROW_TYPES[role_id])
+
+	save({role_id: []})
+
+	assert db.executed[0] == LOCK_SQL
+	assert set(db.advisory_locks) == {"membership"}
+	assert db.membership_types_of(USER) == set()
+
+
+@pytest.mark.parametrize("save", SAVES)
+@pytest.mark.parametrize("assignments", [
+	pytest.param({}, id="no-assignments"),
+	pytest.param({GAME: [USER, "200"]}, id="general-role"),
+	pytest.param({ADMIN: [USER]}, id="admin-role"),
+])
+def test_save_without_membership_roles_takes_no_lock(db, save, assignments):
+	# admin のロールは保存で種別を更新しないため、会員種別のロールに含めない
+	save(assignments)
 
 	assert db.advisory_locks == []
-	assert db.members_of(GAME) == {USER, "200"}
+	for role_id, users in assignments.items():
+		assert db.members_of(role_id) == set(users)
+
+
+def test_apply_membership_changes_takes_lock_as_safety_net(db):
+	# 呼び出し元が取り忘れても、種別を変えるときは apply_membership_changes の中で取る
+	db.assign(MEMBER, USER)
+	with db.connect() as conn:
+		with conn.cursor() as cur:
+			membership_assignment_repository.apply_membership_changes(cur, {MEMBER: ([USER], [])})
+
+	assert db.advisory_locks == ["membership"]
+	assert db.membership_types_of(USER) == {"member"}
 
 
 def test_save_with_unconfigured_membership_env_takes_no_lock(db, monkeypatch):
@@ -154,22 +208,24 @@ def test_profile_update_takes_no_lock(db):
 # --- デッドロック時のリトライ（デコレーター単体） ---
 
 def test_retry_on_deadlock_retries_once_and_logs_function_name_only(caplog):
+	# 引数にも例外の文にも個人情報（ダミー）を入れ、どちらもログに出ないことを確かめる
+	secret = "applicant@example.com"
 	calls = []
 
 	@retry_on_deadlock
-	def save(discord_id):
-		calls.append(discord_id)
+	def save(email):
+		calls.append(email)
 		if len(calls) == 1:
-			raise pg_errors.DeadlockDetected("deadlock detected")
+			raise pg_errors.DeadlockDetected(f"deadlock detected: {email}")
 		return "ok"
 
 	with caplog.at_level(logging.WARNING, logger="app.db.connection"):
-		assert save(USER) == "ok"
+		assert save(secret) == "ok"
 
-	assert calls == [USER, USER]
+	assert calls == [secret, secret]
 	assert [r.levelno for r in caplog.records] == [logging.WARNING]
 	assert caplog.records[0].getMessage() == "Deadlock detected; retrying once: save"
-	assert USER not in caplog.text
+	assert secret not in caplog.text
 
 
 def test_retry_on_deadlock_raises_when_second_attempt_fails():
@@ -207,17 +263,22 @@ def test_retry_on_deadlock_does_not_retry_other_errors(error):
 
 # --- デッドロック時のリトライ（対象の経路） ---
 
-# (pre_member かつ支払済みの状態を用意するか, 実行する経路)
+# (pre_member かつ支払済みの状態を用意するか, 実行する経路, 1 回だけ実行したときの監査ログの (target_type, target_id))
+SAVE_AUDIT = [("membership", USER), ("role_assignment", MEMBER)]
+MEMBER_ROLES_AUDIT = [("member_roles", USER)]
 RETRY_CASES = [
-	pytest.param(False, lambda: _patch({MEMBER: [USER]}), id="patch"),
-	pytest.param(False, lambda: _put({MEMBER: [USER]}), id="put"),
-	pytest.param(True, lambda: membership_repository.add_to_member_list(USER, "111", None, AUDIT), id="member-add"),
-	pytest.param(True, _promote, id="promotion"),
+	pytest.param(False, lambda: _patch({MEMBER: [USER]}), SAVE_AUDIT, id="patch"),
+	pytest.param(False, lambda: _put({MEMBER: [USER]}), SAVE_AUDIT, id="put"),
+	pytest.param(
+		True, lambda: membership_repository.add_to_member_list(USER, "111", None, AUDIT), MEMBER_ROLES_AUDIT,
+		id="member-add",
+	),
+	pytest.param(True, _promote, MEMBER_ROLES_AUDIT, id="promotion"),
 ]
 
 
-@pytest.mark.parametrize(("eligible", "run"), RETRY_CASES)
-def test_deadlock_is_retried_once_and_applied_once(db, eligible, run, caplog):
+@pytest.mark.parametrize(("eligible", "run", "expected_audit"), RETRY_CASES)
+def test_deadlock_is_retried_once_and_applied_once(db, eligible, run, expected_audit, caplog):
 	# user_memberships の INSERT でデッドロックし、1 回目のトランザクションはロールバックされる
 	if eligible:
 		_eligible(db)
@@ -233,15 +294,13 @@ def test_deadlock_is_retried_once_and_applied_once(db, eligible, run, caplog):
 	assert db.members_of(MEMBER) == {USER}
 	assert db.members_of(PRE) == set()
 	# 監査ログもロールバックされ、2 回目の分だけが残る
-	targets = [(log["target_type"], log["target_id"]) for log in db.audit_logs]
-	assert len(targets) == len(set(targets))
-	assert targets
+	assert [(log["target_type"], log["target_id"]) for log in db.audit_logs] == expected_audit
 	assert "retrying once" in caplog.text
 	assert USER not in caplog.text
 
 
-@pytest.mark.parametrize(("eligible", "run"), RETRY_CASES)
-def test_deadlock_twice_raises_and_changes_nothing(db, eligible, run):
+@pytest.mark.parametrize(("eligible", "run", "expected_audit"), RETRY_CASES)
+def test_deadlock_twice_raises_and_changes_nothing(db, eligible, run, expected_audit):
 	# 2 回目も失敗したら例外をそのまま送出する（ルーターでは今と同じく 500 になる）
 	if eligible:
 		_eligible(db)
@@ -252,6 +311,27 @@ def test_deadlock_twice_raises_and_changes_nothing(db, eligible, run):
 	with pytest.raises(pg_errors.DeadlockDetected):
 		run()
 
+	assert db.rollbacks == 2
+	assert _state(db) == before
+
+
+@pytest.mark.asyncio
+async def test_member_add_endpoint_returns_500_when_deadlock_persists(db):
+	# 2 回目も失敗したら、今と同じく 500（固定文言）になり、何も変わらない
+	_eligible(db)
+	db.deadlock_on = "INSERT INTO user_memberships"
+	db.deadlocks = 2
+	before = _state(db)
+
+	with pytest.raises(HTTPException) as error:
+		await members_api.add_member(
+			members_api.AddMemberRequest(discord_id=USER),
+			_principal={"sub": "sub-1", "discord_id": "111"},
+			audit=AUDIT,
+		)
+
+	assert error.value.status_code == 500
+	assert error.value.detail == "Failed to add member"
 	assert db.rollbacks == 2
 	assert _state(db) == before
 
