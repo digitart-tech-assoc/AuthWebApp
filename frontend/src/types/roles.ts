@@ -62,12 +62,19 @@ export type RoleDiffData = {
   categoriesDeleted: Category[];
 };
 
+/** 1 ロール分の割当の差分（#228）。送ったメンバーだけが追加・削除され、それ以外のメンバーの割当は変わらない */
+export interface RoleAssignmentChange {
+  added: string[];
+  removed: string[];
+}
+
 export interface ManifestPatchPayload {
   upsert_categories: Category[];
   delete_category_ids: string[];
   upsert_roles: Role[];
   delete_role_ids: string[];
-  upsert_role_assignments: Record<string, string[]>;
+  /** role_id -> 割当の差分。追加・削除のどちらもないロールは含めない */
+  role_assignment_changes: Record<string, RoleAssignmentChange>;
 }
 
 

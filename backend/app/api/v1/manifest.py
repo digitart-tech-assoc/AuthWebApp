@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Collection
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.v1.roles import fetch_protected_role_ids
 from app.core.auth import require_admin, require_member
-from app.core.exceptions import MembershipAssignmentError, ProtectedRoleAssignmentError
+from app.core.exceptions import (
+	MembershipAssignmentError,
+	ProtectedRoleAssignmentError,
+	RoleAssignmentChangeConflictError,
+)
 from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import OP_MANIFEST_PATCH, OP_MANIFEST_PUT, AuditContext, get_audit_context
-from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest
+from app.db.repository import fetch_manifest, patch_manifest_db, replace_manifest, validate_role_assignment_changes
 
 
 router = APIRouter(prefix="/api/v1", tags=["manifest"])
@@ -47,12 +52,25 @@ class Manifest(BaseModel):
 	role_assignments: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class RoleAssignmentChange(BaseModel):
+	"""1 ロール分の割当の差分（#228）。送ったメンバーだけを追加・削除し、それ以外のメンバーには触れない。"""
+
+	model_config = ConfigDict(extra="forbid")
+
+	added: list[str] = Field(default_factory=list)
+	removed: list[str] = Field(default_factory=list)
+
+
 class ManifestPatch(BaseModel):
+	# 廃止した upsert_role_assignments（全員分を送る形式）を送る古い画面が、割当を保存せずに成功しないよう、
+	# 知らない項目は 422 にする（#228）
+	model_config = ConfigDict(extra="forbid")
+
 	upsert_categories: list[Category] = Field(default_factory=list)
 	delete_category_ids: list[str] = Field(default_factory=list)
 	upsert_roles: list[Role] = Field(default_factory=list)
 	delete_role_ids: list[str] = Field(default_factory=list)
-	upsert_role_assignments: dict[str, list[str]] = Field(default_factory=dict)
+	role_assignment_changes: dict[str, RoleAssignmentChange] = Field(default_factory=dict)
 
 
 def _role_membership_types() -> dict[str, str]:
@@ -64,6 +82,7 @@ def _role_membership_types() -> dict[str, str]:
 ERROR_MEMBERSHIP_ASSIGNMENT_INVALID = "membership_assignment_invalid"
 ERROR_PROTECTED_ROLE_ASSIGNMENT = "protected_role_assignment"
 ERROR_DISCORD_UNAVAILABLE = "discord_unavailable"
+ERROR_ASSIGNMENT_CHANGE_CONFLICT = "assignment_change_conflict"
 
 
 def _error(status_code: int, code: str, message: str, **cause: object) -> HTTPException:
@@ -74,9 +93,9 @@ def _error(status_code: int, code: str, message: str, **cause: object) -> HTTPEx
 	return HTTPException(status_code=status_code, detail={"code": code, "message": message, **cause})
 
 
-async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozenset[str]:
-	"""割当を保存するときだけ、Discord で直接付け外しするロールを Discord から取得する。"""
-	if not assignments:
+async def _protected_role_ids_for(role_ids: Collection[str]) -> frozenset[str]:
+	"""割当を保存するロールがあるときだけ、Discord で直接付け外しするロールを Discord から取得する。"""
+	if not role_ids:
 		return frozenset()
 	try:
 		return await fetch_protected_role_ids()
@@ -87,10 +106,21 @@ async def _protected_role_ids_for(assignments: dict[str, list[str]]) -> frozense
 		raise _error(502, ERROR_DISCORD_UNAVAILABLE, exc.detail) from exc
 
 
+def _assignment_change_conflict_error(exc: RoleAssignmentChangeConflictError) -> HTTPException:
+	# 固定文言にロール ID と Discord ID だけを埋めたもの（app/core/exceptions.py）
+	return _error(
+		400, ERROR_ASSIGNMENT_CHANGE_CONFLICT, exc.response_detail,
+		role_id=exc.role_id, discord_id=exc.discord_id,
+	)
+
+
 async def _save(func, *args, protected_role_ids: frozenset[str]) -> None:
-	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251）。"""
+	"""保存を実行し、割当の検証エラーを HTTP エラーにする（#251, #228）。"""
 	try:
 		await asyncio.to_thread(func, *args, protected_role_ids=protected_role_ids)
+	except RoleAssignmentChangeConflictError as exc:
+		# 通常は patch_manifest で先に検証して 400 を返すが、リポジトリ側で検出した場合も 500 にしない
+		raise _assignment_change_conflict_error(exc) from exc
 	except ProtectedRoleAssignmentError as exc:
 		# 固定文言にロール ID だけを埋めたもの（app/core/exceptions.py）
 		raise _error(403, ERROR_PROTECTED_ROLE_ASSIGNMENT, exc.response_detail, role_id=exc.role_id) from exc
@@ -129,7 +159,7 @@ async def put_manifest(
 		[r.model_dump() for r in payload.roles],
 		payload.role_assignments,
 		audit.with_operation(OP_MANIFEST_PUT),
-		protected_role_ids=await _protected_role_ids_for(payload.role_assignments),
+		protected_role_ids=await _protected_role_ids_for(payload.role_assignments.keys()),
 	)
 	return payload
 
@@ -144,15 +174,25 @@ async def patch_manifest(
 
 	会員種別のロールの割当を変えると、user_memberships も更新する。種別として成り立たない割当は 400 を返す。
 	Discord で直接付け外しするロールの割当を変えようとした場合は 403 を返す（#251）。
+
+	割当は role_assignment_changes で送ったメンバーだけを追加・削除する（#228）。
+	同じメンバーを同じロールの added と removed の両方に指定した場合は、Discord に問い合わせずに 400 を返す。
 	"""
+	changes = {role_id: change.model_dump() for role_id, change in payload.role_assignment_changes.items()}
+	try:
+		validate_role_assignment_changes(changes)
+	except RoleAssignmentChangeConflictError as exc:
+		raise _assignment_change_conflict_error(exc) from exc
+	# added / removed がどちらも空のロールは何も変えないため、Discord への問い合わせの要否に含めない
+	changed_role_ids = [role_id for role_id, c in changes.items() if c["added"] or c["removed"]]
 	await _save(
 		patch_manifest_db,
 		[c.model_dump() for c in payload.upsert_categories],
 		payload.delete_category_ids,
 		[r.model_dump() for r in payload.upsert_roles],
 		payload.delete_role_ids,
-		payload.upsert_role_assignments,
+		changes,
 		audit.with_operation(OP_MANIFEST_PATCH),
-		protected_role_ids=await _protected_role_ids_for(payload.upsert_role_assignments),
+		protected_role_ids=await _protected_role_ids_for(changed_role_ids),
 	)
 	return {"ok": True}
