@@ -41,6 +41,7 @@
 
 - **マニフェスト差分保存**: `PATCH /api/manifest`
   - バックエンド `PATCH /api/v1/manifest` を呼び出し。
+  - メンバーの割当は、画面を開いた時点の割当と比べて追加・削除したメンバーだけを `role_assignment_changes` で送る（`buildManifestPatchPayload`。#228）。画面を開いた後に別の経路（self-batch・入会フロー・別の管理者の保存など）で付いた割当は、この保存で外れない。
 - **Discord への差分 Push**: `POST /api/roles/push`
   - バックエンド `POST /api/v1/roles/push` を呼び出し。
 - **ロールメンバー一覧取得**: `GET /api/roles/members`

@@ -65,7 +65,8 @@ def test_patch_without_changes_records_nothing(db):
 	db.add_role("r1", name="advisor", permissions=8)
 	db.assign("r1", "100")
 
-	_patch(roles=[_role("r1", name="advisor", permissions=8)], assignments={"r1": ["100"]})
+	# すでに割り当て済みのメンバーを added に送っても、実際の変更はないので記録しない
+	_patch(roles=[_role("r1", name="advisor", permissions=8)], assignments={"r1": {"added": ["100"], "removed": []}})
 
 	assert db.audit_logs == []
 
@@ -119,7 +120,7 @@ def test_patch_records_only_added_and_removed_members(db):
 	db.add_role("r1")
 	db.assign("r1", "100", "200")
 
-	_patch(assignments={"r1": ["200", "300"]})
+	_patch(assignments={"r1": {"added": ["300"], "removed": ["100"]}})
 
 	assert _logs(db, target_type="role_assignment") == [{
 		**_logs(db, target_type="role_assignment")[0],
@@ -134,7 +135,7 @@ def test_patch_rolls_back_when_audit_insert_fails(db):
 	db.fail_audit_insert = True
 
 	with pytest.raises(AuditInsertError):
-		_patch(roles=[_role("r1", permissions=0)], assignments={"r1": []})
+		_patch(roles=[_role("r1", permissions=0)], assignments={"r1": {"added": [], "removed": ["100"]}})
 
 	assert db.roles["r1"]["permissions"] == 8
 	assert db.members_of("r1") == {"100"}
@@ -163,7 +164,7 @@ def test_patch_locks_rows_before_change(db):
 def test_patch_audit_does_not_contain_member_names(db):
 	db.add_role("r1")
 
-	_patch(assignments={"r1": ["100"]})
+	_patch(assignments={"r1": {"added": ["100"], "removed": []}})
 
 	assert "username" not in str(db.audit_logs)
 	assert "display_name" not in str(db.audit_logs)

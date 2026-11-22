@@ -50,3 +50,19 @@ class ProtectedRoleAssignmentError(Exception):
 	@property
 	def response_detail(self) -> str:
 		return f"ロール {self.role_id} は Discord で直接付け外しするロールのため、割当を変更できません"
+
+
+class RoleAssignmentChangeConflictError(ValueError):
+	"""割当の差分保存で、同じメンバーを同じロールの追加と削除の両方に指定した（#228）
+
+	レスポンスの detail には response_detail（固定文言にロール ID と Discord ID を埋めたもの）を使う。
+	"""
+
+	def __init__(self, role_id: str, discord_id: str) -> None:
+		self.role_id = role_id
+		self.discord_id = discord_id
+		super().__init__(self.response_detail)
+
+	@property
+	def response_detail(self) -> str:
+		return f"ロール {self.role_id} で、{self.discord_id} を追加と削除の両方に指定しています"

@@ -55,8 +55,27 @@ def _patch(changes, audit=AUDIT):
 	manifest_repository.patch_manifest_db([], [], [], [], changes, audit)
 
 
+def _add(*user_ids):
+	return {"added": list(user_ids), "removed": []}
+
+
 def _put(assignments, audit=AUDIT):
 	manifest_repository.replace_manifest([], [], assignments, audit)
+
+
+def _patch_to(db, assignments):
+	# PATCH は割当の差分を送るため、変更後の全員の一覧を、今の割当との差分にして送る
+	_patch({
+		role_id: {
+			"added": sorted(set(users) - db.members_of(role_id)),
+			"removed": sorted(db.members_of(role_id) - set(users)),
+		}
+		for role_id, users in assignments.items()
+	})
+
+
+def _put_to(db, assignments):
+	_put(assignments)
 
 
 def _promote(require_eligibility=True, audit=AUDIT):
@@ -96,7 +115,7 @@ def _state(db):
 @pytest.mark.parametrize("audit", [AUDIT, None], ids=["with-audit", "without-audit"])
 def test_patch_takes_lock_first(db, audit):
 	# 監査ありでは、マニフェストの行の FOR UPDATE より前に取る
-	_patch({MEMBER: [USER]}, audit)
+	_patch({MEMBER: _add(USER)}, audit)
 
 	assert db.executed[0] == LOCK_SQL
 	assert set(db.advisory_locks) == {"membership"}
@@ -111,14 +130,14 @@ def test_put_takes_lock_first(db, audit):
 	assert db.membership_types_of(USER) == {"member"}
 
 
-SAVES = [pytest.param(_patch, id="patch"), pytest.param(_put, id="put")]
+SAVES = [pytest.param(_patch_to, id="patch"), pytest.param(_put_to, id="put")]
 ROW_TYPES = {MEMBER: "member", SUB: "sub_user", OBOG: "obog", PRE: "pre_member"}
 
 
 @pytest.mark.parametrize("save", SAVES)
 @pytest.mark.parametrize("role_id", [MEMBER, SUB, OBOG, PRE])
 def test_save_takes_lock_first_for_each_membership_role(db, save, role_id):
-	save({role_id: [USER]})
+	save(db, {role_id: [USER]})
 
 	assert db.executed[0] == LOCK_SQL
 	assert set(db.advisory_locks) == {"membership"}
@@ -132,7 +151,7 @@ def test_save_clearing_membership_role_takes_lock_first(db, save, role_id):
 	db.assign(role_id, USER)
 	db.add_membership(USER, ROW_TYPES[role_id])
 
-	save({role_id: []})
+	save(db, {role_id: []})
 
 	assert db.executed[0] == LOCK_SQL
 	assert set(db.advisory_locks) == {"membership"}
@@ -147,7 +166,7 @@ def test_save_clearing_membership_role_takes_lock_first(db, save, role_id):
 ])
 def test_save_without_membership_roles_takes_no_lock(db, save, assignments):
 	# admin のロールは保存で種別を更新しないため、会員種別のロールに含めない
-	save(assignments)
+	save(db, assignments)
 
 	assert db.advisory_locks == []
 	for role_id, users in assignments.items():
@@ -169,7 +188,7 @@ def test_save_with_unconfigured_membership_env_takes_no_lock(db, monkeypatch):
 	for name in ("MEMBER_ROLE_IDS", "SUB_USER_ROLE_IDS", "OBOG_ROLE_IDS", "PRE_MEMBER_ROLE_ID"):
 		monkeypatch.delenv(name)
 
-	_patch({MEMBER: [USER]})
+	_patch({MEMBER: _add(USER)})
 
 	assert db.advisory_locks == []
 
@@ -267,7 +286,7 @@ def test_retry_on_deadlock_does_not_retry_other_errors(error):
 SAVE_AUDIT = [("membership", USER), ("role_assignment", MEMBER)]
 MEMBER_ROLES_AUDIT = [("member_roles", USER)]
 RETRY_CASES = [
-	pytest.param(False, lambda: _patch({MEMBER: [USER]}), SAVE_AUDIT, id="patch"),
+	pytest.param(False, lambda: _patch({MEMBER: _add(USER)}), SAVE_AUDIT, id="patch"),
 	pytest.param(False, lambda: _put({MEMBER: [USER]}), SAVE_AUDIT, id="put"),
 	pytest.param(
 		True, lambda: membership_repository.add_to_member_list(USER, "111", None, AUDIT), MEMBER_ROLES_AUDIT,

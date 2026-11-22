@@ -40,8 +40,16 @@ def db(monkeypatch):
 	return fake
 
 
-def _patch(assignments, audit=AUDIT):
-	manifest_repository.patch_manifest_db([], [], [], [], assignments, audit)
+def _patch(changes, audit=AUDIT):
+	manifest_repository.patch_manifest_db([], [], [], [], changes, audit)
+
+
+def _add(*user_ids):
+	return {"added": list(user_ids), "removed": []}
+
+
+def _remove(*user_ids):
+	return {"added": [], "removed": list(user_ids)}
 
 
 def _membership_logs(db):
@@ -56,7 +64,7 @@ def test_removing_role_removes_membership(db, role_id, m_type):
 	db.add_membership(USER, m_type)
 	db.add_membership("200", m_type)
 
-	_patch({role_id: ["200"]})
+	_patch({role_id: _remove(USER)})
 
 	assert db.membership_types_of(USER) == set()
 	assert db.membership_types_of("200") == {m_type}
@@ -69,7 +77,7 @@ def test_removing_role_removes_membership(db, role_id, m_type):
 
 
 def test_adding_role_adds_membership_with_assigned_by(db):
-	_patch({MEMBER: [USER]})
+	_patch({MEMBER: _add(USER)})
 
 	assert db.memberships == {(USER, "member"): "111"}
 	assert _membership_logs(db)[0]["after"] == {"added": ["member"], "removed": []}
@@ -79,7 +87,7 @@ def test_member_to_obog_does_not_leave_member(db):
 	db.assign(MEMBER, USER)
 	db.add_membership(USER, "member")
 
-	_patch({MEMBER: [], OBOG: [USER]})
+	_patch({MEMBER: _remove(USER), OBOG: _add(USER)})
 
 	assert db.membership_types_of(USER) == {"obog"}
 	assert _membership_logs(db)[0]["after"] == {"added": ["obog"], "removed": ["member"]}
@@ -89,7 +97,7 @@ def test_pre_member_to_member(db):
 	db.assign(PRE, USER)
 	db.add_membership(USER, "pre_member")
 
-	_patch({PRE: [], MEMBER: [USER]})
+	_patch({PRE: _remove(USER), MEMBER: _add(USER)})
 
 	assert db.membership_types_of(USER) == {"member"}
 
@@ -99,10 +107,24 @@ def test_unchanged_user_rows_are_kept(db):
 	db.assign(MEMBER, "200")
 	db.add_membership(USER, "member")
 
-	_patch({MEMBER: ["200", "300"]})
+	_patch({MEMBER: _add("200", "300")})
 
 	assert db.membership_types_of(USER) == {"member"}
 	assert db.membership_types_of("300") == {"member"}
+
+
+def test_membership_added_by_other_operation_after_screen_opened_is_kept(db):
+	# 管理者が画面を開いた後に、入会フローなどで USER に member の割当と行が付いた（#228）
+	db.assign(MEMBER, "200")
+	db.assign(MEMBER, USER)
+	db.add_membership(USER, "member")
+
+	# 管理者は画面上で 200 を外して保存する（USER は画面に表示されていない）
+	_patch({MEMBER: _remove("200")})
+
+	assert db.members_of(MEMBER) == {USER}
+	assert db.membership_types_of(USER) == {"member"}
+	assert _membership_logs(db) == []
 
 
 def test_existing_row_is_not_overwritten(db):
@@ -110,7 +132,7 @@ def test_existing_row_is_not_overwritten(db):
 	db.add_membership(USER, "member", assigned_by="original")
 	db.add_membership("200", "member", assigned_by="original")
 
-	_patch({MEMBER: [USER, "200"]})
+	_patch({MEMBER: _add("200")})
 
 	assert db.memberships[("200", "member")] == "original"
 	assert _membership_logs(db) == []
@@ -120,7 +142,7 @@ def test_admin_rows_are_not_changed_by_save(db):
 	db.assign(ADMIN, USER)
 	db.add_membership(USER, "admin")
 
-	_patch({ADMIN: [], MEMBER: ["200"]})
+	_patch({ADMIN: _remove(USER), MEMBER: _add("200")})
 
 	assert db.membership_types_of(USER) == {"admin"}
 	assert db.membership_types_of("200") == {"member"}
@@ -129,7 +151,7 @@ def test_admin_rows_are_not_changed_by_save(db):
 def test_non_membership_roles_do_not_touch_memberships(db):
 	db.add_membership(USER, "member")
 
-	_patch({"role-game": [USER, "200"]})
+	_patch({"role-game": _add(USER, "200")})
 
 	assert db.memberships == {(USER, "member"): None}
 	assert not any("user_memberships" in sql for sql in db.executed)
@@ -149,7 +171,7 @@ def test_unconfigured_env_skips_membership_update(db, monkeypatch):
 	db.assign(MEMBER, USER)
 	db.add_membership(USER, "member")
 
-	_patch({MEMBER: []})
+	_patch({MEMBER: _remove(USER)})
 
 	assert db.membership_types_of(USER) == {"member"}
 
@@ -163,7 +185,7 @@ def test_partial_removal_of_multiple_member_roles_is_rejected(db, monkeypatch):
 	db.add_membership(USER, "member")
 
 	with pytest.raises(MembershipAssignmentError):
-		_patch({"role-member-2": []})
+		_patch({"role-member-2": _remove(USER)})
 
 	assert db.members_of("role-member-2") == {USER}
 	assert db.membership_types_of(USER) == {"member"}
@@ -173,7 +195,7 @@ def test_partial_addition_of_multiple_member_roles_is_rejected(db, monkeypatch):
 	monkeypatch.setenv("MEMBER_ROLE_IDS", f"{MEMBER},role-member-2")
 
 	with pytest.raises(MembershipAssignmentError):
-		_patch({MEMBER: [USER]})
+		_patch({MEMBER: _add(USER)})
 
 	assert db.members_of(MEMBER) == set()
 	assert db.memberships == {}
@@ -185,7 +207,7 @@ def test_removing_all_multiple_member_roles_revokes(db, monkeypatch):
 	db.assign("role-member-2", USER)
 	db.add_membership(USER, "member")
 
-	_patch({MEMBER: [], "role-member-2": []})
+	_patch({MEMBER: _remove(USER), "role-member-2": _remove(USER)})
 
 	assert db.membership_types_of(USER) == set()
 
@@ -200,7 +222,7 @@ def test_exclusive_types_are_rejected(db, held, added):
 	db.assign(held, USER)
 
 	with pytest.raises(MembershipAssignmentError):
-		_patch({added: [USER]})
+		_patch({added: _add(USER)})
 
 	assert db.members_of(added) == set()
 	assert db.audit_logs == []
@@ -212,14 +234,14 @@ def test_exclusive_type_held_only_by_row_is_rejected(db, row_type, added):
 	db.add_membership(USER, row_type)
 
 	with pytest.raises(MembershipAssignmentError):
-		_patch({added: [USER]})
+		_patch({added: _add(USER)})
 
 	assert db.members_of(added) == set()
 
 
 def test_memberships_are_locked_with_common_lock(db):
 	# 1 人ごとではなく、種別を変える全経路で共通のロック 1 つで直列化する（#264）
-	_patch({MEMBER: ["300", "200"], OBOG: ["100"], "role-game": ["400"]})
+	_patch({MEMBER: _add("300", "200"), OBOG: _add("100"), "role-game": _add("400")})
 
 	assert db.executed[0] == "SELECT pg_advisory_xact_lock(hashtext(%s))"
 	assert set(db.advisory_locks) == {"membership"}
@@ -230,7 +252,7 @@ def test_unrelated_type_change_on_partial_holder_is_allowed(db, monkeypatch):
 	monkeypatch.setenv("MEMBER_ROLE_IDS", f"{MEMBER},role-member-2")
 	db.assign(MEMBER, USER)
 
-	_patch({OBOG: [USER]})
+	_patch({OBOG: _add(USER)})
 
 	assert db.membership_types_of(USER) == {"obog"}
 
@@ -241,7 +263,7 @@ def test_removing_sub_role_from_legacy_holder_only_removes_sub_user(db):
 	db.assign(SUB, USER)
 	db.add_membership(USER, "sub_user")
 
-	_patch({SUB: []})
+	_patch({SUB: _remove(USER)})
 
 	assert db.membership_types_of(USER) == set()
 	assert db.members_of(MEMBER) == {USER}
@@ -252,7 +274,7 @@ def test_removing_member_role_from_legacy_holder_is_allowed(db):
 	db.assign(SUB, USER)
 	db.add_membership(USER, "sub_user")
 
-	_patch({MEMBER: []})
+	_patch({MEMBER: _remove(USER)})
 
 	assert db.membership_types_of(USER) == {"sub_user"}
 
@@ -261,7 +283,7 @@ def test_unrelated_type_change_on_legacy_holder_is_allowed(db):
 	db.assign(MEMBER, USER)
 	db.assign(SUB, USER)
 
-	_patch({OBOG: [USER]})
+	_patch({OBOG: _add(USER)})
 
 	assert db.membership_types_of(USER) == {"obog"}
 
@@ -284,7 +306,7 @@ def test_patch_endpoint_returns_400_on_invalid_membership(client, monkeypatch):
 	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset()))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise)
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {SUB: [USER]}})
+	res = client.patch("/api/v1/manifest", json={"role_assignment_changes": {SUB: _add(USER)}})
 
 	assert res.status_code == 400
 	assert res.json()["detail"] == {
@@ -304,7 +326,7 @@ def test_patch_endpoint_returns_cause_of_partial_membership(client, monkeypatch)
 	monkeypatch.setattr(manifest_api, "fetch_protected_role_ids", AsyncMock(return_value=frozenset()))
 	monkeypatch.setattr(manifest_api, "patch_manifest_db", _raise_partial)
 
-	res = client.patch("/api/v1/manifest", json={"upsert_role_assignments": {SUB: [USER]}})
+	res = client.patch("/api/v1/manifest", json={"role_assignment_changes": {SUB: _add(USER)}})
 
 	assert res.status_code == 400
 	detail = res.json()["detail"]

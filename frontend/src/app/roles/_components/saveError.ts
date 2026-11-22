@@ -5,13 +5,13 @@ import type { Member, Role } from "@/types/roles";
 /** 保存エラーの detail から取り出した、原因の情報（#263）。形式が合わない項目は undefined にする */
 export type SaveErrorCause = {
   code?: string;
-  /** membership_assignment_invalid: 原因のメンバーの Discord ID */
+  /** membership_assignment_invalid / assignment_change_conflict: 原因のメンバーの Discord ID */
   discordId?: string;
   /** membership_assignment_invalid: 原因の会員種別 */
   membershipTypes?: string[];
   /** membership_assignment_invalid: partial（一部だけ付け外し）/ exclusive（同時に持てない組） */
   reason?: string;
-  /** protected_role_assignment: 原因のロール ID */
+  /** protected_role_assignment / assignment_change_conflict: 原因のロール ID */
   roleId?: string;
 };
 
@@ -98,6 +98,15 @@ export function saveErrorMessage(cause: SaveErrorCause, roles: Role[], members: 
         return `保存できませんでした。${role}は Bot が操作できないため、割当を変更できません。Discord で直接変更してください。`;
       }
       return "Bot が操作できないロール（admin など）の割当が含まれているため、保存できませんでした。これらのロールは Discord で直接変更してください。";
+    }
+    case "assignment_change_conflict": {
+      // 画面は差分から added / removed を作るため通常は起きない（#228）
+      const role = roleLabel(cause.roleId, roles);
+      const who = memberLabel(cause.discordId, members);
+      if (role && who) {
+        return `保存できませんでした。${role}で、${who}の追加と削除が同時に指定されています。画面を再読み込みしてから、もう一度変更してください。`;
+      }
+      return "同じメンバーの追加と削除が同時に指定されているため、保存できませんでした。画面を再読み込みしてから、もう一度変更してください。";
     }
     case "discord_unavailable":
       return "Discord からロールの情報を取得できなかったため、保存できませんでした。時間をおいて再度お試しください。";
