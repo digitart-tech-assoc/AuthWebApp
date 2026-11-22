@@ -403,6 +403,7 @@ async def create_student_profile(
 	configured_role_ids = membership_role_ids()
 	member_role_ids = list(configured_role_ids[MembershipType.MEMBER])
 	pre_member_role_id = next(iter(configured_role_ids[MembershipType.PRE_MEMBER]), None)
+	sub_user_role_ids = list(configured_role_ids[MembershipType.SUB_USER])
 
 	# 資格確認後に失効・削除された場合に備え、本会員化と同一トランザクションで再検証する
 	try:
@@ -421,6 +422,7 @@ async def create_student_profile(
 			require_eligibility=not is_registered,
 			audit=audit,
 			pre_member_role_id=pre_member_role_id,
+			sub_user_role_ids=sub_user_role_ids,
 		)
 	except RegistrationNotEligibleError as e:
 		# 自前の例外で、文言は固定（student_repository で定めた入会資格の不足理由）

@@ -239,10 +239,12 @@ def test_exclusive_type_held_only_by_row_is_rejected(db, row_type, added):
 	assert db.members_of(added) == set()
 
 
-def test_memberships_are_locked_per_user_in_order(db):
+def test_memberships_are_locked_with_common_lock(db):
+	# 1 人ごとではなく、種別を変える全経路で共通のロック 1 つで直列化する（#264）
 	_patch({MEMBER: _add("300", "200"), OBOG: _add("100"), "role-game": _add("400")})
 
-	assert db.advisory_locks == ["membership:100", "membership:200", "membership:300"]
+	assert db.executed[0] == "SELECT pg_advisory_xact_lock(hashtext(%s))"
+	assert set(db.advisory_locks) == {"membership"}
 
 
 def test_unrelated_type_change_on_partial_holder_is_allowed(db, monkeypatch):

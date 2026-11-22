@@ -1,6 +1,8 @@
 """ロール関連テーブル（role_categories / role_manifests / role_member_assignments / role_audit_logs / user_memberships）の
 インメモリの代替。リポジトリ関数が発行する SQL だけを解釈する。
 user_memberships の既存行の確認（register_pre_member の SELECT）は、未登録として扱う。
+本会員化（upsert_student_profile_and_promote）のため、paid_invitations と student_profiles も最小限だけ扱う。
+deadlock_on に SQL の先頭を入れると、その文を実行したとき deadlocks 回まで DeadlockDetected を送出する（#264）。
 
 _connect() の代わりに使い、with を抜けるときに _PooledConnection と同じく、正常終了なら commit、例外なら rollback する。
 """
@@ -11,6 +13,8 @@ import copy
 import json
 from datetime import datetime, timezone
 from typing import Any
+
+from psycopg2 import errors as pg_errors
 
 CATEGORY_COLUMNS = ("id", "name", "display_order", "is_collapsed", "permissions", "is_restricted")
 ROLE_COLUMNS = ("role_id", "name", "color", "hoist", "mentionable", "permissions", "position", "category_id", "is_our_bot")
@@ -32,10 +36,14 @@ class FakeRoleDB:
 		# (discord_id, membership_type) -> assigned_by
 		self.memberships: dict[tuple[str, str], str | None] = {}
 		self.paid_invitations: set[str] = set()
+		# discord_id -> profile_id
+		self.student_profiles: dict[str, str] = {}
 		self.audit_logs: list[dict[str, Any]] = []
 		self.advisory_locks: list[str] = []
 		self.executed: list[str] = []
 		self.fail_audit_insert = False
+		self.deadlock_on: str | None = None
+		self.deadlocks = 0
 		self.commits = 0
 		self.rollbacks = 0
 
@@ -75,12 +83,13 @@ class FakeRoleDB:
 	def _state(self):
 		return (
 			copy.deepcopy(self.categories), copy.deepcopy(self.roles), set(self.assignments),
-			dict(self.memberships), set(self.paid_invitations), list(self.audit_logs),
+			dict(self.memberships), set(self.paid_invitations), dict(self.student_profiles), list(self.audit_logs),
 		)
 
 	def _restore(self, state) -> None:
 		(
-			self.categories, self.roles, self.assignments, self.memberships, self.paid_invitations, self.audit_logs,
+			self.categories, self.roles, self.assignments, self.memberships, self.paid_invitations,
+			self.student_profiles, self.audit_logs,
 		) = state
 
 
@@ -139,6 +148,9 @@ class FakeCursor:
 		params = params or ()
 		self._rows = []
 		self.rowcount = 0
+		if db.deadlocks > 0 and db.deadlock_on is not None and q.startswith(db.deadlock_on):
+			db.deadlocks -= 1
+			raise pg_errors.DeadlockDetected("deadlock detected")
 
 		if q.startswith("SELECT user_id FROM role_member_assignments WHERE role_id = %s"):
 			self._rows = [(u,) for u in sorted(db.members_of(params[0]))]
@@ -227,8 +239,25 @@ class FakeCursor:
 			self.rowcount = 1
 		elif q.startswith("DELETE FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member'"):
 			if (params[0], "pre_member") in db.memberships:
-				del db.memberships[(params[0], "pre_member")]
+				assigned_by = db.memberships.pop((params[0], "pre_member"))
 				self.rowcount = 1
+				if "RETURNING assigned_by" in q:
+					self._rows = [(assigned_by,)]
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'pre_member' FOR UPDATE"):
+			self._rows = [(1,)] if (params[0], "pre_member") in db.memberships else []
+		elif q.startswith("SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type IN ('member', 'sub_user')"):
+			held = db.membership_types_of(params[0]) & {"member", "sub_user"}
+			self._rows = [(1,)] if held else []
+		elif q.startswith("SELECT 1 FROM paid_invitations WHERE discord_id = %s"):
+			self._rows = [(1,)] if params[0] in db.paid_invitations else []
+		elif q.startswith("SELECT id FROM student_profiles WHERE discord_id = %s"):
+			profile_id = db.student_profiles.get(params[0])
+			self._rows = [(profile_id,)] if profile_id is not None else []
+		elif q.startswith("INSERT INTO student_profiles"):
+			db.student_profiles[params[1]] = params[0]
+			self.rowcount = 1
+		elif q.startswith("UPDATE student_profiles"):
+			self.rowcount = 1 if params[-1] in db.student_profiles else 0
 		elif q.startswith("INSERT INTO user_memberships"):
 			literal = next((t for t in ("pre_member", "member") if f"VALUES (%s, '{t}', %s," in q), None)
 			if literal is not None:

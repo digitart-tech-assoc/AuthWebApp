@@ -11,9 +11,9 @@ from zoneinfo import ZoneInfo
 from app.core.config import MEMBERSHIP_PRIORITY_SQL, MembershipType
 from app.core.membership_roles import membership_role_ids
 from app.db.audit_repository import AuditContext, insert_audit_logs
-from app.db.connection import _connect, _log_db_access
+from app.db.connection import _connect, _log_db_access, retry_on_deadlock
 from app.db.guild_repository import member_roles_audit_logs
-from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES
+from app.db.membership_assignment_repository import SAVE_MANAGED_TYPES, lock_memberships
 
 logger = logging.getLogger(__name__)
 
@@ -566,6 +566,7 @@ def get_pre_member_list_with_users(search: str | None = None) -> list[dict[str, 
 			return results
 
 
+@retry_on_deadlock
 def add_to_member_list(
 	discord_id: str,
 	assigned_by: str,
@@ -579,6 +580,9 @@ def add_to_member_list(
 	sub_user の行または sub垢 の割当がある人は、member と sub垢 の両方を持つことになるため ValueError を送出する。
 	member ロール（MEMBER_ROLE_IDS）の割当を追加し、pre-member ロール（PRE_MEMBER_ROLE_ID）の割当を外す。
 	audit を渡すと、実際に変えた割当を監査ログに記録する。Discord への反映は次の push で行う。
+
+	トランザクションの最初に lock_memberships を取り、sub垢 の確認から書き込みまでを、種別を変えるほかの経路と直列化する。
+	デッドロックで失敗した場合は、1 回だけ呼び直す（retry_on_deadlock。#264）。
 	
 	Args:
 		discord_id: Discord user ID
@@ -595,6 +599,10 @@ def add_to_member_list(
 	sub_user_role_ids = configured[MembershipType.SUB_USER]
 	with _connect() as conn:
 		with conn.cursor() as cur:
+			# 管理画面の保存で sub垢 を付ける処理と並行して、member と sub垢 の両方を持つ状態にならないよう、
+			# 確認より前に共通のロックを取る（#264）
+			lock_memberships(cur)
+
 			# Check if already member in user_memberships
 			cur.execute(
 				"SELECT 1 FROM user_memberships WHERE discord_id = %s AND membership_type = 'member'",

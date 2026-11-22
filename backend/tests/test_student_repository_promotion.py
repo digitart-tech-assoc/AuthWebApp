@@ -34,8 +34,11 @@ class _FakeCursor:
 		self._conn.params.append(params)
 		if normalized.startswith("DELETE FROM user_memberships"):
 			self._result = ("S",) if self._conn.is_pre_member else None
-		elif "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
+		elif "FROM user_memberships" in normalized and "membership_type = 'pre_member'" in normalized:
 			self._result = (1,) if self._conn.is_pre_member else None
+		elif "FROM user_memberships" in normalized and normalized.startswith("SELECT"):
+			# member / sub_user の行の確認（#264）。このファイルでは常にないものとして扱う
+			self._result = None
 		elif "FROM paid_invitations" in normalized:
 			self._result = (1,) if self._conn.is_paid else None
 		else:
@@ -85,6 +88,7 @@ def _promote(require_eligibility: bool = True, audit: AuditContext | None = None
 		require_eligibility=require_eligibility,
 		audit=audit,
 		pre_member_role_id="pre-member-role",
+		sub_user_role_ids=[],
 	)
 
 
@@ -118,8 +122,11 @@ def test_promotion_locks_eligibility_rows_before_writes(monkeypatch):
 
 	assert _promote() == ("prof_test", True)
 
-	assert "FOR UPDATE" in conn.executed[0] and "membership_type = 'pre_member'" in conn.executed[0]
-	assert "FOR SHARE" in conn.executed[1] and "expires_at > now()" in conn.executed[1]
+	# 種別を変える全経路で共通のロックを、行ロックより前に取る（#264）
+	assert conn.executed[0] == "SELECT pg_advisory_xact_lock(hashtext(%s))"
+	assert conn.params[0] == ("membership",)
+	assert "FOR UPDATE" in conn.executed[1] and "membership_type = 'pre_member'" in conn.executed[1]
+	assert "FOR SHARE" in conn.executed[2] and "expires_at > now()" in conn.executed[2]
 	assert any("DELETE FROM user_memberships" in sql for sql in _writes(conn))
 	assert any("INSERT INTO user_memberships" in sql and "'member'" in sql for sql in _writes(conn))
 	assert conn.committed
@@ -132,6 +139,8 @@ def test_promotion_skips_eligibility_check_for_registered_user(monkeypatch):
 	assert _promote(require_eligibility=False) == ("prof_test", False)
 
 	assert not any("FROM paid_invitations" in sql for sql in conn.executed)
+	# プロフィール更新では種別を変えないため、共通のロックも取らない（#264）
+	assert not any("pg_advisory_xact_lock" in sql for sql in conn.executed)
 	assert conn.committed
 
 
@@ -182,6 +191,7 @@ def test_promotion_without_pre_member_role_id_keeps_other_assignments(monkeypatc
 		profile_id="prof_test", discord_id="test-discord-id", student_number="1A234567", name="テスト 太郎",
 		furigana="テスト タロウ", department="テスト学部", gender=None, phone="09000000000",
 		email_aoyama="aa234567@aoyama.ac.jp", member_role_ids=["member-role"], pre_member_role_id=None,
+		sub_user_role_ids=[],
 	)
 
 	assert not any(sql.startswith("DELETE FROM role_member_assignments") for sql in conn.executed)
@@ -209,3 +219,15 @@ def test_promotion_without_audit_context_records_nothing(monkeypatch):
 	_promote(require_eligibility=False)
 
 	assert not any("role_audit_logs" in sql for sql in conn.executed)
+
+
+def test_promotion_requires_sub_user_role_ids(monkeypatch):
+	# 渡し忘れで sub垢 の割当の確認が抜けないよう、引数を省くと呼び出しの時点で失敗させる（#264）
+	monkeypatch.setattr(student_repository, "_connect", lambda: pytest.fail("must not connect"))
+
+	with pytest.raises(TypeError):
+		student_repository.upsert_student_profile_and_promote(  # type: ignore[call-arg]
+			profile_id="prof_test", discord_id="test-discord-id", student_number="1A234567", name="テスト 太郎",
+			furigana="テスト タロウ", department="テスト学部", gender=None, phone="09000000000",
+			email_aoyama="aa234567@aoyama.ac.jp", member_role_ids=["member-role"], pre_member_role_id="pre-member-role",
+		)

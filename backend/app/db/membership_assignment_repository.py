@@ -7,10 +7,13 @@
 - admin の行は保存では変更しない（admin ロールは Discord で直接付け外しし、sync で取り込む）
 - 1 種別に複数のロールがある場合（MEMBER_ROLE_IDS など）、すべてを持つときだけその種別とし、一部だけ持つ状態にする保存は拒否する
 - member と sub垢 の両方、または pre-member と member / sub垢 の両方を持つ状態にする保存は拒否する
+
+会員種別を変える経路（保存・/members/member/add・本会員化）は、トランザクションの最初に共通のロック（lock_memberships）を取る（#264）。
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from app.core.config import MembershipType
@@ -42,10 +45,30 @@ EXCLUSIVE_TYPE_PAIRS: tuple[tuple[str, str], ...] = (
 )
 
 
+MEMBERSHIP_LOCK_KEY = "membership"
+
+
 def save_managed_role_types() -> dict[str, str]:
 	"""保存で種別を更新するロールの ID -> 種別 を返す（環境変数を呼び出しのたびに読む）。"""
 	configured = membership_role_ids()
 	return {role_id: m_type for m_type in SAVE_MANAGED_TYPES for role_id in configured[m_type]}
+
+
+def lock_memberships(cur: Any) -> None:
+	"""会員種別を変える全経路で共通のアドバイザリーロックを、呼び出し元のトランザクションで取る（#264）。
+
+	同時に持てない種別の判定を、並行するほかの経路の変更が見えないまま通らないよう、種別の変更を全体で直列化する。
+	デッドロックを避けるため、割当・種別の行に触れる前（トランザクションの最初の文）に取る。
+	トランザクション単位のロックのため、コミット・ロールバックで外れる（Supabase の pooler のトランザクションモードでも使える）。
+	同じトランザクションで取り直しても待たない。
+	"""
+	cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (MEMBERSHIP_LOCK_KEY,))
+
+
+def assignments_change_membership(role_ids: Iterable[str]) -> bool:
+	"""保存する割当のロールに、会員種別のロールが含まれるか（含まれるときだけ lock_memberships を取る）。"""
+	managed = save_managed_role_types()
+	return any(role_id in managed for role_id in role_ids)
 
 
 def membership_audit_logs(discord_id: str, added: list[str], removed: list[str]) -> list[AuditLog]:
@@ -83,10 +106,10 @@ def apply_membership_changes(
 	result: dict[str, tuple[list[str], list[str]]] = {}
 	logs: list[AuditLog] = []
 	assigned_by = audit.actor_discord_id if audit is not None else None
-	# 同じ人の種別を変える保存同士を直列化する（別のロールの保存が並行すると、互いの変更が見えずに排他の判定を通るため）。
-	# デッドロックを避けるため、Discord ID の順にロックする
-	for discord_id in sorted(changed_types):
-		cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"membership:{discord_id}",))
+	# 種別を変える経路同士を直列化する（並行すると、互いの変更が見えずに排他の判定を通るため）。
+	# 呼び出し元がトランザクションの最初に取っている（#264）。取り直しは待たないため、取り忘れたときの保険として残す
+	if changed_types:
+		lock_memberships(cur)
 	for discord_id in sorted(changed_types):
 		types = changed_types[discord_id]
 		cur.execute("SELECT role_id FROM role_member_assignments WHERE user_id = %s", (discord_id,))
