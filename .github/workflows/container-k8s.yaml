@@ -90,11 +90,6 @@ jobs:
             --from-literal=DATABASE_URL=postgresql://user:pass@localhost:5432/db \
             --dry-run=client -o yaml > k8s/secrets/authwebapp-secret.yaml
 
-          # ダミーのtls.crt / tls.keyを生成
-          openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
-            -keyout k8s/secrets/tls.key -out k8s/secrets/tls.crt \
-            -subj "/CN=authwebapp.local"
-
       - name: Validate Kustomize Build
         run: |
           echo "Validating k8s/kustomization.yaml..."
