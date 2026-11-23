@@ -84,25 +84,16 @@ docker save authwebapp-backend:$VERSION authwebapp-backend:latest | microk8s ctr
 echo "  - Loading discord-bot image..."
 docker save authwebapp-discord-bot:$VERSION authwebapp-discord-bot:latest | microk8s ctr images import -
 
-# 4. TLS Secret を確認・再作成
+# 4. TLS 証明書を確認
+# 証明書は cert-manager が管理する（k8s-certs リポジトリの Certificate auth-digitart-jp）。
+# Secret auth-digitart-jp-tls は cert-manager が作成・更新するため、ここでは作成・削除しない。
 echo ""
-echo "[4/6] Ensuring TLS Secret is properly configured..."
-
-# 既存の Secret を削除（古いハッシュ付きの Secret も削除）
-echo "  - Cleaning up old TLS Secrets..."
-microk8s kubectl delete secret authwebapp-tls 2>/dev/null || true
-microk8s kubectl delete secret -l app=authwebapp,type=tls 2>/dev/null || true
-
-# TLS ファイルが存在することを確認
-if [ ! -f k8s/secrets/tls.crt ] || [ ! -f k8s/secrets/tls.key ]; then
-  echo "  ❌ Error: k8s/secrets/tls.crt or k8s/secrets/tls.key not found"
+echo "[4/6] Checking TLS certificate managed by cert-manager..."
+if ! microk8s kubectl wait --for=condition=Ready certificate/auth-digitart-jp --timeout=60s >/dev/null 2>&1; then
+  echo "  ❌ Error: Certificate auth-digitart-jp is not Ready (k8s-certs リポジトリを適用済みか確認してください)"
   exit 1
 fi
-
-# Secret が確実に削除されるまで待つ
-sleep 2
-
-echo "  ✓ TLS Secret cleanup complete"
+echo "  ✓ Certificate auth-digitart-jp is Ready"
 
 # 5. Kubernetes にデプロイ
 echo ""
@@ -117,10 +108,6 @@ for deployment in authwebapp-backend-deployment authwebapp-frontend-deployment a
   microk8s kubectl rollout restart deployment/$deployment
 done
 
-# Ingress コントローラーを再起動して新しい Secret をロード
-echo "  - Restarting Ingress controller..."
-microk8s kubectl rollout restart deployment -n ingress -l app.kubernetes.io/name=nginx-ingress 2>/dev/null || true
-
 echo ""
 echo "Waiting for rollouts to complete..."
 for deployment in authwebapp-backend-deployment authwebapp-frontend-deployment authwebapp-discord-bot-deployment; do
@@ -129,19 +116,11 @@ for deployment in authwebapp-backend-deployment authwebapp-frontend-deployment a
   }
 done
 
-# TLS Secret が正しく作成されたか確認
+# TLS 証明書の確認
 echo ""
-echo "Verifying TLS Secret..."
-sleep 3
-TLS_SECRET=$(microk8s kubectl get secret authwebapp-tls -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
-if [ -z "$TLS_SECRET" ]; then
-  echo "⚠ Warning: TLS Secret not found. Checking k8s/secrets files..."
-  ls -lh k8s/secrets/tls.*
-else
-  echo "✓ TLS Secret verified: $TLS_SECRET"
-  CERT_SUBJECT=$(microk8s kubectl get secret authwebapp-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d | openssl x509 -noout -subject 2>/dev/null || echo "N/A")
-  echo "  Certificate Subject: $CERT_SUBJECT"
-fi
+echo "Verifying TLS certificate..."
+CERT_INFO=$(microk8s kubectl get secret auth-digitart-jp-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d | openssl x509 -noout -subject -enddate 2>/dev/null || echo "N/A")
+echo "  Certificate: $CERT_INFO"
 
 echo ""
 echo "=========================================="
