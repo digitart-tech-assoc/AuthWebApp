@@ -86,7 +86,6 @@ API リクエスト時は、`Authorization` ヘッダーに以下のいずれか
 - `GET /api/v1/roles/lists` (Admin): 管理ロール名・メンバー一覧取得 → [詳細](./v1/roles.md#get-apiv1roleslists)
 - `GET /api/v1/roles/members` (Admin): ギルドメンバーとロール割り当て全件取得 → [詳細](./v1/roles.md#get-apiv1rolesmembers)
 - `POST /api/v1/roles/members/sync` (Admin): ギルドメンバーと admin の取り込み、会員種別の差分の確認 → [詳細](./v1/roles.md#post-apiv1rolesmemberssync)
-- `PATCH /api/v1/roles/{role_id}/permissions` (Admin): 権限フラグ直接更新 → [詳細](./v1/roles.md#patch-apiv1rolesrole_idpermissions)
 - `GET /api/v1/roles/debug/guilds` (Internal): Bot参加ギルド一覧 → [詳細](./v1/roles.md#get-apiv1rolesdebugguilds)
 
 ### 3.3. メンバー管理・入会費清算 (`/api/v1/members`)
