@@ -342,18 +342,3 @@ Discord から取得したギルドメンバーが 0 件の場合は、取得に
   }
 }
 ```
-
----
-
-## PATCH `/api/v1/roles/{role_id}/permissions`
-
-ロールの Discord 権限ビットフラグを更新します。
-
-* **認可レベル**: `Admin`
-* **パスパラメータ**: `role_id` (string)
-* **リクエストボディ**:
-```json
-{
-  "permissions": 8
-}
-```

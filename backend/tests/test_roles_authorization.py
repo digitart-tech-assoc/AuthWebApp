@@ -6,7 +6,7 @@ import re
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1.roles import get_lists, get_my_role_assignments, get_role_members
+from app.api.v1.roles import get_lists, get_my_role_assignments, get_role_members, router as roles_router
 from app.core.auth import has_member_privilege, require_admin, require_member
 from app.core.config import MEMBERSHIP_PRIORITY_SQL, MembershipType
 
@@ -56,3 +56,10 @@ def test_membership_priority_ranks_member_privileged_roles_between_admin_and_pre
 	privileged_ranks = [ranks[t] for t in MembershipType.MEMBER_PRIVILEGED]
 	assert ranks[MembershipType.ADMIN] < min(privileged_ranks)
 	assert max(privileged_ranks) < ranks[MembershipType.PRE_MEMBER]
+
+
+def test_role_permissions_cannot_be_updated_bypassing_manifest():
+	"""権限変更はマニフェスト経由に一本化されており、Discord を直接更新する個別エンドポイントが存在しないこと（#132）。"""
+	paths = {route.path for route in roles_router.routes}
+	assert "/api/v1/roles/{role_id}/permissions" not in paths
+	assert not any(path.endswith("/permissions") for path in paths)

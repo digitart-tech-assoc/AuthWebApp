@@ -674,35 +674,6 @@ async def get_role_members(_principal: dict = Depends(require_admin)) -> dict:
 	return {"members": members, "assignments": assignments}
 
 
-class PermissionsPayload(BaseModel):
-	permissions: int
-
-
-@router.patch("/{role_id}/permissions")
-async def update_role_permissions(
-	role_id: str,
-	payload: PermissionsPayload,
-	_principal: dict = Depends(require_admin),
-) -> dict:
-	"""特定ロールの権限を即時 Discord に反映（個別更新）。"""
-	token = _get_token()
-	if not token:
-		raise HTTPException(status_code=500, detail="DISCORD_TOKEN is not configured")
-
-	try:
-		await edit_guild_role(
-			DISCORD_GUILD_ID,
-			role_id,
-			token,
-			{"permissions": str(int(payload.permissions))},
-		)
-	except Exception as exc:  # noqa: BLE001
-		logger.exception("Discord role permissions update failed")
-		raise HTTPException(status_code=502, detail="Failed to update role permissions on Discord") from exc
-
-	return {"ok": True, "role_id": role_id, "permissions": payload.permissions}
-
-
 def _match_role_ids(roles: list[dict]) -> dict[str, Any]:
 	"""環境変数で設定した会員種別のロール ID を、Discord のロール一覧と照合して返す（#234）。
 
