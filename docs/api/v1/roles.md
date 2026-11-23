@@ -75,7 +75,7 @@ DB のマニフェスト（`role_manifests`）を Desired State として読み�
   * その他の失敗は、そのメンバーの Discord ID・差分の件数・HTTP ステータス（ステータスがない場合は例外の型名）を `errors` に記録し、次のメンバーへ進みます（例: `"Failed to update roles for 123456789012345678 (+1/-0): DiscordAPIError HTTP 500"`）。
 * **レート制限（429）**: Discord から `429 Too Many Requests` を受けた場合は、レスポンスの `retry_after`（なければ `Retry-After` ヘッダー）の秒数だけ待って再試行します。再試行は最大 3 回、1 回の待ち時間は最大 10 秒です（`backend/app/core/config.py` の `DISCORD_RATE_LIMIT_MAX_RETRIES` / `DISCORD_RATE_LIMIT_MAX_WAIT`）。上限を超えた場合は失敗として `errors` に記録します。
   * メンバーのロール割り当ての反映中に上限を超えた場合は、続けて送っても 429 を重ねるだけで、Discord の無効リクエスト数の上限（超えると IP 単位で一時的に遮断される）に近づくため、残りのメンバーへの反映を打ち切ります。`errors` には反映できなかった残りの人数を記録します（Discord ID は含めません）。時間をおいて push をやり直してください。
-  * 429 を受ける前でも、応答の `X-RateLimit-Remaining` が 0 であれば `X-RateLimit-Reset-After` の秒数（最大 10 秒）だけ待ってから次のリクエストを送ります。
+  * 429 を受ける前でも、応答の `X-RateLimit-Remaining` が 0 であれば `X-RateLimit-Reset-After` の秒数（最大 10 秒）だけ待ってから次のリクエストを送ります。この待機は、同じバケットへ続けて送るとき（push のロールの作成・更新・削除とメンバーへの割り当て、`GET /api/v1/members/pre_member/list` の人数分のメンバー情報の取得）だけ行います。最後のメンバーへの反映の後と、1 回だけ呼ぶ API（self-batch、本会員登録など）では待ちません。
   * 429 の警告ログでは、URL 内の ID を `:id` に置き換えます。
 
 ---

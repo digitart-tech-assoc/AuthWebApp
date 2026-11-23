@@ -132,10 +132,12 @@ async def get_pre_member_list(
 				async with sem:
 					for attempt in range(max_retries + 1):
 						try:
+							# 一覧の人数分、同じバケットへ続けて送るので、残りが 0 ならリセットまで待つ
 							result_member = await fetch_guild_member(
 								DISCORD_GUILD_ID,
 								member["discord_id"],
 								DISCORD_TOKEN,
+								wait_for_bucket_reset=True,
 							)
 							if result_member is None:
 								if attempt < max_retries:
