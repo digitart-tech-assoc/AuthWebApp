@@ -5,6 +5,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - http-redirect.yaml
   - secrets/authwebapp-secret.yaml
 
 generatorOptions:

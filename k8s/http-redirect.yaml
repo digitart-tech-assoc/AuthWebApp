@@ -1,0 +1,30 @@
+# auth.digitart.jp への HTTP アクセスを HTTPS へ転送する。
+#
+# - web エントリポイント（HTTP）だけに作るルーター。HTTPS 側の Ingress には影響しない。
+# - priority をauth.digitart.jp の Ingress より高くし、HTTP では先に一致させる。
+# - cert-manager の HTTP-01 チャレンジ（/.well-known/acme-challenge/）は転送せず、従来どおり HTTP で応答させる。
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: auth-digitart-jp-https-redirect
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: auth-digitart-jp-http-redirect
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`auth.digitart.jp`) && !PathPrefix(`/.well-known/acme-challenge/`)
+      priority: 10000
+      middlewares:
+        - name: auth-digitart-jp-https-redirect
+      services:
+        - kind: TraefikService
+          name: noop@internal
